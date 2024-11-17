@@ -18,6 +18,13 @@ jobs:
         with:
           go-version: '1.23.2'  # 根据部署脚本中的 Go 版本调整
 
+      # 安装 Go 依赖（切换到 rclone-go 目录）
+      - name: Install Go dependencies
+        run: |
+          cd rclone-go
+          go mod tidy  # 确保在 rclone-go 目录下执行
+          go mod vendor  # 如果需要，还可以运行 vendor 命令
+
       # 设置 Node.js 环境
       - name: Set up Node.js
         uses: actions/setup-node@v3
