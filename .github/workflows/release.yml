@@ -18,10 +18,6 @@ jobs:
         with:
           go-version: '1.23.2'  # 根据部署脚本中的 Go 版本调整
 
-      # 安装 Go 依赖
-      - name: Install Go dependencies
-        run: go mod tidy
-
       # 设置 Node.js 环境
       - name: Set up Node.js
         uses: actions/setup-node@v3
