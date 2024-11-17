@@ -62,17 +62,21 @@ jobs:
           name: release-assets
           path: release/rclone-backup-web-*.tar.gz
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
+release:
+  needs: build
+  runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: ${{ github.workspace }}/release/rclone-backup-web-*.tar.gz
-          tag_name: ${{ github.ref }}
-          token: ${{ secrets.MY_PERSONAL_ACCESS_TOKEN }}
+    - name: List Release Directory
+      run: |
+        ls -la release  # 列出 release 目录中的文件，帮助确认路径是否正确
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ${{ github.workspace }}/release/rclone-backup-web-*.tar.gz  # 确保引用文件路径正确
+        tag_name: ${{ github.ref }}  # 使用触发事件的标签作为 release 标签
+        token: ${{ secrets.MY_PERSONAL_ACCESS_TOKEN }}  # 确保正确引用
