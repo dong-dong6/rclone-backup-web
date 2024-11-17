@@ -1,4 +1,4 @@
-#使用方法
+# **使用方法**
 1. 源码编译
 ```
 wget https://raw.githubusercontent.com/dong-dong6/rclone-backup-web/refs/heads/master/rcloneBackUpCodeInstall.sh && chmod +x rcloneBackUpCodeInstall.sh && ./rcloneBackUpCodeInstall.sh
@@ -7,7 +7,7 @@ wget https://raw.githubusercontent.com/dong-dong6/rclone-backup-web/refs/heads/m
 ```
 wget https://raw.githubusercontent.com/dong-dong6/rclone-backup-web/refs/heads/master/rcloneBackupWeb.sh && chmod +x rcloneBackupWeb.sh && ./rcloneBackupWeb.sh
 ```
-#使用效果
+# **使用效果**
 注册
 ![image](https://github.com/user-attachments/assets/70febe4c-542f-4d65-9dd3-7137dab19e66)
 生成脚本
