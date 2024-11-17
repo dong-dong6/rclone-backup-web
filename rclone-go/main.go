@@ -21,15 +21,12 @@ func enableCORS(handler http.Handler) http.Handler {
 }
 
 func main() {
-	// 启动定时任务调度器（如果有的话）
-	// handlers.StartScheduler()
-
 	// 注册路由
 	http.HandleFunc("/register", handlers.RegisterUserHandler)        // 注册接口，只能运行一次
 	http.HandleFunc("/login", handlers.Login)                         // 登录接口
 	http.HandleFunc("/create_backup_task", handlers.CreateBackupTask) // 创建备份任务接口
 	http.HandleFunc("/filesystem", handlers.FilesystemHandler)        // 文件系统浏览接口
-
+	http.HandleFunc("/rclone_config", handlers.RcloneConfig)          // 获取 rclone 配置文件路径接口
 	// 将 CORS 中间件应用于所有路由
 	log.Println("Server started on :628")
 	log.Fatal(http.ListenAndServe(":628", enableCORS(http.DefaultServeMux)))

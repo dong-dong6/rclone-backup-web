@@ -8,7 +8,7 @@ import (
 var jwtKey = generateRandomKey()
 
 func generateRandomKey() []byte {
-	key := make([]byte, 16) // 128 bits = 16 bytes
+	key := make([]byte, 16) //使用随机jwt密钥
 	return key
 }
 

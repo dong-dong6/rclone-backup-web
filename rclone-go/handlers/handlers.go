@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -294,6 +295,92 @@ func isValidPath(p string) bool {
 		return false
 	}
 	return strings.HasPrefix(resolvedPath, baseDirAbs)
+}
+
+// 获取rclone配置文件路径
+func getRcloneConfigFilePath() (string, error) {
+	// 运行 'rclone config file' 命令获取配置文件路径
+	cmd := exec.Command("rclone", "config", "file")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	// 将输出转为字符串并打印
+	outputStr := string(output)
+	//fmt.Println(outputStr)
+
+	// 使用 strings.TrimSpace 去掉首尾空白字符，并提取路径部分
+	// 假设路径始终位于 "Configuration file is stored at:" 后面
+	// 查找配置文件路径并返回
+	const prefix = "Configuration file is stored at:"
+	if strings.HasPrefix(outputStr, prefix) {
+		// 去掉 "Configuration file is stored at:" 部分，只保留路径
+		configFilePath := strings.TrimSpace(outputStr[len(prefix):])
+		print(configFilePath)
+		return configFilePath, nil
+	}
+
+	return "", fmt.Errorf("无法解析配置文件路径: %s", outputStr)
+}
+
+// 解析 rclone 配置文件，返回所有配置的名称
+func getRcloneConfigNames(configFilePath string) ([]string, error) {
+	var configNames []string
+	file, err := os.Open(configFilePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	var currentConfig string
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// 检查每一行是否为配置名称（以 [ 配对的部分开始）
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			// 获取配置名称，去除前后的方括号
+			currentConfig = strings.Trim(line, "[]")
+			configNames = append(configNames, currentConfig)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return configNames, nil
+}
+
+func RcloneConfig(w http.ResponseWriter, r *http.Request) {
+	// 从请求头中获取 Token
+	authHeader := r.Header.Get("Authorization")
+	if len(authHeader) < 7 || !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "缺少或格式错误的令牌", http.StatusUnauthorized)
+		return
+	}
+
+	// 获取 rclone 配置文件路径
+	configFilePath, err := getRcloneConfigFilePath()
+	//print(configFilePath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("获取 rclone 配置文件路径失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 获取配置名称列表
+	configNames, err := getRcloneConfigNames(configFilePath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("读取配置文件失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 返回配置名称列表
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(configNames)
+
 }
 
 // FilesystemHandler 处理文件系统请求

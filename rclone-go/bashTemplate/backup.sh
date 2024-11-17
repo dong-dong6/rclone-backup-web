@@ -84,7 +84,7 @@ for REMOTE in "${RCLONE_REMOTE[@]}"; do
     fi
 done
 
-
+rm $ARCHIVE_NAME #删除临时文件
 # 记录备份过程完成状态
 if [ $UPLOAD_STATUS -eq 0 ]; then
     echo "[$(date +"%Y-%m-%d_%H-%M-%S")] 备份完成" >> "$LOG_FILE"
