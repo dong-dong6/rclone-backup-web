@@ -81,26 +81,6 @@ jobs:
 
           # Create a tarball with the proper version
           tar -czvf "release/rclone-backup-web-${VERSION}.tar.gz" -C release myapp
-
-      # List current directory (for debugging purposes)
-      - name: List Current Directory
-        run: |
-          echo "Current Directory:"
-          pwd
-          echo "Files:"
-          ls -la
-
-      # Upload release assets
-      - name: Upload release assets
-        uses: actions/upload-artifact@v3
-        with:
-          name: release-assets
-          path: release/rclone-backup-web-*.tar.gz
-
-      # Create GitHub Release
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
           files: release/rclone-backup-web-${{ env.VERSION }}.tar.gz
           tag_name: ${{ github.ref }}
           token: ${{ secrets.MY_PERSONAL_ACCESS_TOKEN }}
