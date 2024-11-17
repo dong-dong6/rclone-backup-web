@@ -3,85 +3,76 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*'  # 监听以 'v' 开头的标签，例如 v1.0.0, v2.1.0
+      - 'v*'
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # 检出代码
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 设置 Go 环境
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
           go-version: '1.23.2'
 
-      # 安装 Go 依赖
       - name: Install Go dependencies
         run: |
           cd rclone-go
           go mod tidy
           go mod vendor
 
-      # 设置 Node.js 环境
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20.15.0'
 
-      # 安装 Node.js 依赖
       - name: Install Node.js dependencies
         run: |
           cd rclone-web
           npm install
 
-      # 编译前端应用
       - name: Build frontend
         run: |
           cd rclone-web
           npm run build
 
-      # 打包后端应用
       - name: Build Go backend
         run: |
           cd rclone-go
           go build -o app
 
-      # 打包应用及前端静态文件
       - name: Package application
         run: |
           mkdir -p release/myapp
           cp -r rclone-web/dist/* release/myapp
           cp rclone-go/app release/myapp/
-          # 获取版本号
-          VERSION=${GITHUB_REF#refs/tags/}  # 拿到标签，如 'v1.1.0'
-          # 打包并命名为 rclone-backup-web-<version>.tar.gz
+          VERSION=${GITHUB_REF#refs/tags/}
           tar -czvf release/rclone-backup-web-${VERSION}.tar.gz -C release myapp
 
-      # 上传构建产物
+      - name: List Release Directory
+        run: |
+          ls -la release
+
       - name: Upload release assets
         uses: actions/upload-artifact@v3
         with:
           name: release-assets
-          path: release/rclone-backup-web-*.tar.gz # 上传打包的文件
+          path: release/rclone-backup-web-*.tar.gz
 
   release:
     needs: build
     runs-on: ubuntu-latest
 
     steps:
-      # 检出代码
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 创建 GitHub Release
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: release/rclone-backup-web-*.tar.gz  # 使用带版本号的文件名
-          tag_name: ${{ github.ref }}  # 使用触发事件的标签作为 release 标签
+          files: ${{ github.workspace }}/release/rclone-backup-web-*.tar.gz
+          tag_name: ${{ github.ref }}
           token: ${{ secrets.MY_PERSONAL_ACCESS_TOKEN }}
