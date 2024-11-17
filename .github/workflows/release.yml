@@ -66,12 +66,7 @@ jobs:
         with:
           name: release-assets
           path: release/rclone-backup-web-*.tar.gz
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
+          
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -81,3 +76,4 @@ jobs:
           files: ${{ github.workspace }}/release/rclone-backup-web-*.tar.gz
           tag_name: ${{ github.ref }}
           token: ${{ secrets.MY_PERSONAL_ACCESS_TOKEN }}
+
