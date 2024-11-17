@@ -1,6 +1,7 @@
 name: Build and Release
 
 on:
+  workflow_dispatch:  
   push:
     tags:
       - 'v*'
@@ -10,51 +11,79 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # Set up Go
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
           go-version: '1.23.2'
 
+      # Install Go dependencies
       - name: Install Go dependencies
         run: |
           cd rclone-go
           go mod tidy
           go mod vendor
 
+      # Set up Node.js
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20.15.0'
 
+      # Install Node.js dependencies
       - name: Install Node.js dependencies
         run: |
           cd rclone-web
           npm install
 
+      # Build the frontend
       - name: Build frontend
         run: |
           cd rclone-web
           npm run build
 
+      # Build Go backend
       - name: Build Go backend
         run: |
           cd rclone-go
           go build -o rclone-backup-app
 
+      # Ensure release directory exists
       - name: Ensure Release Directory Exists
         run: mkdir -p release/myapp
 
+      # Package the application (copy frontend, backend, and create a tarball)
       - name: Package application
         run: |
-          cp -r rclone-web/dist/* release/myapp
-          cp rclone-go/rclone-backup-app release/myapp/
+          # Set the version from the Git tag
           VERSION=${GITHUB_REF#refs/tags/}
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          tar -czvf release/rclone-backup-web-${VERSION}.tar.gz -C release myapp
+          
+          # Debug: Check the value of VERSION
+          echo "VERSION: $VERSION"
+          
+          # Ensure directories and files exist
+          echo "Release directory contents before tar:"
+          ls -la release
+          echo "Frontend dist contents:"
+          ls -la rclone-web/dist
+          echo "MyApp directory contents:"
+          ls -la release/myapp
 
+          # Copy the frontend and backend files into the release directory
+          cp -r rclone-web/dist/* release/myapp/
+          cp rclone-go/rclone-backup-app release/myapp/
+
+          # Debug: Check the tarball file path
+          echo "Creating tarball release/rclone-backup-web-${VERSION}.tar.gz"
+
+          # Create a tarball with the proper version
+          tar -czvf "release/rclone-backup-web-${VERSION}.tar.gz" -C release myapp
+
+      # List current directory (for debugging purposes)
       - name: List Current Directory
         run: |
           echo "Current Directory:"
@@ -62,12 +91,14 @@ jobs:
           echo "Files:"
           ls -la
 
+      # Upload release assets
       - name: Upload release assets
         uses: actions/upload-artifact@v3
         with:
           name: release-assets
           path: release/rclone-backup-web-*.tar.gz
-          
+
+      # Create GitHub Release
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
