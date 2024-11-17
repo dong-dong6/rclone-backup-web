@@ -1,0 +1,77 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:  # 手动触发工作流
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 检出代码
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 设置 Go 环境
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.23.2'  # 根据部署脚本中的 Go 版本调整
+
+      # 安装 Go 依赖
+      - name: Install Go dependencies
+        run: go mod tidy
+
+      # 设置 Node.js 环境
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20.15.0'  # 根据部署脚本中的 Node.js 版本调整
+
+      # 安装 Node.js 依赖
+      - name: Install Node.js dependencies
+        run: |
+          cd rclone-web
+          npm install
+
+      # 编译前端应用
+      - name: Build frontend
+        run: |
+          cd rclone-web
+          npm run build
+
+      # 打包后端应用
+      - name: Build Go backend
+        run: |
+          cd rclone-go
+          go build -o app
+
+      # 打包应用及前端静态文件
+      - name: Package application
+        run: |
+          mkdir -p release/myapp
+          cp -r rclone-web/dist/* release/myapp
+          cp rclone-go/app release/myapp/
+          tar -czvf release/myapp.tar.gz -C release myapp
+
+      # 上传构建产物（Go 二进制文件和前端静态文件）
+      - name: Upload release assets
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-assets
+          path: release/myapp.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      # 检出代码
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 创建 GitHub Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/myapp.tar.gz
