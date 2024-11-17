@@ -1,4 +1,4 @@
-module rclone-go
+module rclone
 
 go 1.23.2
 
