@@ -57,14 +57,17 @@ jobs:
           mkdir -p release/myapp
           cp -r rclone-web/dist/* release/myapp
           cp rclone-go/app release/myapp/
-          tar -czvf release/myapp.tar.gz -C release myapp
+          # 获取版本号
+          VERSION=${GITHUB_REF#refs/tags/}  # 拿到标签，如 'v1.1.0'
+          # 打包并命名为 rclone-backup-web-<version>.tar.gz
+          tar -czvf release/rclone-backup-web-${VERSION}.tar.gz -C release myapp
 
       # 上传构建产物
       - name: Upload release assets
         uses: actions/upload-artifact@v3
         with:
           name: release-assets
-          path: release/myapp.tar.gz
+          path: release/rclone-backup-web-*.tar.gz # 上传打包的文件
 
   release:
     needs: build
@@ -79,6 +82,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: release/myapp.tar.gz
-          tag: ${{ github.ref }}  # 使用触发事件的标签作为 release 标签
+          files: release/rclone-backup-web-*.tar.gz  # 使用带版本号的文件名
+          tag_name: ${{ github.ref }}  # 使用触发事件的标签作为 release 标签
           token: ${{ secrets.GITHUB_TOKEN }}
