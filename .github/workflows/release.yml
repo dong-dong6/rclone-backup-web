@@ -84,4 +84,4 @@ jobs:
         with:
           files: release/rclone-backup-web-*.tar.gz  # 使用带版本号的文件名
           tag_name: ${{ github.ref }}  # 使用触发事件的标签作为 release 标签
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.MY_PERSONAL_ACCESS_TOKEN }}
