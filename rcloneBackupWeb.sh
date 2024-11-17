@@ -36,7 +36,7 @@ rm -rf $TEMP_DIR
 # 配置和启动后端应用
 echo "启动后端应用..."
 pkill rclone-backup-app || true  # 停止已有的后端应用
-cd $APP_DIR && nohup ./rclone-backup-app > $APP_DIR/app.log 2>&1 &
+cd $APP_DIR && nohup ./rclone-backup-app > app.log 2>&1 &
 
 # 检查是否安装了 Nginx
 if ! command -v nginx &> /dev/null; then
