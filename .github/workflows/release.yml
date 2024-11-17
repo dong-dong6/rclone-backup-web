@@ -52,6 +52,7 @@ jobs:
           cp -r rclone-web/dist/* release/myapp
           cp rclone-go/rclone-backup-app release/myapp/
           VERSION=${GITHUB_REF#refs/tags/}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
           tar -czvf release/rclone-backup-web-${VERSION}.tar.gz -C release myapp
 
       - name: List Current Directory
@@ -67,13 +68,9 @@ jobs:
           name: release-assets
           path: release/rclone-backup-web-*.tar.gz
           
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ github.workspace }}/release/rclone-backup-web-${VERSION}.tar.gz
+          files: release/rclone-backup-web-${{ env.VERSION }}.tar.gz
           tag_name: ${{ github.ref }}
           token: ${{ secrets.MY_PERSONAL_ACCESS_TOKEN }}
-
