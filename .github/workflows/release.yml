@@ -42,7 +42,7 @@ jobs:
       - name: Build Go backend
         run: |
           cd rclone-go
-          go build -o app
+          go build -o rclone-backup-app
 
       - name: Ensure Release Directory Exists
         run: mkdir -p release/myapp
@@ -50,7 +50,7 @@ jobs:
       - name: Package application
         run: |
           cp -r rclone-web/dist/* release/myapp
-          cp rclone-go/app release/myapp/
+          cp rclone-go/rclone-backup-app release/myapp/
           VERSION=${GITHUB_REF#refs/tags/}
           tar -czvf release/rclone-backup-web-${VERSION}.tar.gz -C release myapp
 
@@ -73,7 +73,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ github.workspace }}/release/rclone-backup-web-*.tar.gz
+          files: ${{ github.workspace }}/release/rclone-backup-web-${VERSION}.tar.gz
           tag_name: ${{ github.ref }}
           token: ${{ secrets.MY_PERSONAL_ACCESS_TOKEN }}
 
