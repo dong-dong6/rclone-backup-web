@@ -44,17 +44,22 @@ jobs:
           cd rclone-go
           go build -o app
 
+      - name: Ensure Release Directory Exists
+        run: mkdir -p release/myapp
+
       - name: Package application
         run: |
-          mkdir -p release/myapp
           cp -r rclone-web/dist/* release/myapp
           cp rclone-go/app release/myapp/
           VERSION=${GITHUB_REF#refs/tags/}
           tar -czvf release/rclone-backup-web-${VERSION}.tar.gz -C release myapp
 
-      - name: List Release Directory
+      - name: List Current Directory
         run: |
-          ls -la release
+          echo "Current Directory:"
+          pwd
+          echo "Files:"
+          ls -la
 
       - name: Upload release assets
         uses: actions/upload-artifact@v3
@@ -70,13 +75,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: List Release Directory
-        run: |
-          ls -la release  # 列出 release 目录中的文件，帮助确认路径是否正确
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ github.workspace }}/release/rclone-backup-web-*.tar.gz  # 确保引用文件路径正确
-          tag_name: ${{ github.ref }}  # 使用触发事件的标签作为 release 标签
-          token: ${{ secrets.MY_PERSONAL_ACCESS_TOKEN }}  # 确保正确引用
+          files: ${{ github.workspace }}/release/rclone-backup-web-*.tar.gz
+          tag_name: ${{ github.ref }}
+          token: ${{ secrets.MY_PERSONAL_ACCESS_TOKEN }}
