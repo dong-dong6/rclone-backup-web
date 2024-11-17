@@ -49,7 +49,7 @@ if [ ! -d "$APP_DIR" ]; then
 else
     echo "项目已存在，拉取最新代码..."
     cd $APP_DIR
-    git pull
+    git fetch --all && git reset --hard origin/master && git pull
 fi
 
 # 编译前端
