@@ -1,0 +1,326 @@
+{
+  "app": {
+    "title": "Distributed Backup System",
+    "version": "Version 2.0",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "success": "Operation successful",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "import": "Import",
+    "refresh": "Refresh",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "close": "Close"
+  },
+  "menu": {
+    "dashboard": "Dashboard",
+    "agents": "Agents",
+    "tasks": "Tasks",
+    "remotes": "Remotes",
+    "executions": "Executions",
+    "settings": "Settings"
+  },
+  "dashboard": {
+    "title": "System Overview",
+    "stats": {
+      "totalAgents": "Total Agents",
+      "onlineAgents": "Online Agents",
+      "activeTasks": "Active Tasks",
+      "totalTasks": "Total Tasks",
+      "recentExecutions": "Recent Executions",
+      "successRate": "Success Rate"
+    },
+    "charts": {
+      "backupTrend": "Backup Trend (24h)",
+      "agentStatus": "Agent Status Distribution",
+      "taskDistribution": "Task Distribution"
+    },
+    "recentActivity": "Recent Activity",
+    "systemHealth": "System Health",
+    "quickActions": "Quick Actions"
+  },
+  "agents": {
+    "title": "Agent Management",
+    "list": {
+      "title": "Agent List",
+      "empty": "No agents found",
+      "columns": {
+        "name": "Agent Name",
+        "status": "Status",
+        "lastHeartbeat": "Last Heartbeat",
+        "tasks": "Tasks",
+        "createdAt": "Created At",
+        "actions": "Actions"
+      }
+    },
+    "status": {
+      "online": "Online",
+      "offline": "Offline",
+      "running_task": "Running"
+    },
+    "register": {
+      "title": "Register New Agent",
+      "generateToken": "Generate Token",
+      "tokenGenerated": "Token Generated",
+      "copyToken": "Copy Token",
+      "tokenHint": "Please use this token within 24 hours",
+      "name": "Agent Name",
+      "namePlaceholder": "e.g., web-server-01"
+    },
+    "detail": {
+      "title": "Agent Details",
+      "info": "Basic Information",
+      "assignedTasks": "Assigned Tasks",
+      "executionHistory": "Execution History",
+      "systemInfo": "System Information"
+    },
+    "actions": {
+      "delete": "Delete Agent",
+      "deleteConfirm": "Are you sure you want to delete agent {{name}}?",
+      "restart": "Restart Agent",
+      "syncConfig": "Sync Config"
+    }
+  },
+  "tasks": {
+    "title": "Task Management",
+    "list": {
+      "title": "Task List",
+      "empty": "No tasks found",
+      "columns": {
+        "name": "Task Name",
+        "remote": "Remote Storage",
+        "schedule": "Schedule",
+        "source": "Source Path",
+        "destination": "Destination",
+        "status": "Status",
+        "assignedAgents": "Assigned Agents",
+        "actions": "Actions"
+      }
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "running": "Running",
+      "pending": "Pending"
+    },
+    "create": {
+      "title": "Create Task",
+      "basic": "Basic Info",
+      "schedule": "Schedule",
+      "advanced": "Advanced"
+    },
+    "edit": {
+      "title": "Edit Task"
+    },
+    "form": {
+      "name": "Task Name",
+      "namePlaceholder": "e.g., Daily Website Backup",
+      "remote": "Remote Storage",
+      "remotePlaceholder": "Select remote storage",
+      "sourcePath": "Source Path",
+      "sourcePathPlaceholder": "/var/www/html",
+      "destinationPath": "Destination Path",
+      "destinationPathPlaceholder": "backups/website",
+      "schedule": "Cron Expression",
+      "schedulePlaceholder": "0 2 * * *",
+      "scheduleHelp": "Use cron expression to set execution time",
+      "assignAgents": "Assign Agents",
+      "rcloneArgs": "Rclone Arguments",
+      "rcloneArgsPlaceholder": "--fast-list --transfers 4",
+      "isActive": "Enable Task"
+    },
+    "actions": {
+      "run": "Run Now",
+      "runConfirm": "Are you sure you want to run task {{name}} now?",
+      "enable": "Enable",
+      "disable": "Disable",
+      "delete": "Delete Task",
+      "deleteConfirm": "Are you sure you want to delete task {{name}}?",
+      "duplicate": "Duplicate"
+    }
+  },
+  "remotes": {
+    "title": "Remote Storage",
+    "list": {
+      "title": "Storage List",
+      "empty": "No remote storage found",
+      "columns": {
+        "name": "Storage Name",
+        "type": "Storage Type",
+        "createdAt": "Created At",
+        "usedBy": "Used by Tasks",
+        "actions": "Actions"
+      }
+    },
+    "types": {
+      "s3": "Amazon S3",
+      "gcs": "Google Cloud Storage",
+      "azure": "Azure Blob",
+      "dropbox": "Dropbox",
+      "gdrive": "Google Drive",
+      "onedrive": "OneDrive",
+      "ftp": "FTP",
+      "sftp": "SFTP",
+      "webdav": "WebDAV",
+      "local": "Local Storage"
+    },
+    "create": {
+      "title": "Add Remote Storage",
+      "selectType": "Select Type",
+      "configure": "Configure"
+    },
+    "edit": {
+      "title": "Edit Remote Storage"
+    },
+    "form": {
+      "name": "Storage Name",
+      "namePlaceholder": "e.g., Company S3 Storage",
+      "type": "Storage Type",
+      "config": "Configuration",
+      "configPlaceholder": "Paste rclone configuration",
+      "testConnection": "Test Connection",
+      "encrypt": "Encrypt Configuration"
+    },
+    "actions": {
+      "delete": "Delete Storage",
+      "deleteConfirm": "Are you sure you want to delete remote {{name}}?",
+      "test": "Test Connection"
+    }
+  },
+  "executions": {
+    "title": "Execution History",
+    "list": {
+      "title": "Execution Records",
+      "empty": "No executions found",
+      "columns": {
+        "task": "Task",
+        "agent": "Agent",
+        "status": "Status",
+        "triggerMode": "Trigger",
+        "startedAt": "Started At",
+        "duration": "Duration",
+        "actions": "Actions"
+      }
+    },
+    "status": {
+      "pending": "Pending",
+      "running": "Running",
+      "success": "Success",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "triggerMode": {
+      "central": "Central",
+      "local_fallback": "Local Fallback",
+      "manual": "Manual"
+    },
+    "detail": {
+      "title": "Execution Details",
+      "info": "Basic Information",
+      "logs": "Execution Logs",
+      "metrics": "Metrics"
+    },
+    "logs": {
+      "title": "Log Output",
+      "empty": "No logs available",
+      "realtime": "Realtime Logs",
+      "download": "Download Logs",
+      "filter": "Filter Logs",
+      "search": "Search Logs"
+    },
+    "actions": {
+      "view": "View Details",
+      "retry": "Retry",
+      "cancel": "Cancel"
+    }
+  },
+  "settings": {
+    "title": "System Settings",
+    "tabs": {
+      "general": "General",
+      "security": "Security",
+      "notifications": "Notifications",
+      "backup": "Backup & Restore",
+      "about": "About"
+    },
+    "general": {
+      "language": "Language",
+      "theme": "Theme",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "themeAuto": "Auto",
+      "timezone": "Timezone",
+      "dateFormat": "Date Format"
+    },
+    "security": {
+      "changePassword": "Change Password",
+      "twoFactor": "Two-Factor Auth",
+      "apiKeys": "API Keys",
+      "sessionTimeout": "Session Timeout",
+      "loginHistory": "Login History"
+    },
+    "notifications": {
+      "email": "Email Notifications",
+      "webhook": "Webhook",
+      "slack": "Slack Integration",
+      "telegram": "Telegram Notifications"
+    },
+    "backup": {
+      "export": "Export Config",
+      "import": "Import Config",
+      "autoBackup": "Auto Backup",
+      "restore": "Restore System"
+    }
+  },
+  "user": {
+    "profile": "Profile",
+    "logout": "Logout",
+    "role": {
+      "admin": "Administrator",
+      "user": "User",
+      "viewer": "Viewer"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Login",
+      "username": "Username",
+      "password": "Password",
+      "rememberMe": "Remember Me",
+      "forgotPassword": "Forgot Password?",
+      "submit": "Login",
+      "error": "Invalid username or password"
+    },
+    "logout": {
+      "success": "Successfully logged out"
+    }
+  },
+  "errors": {
+    "network": "Network Error",
+    "server": "Server Error",
+    "notFound": "Resource Not Found",
+    "unauthorized": "Unauthorized",
+    "forbidden": "Forbidden",
+    "validation": "Validation Failed",
+    "unknown": "Unknown Error"
+  },
+  "time": {
+    "just_now": "Just now",
+    "seconds_ago": "{{count}} seconds ago",
+    "minutes_ago": "{{count}} minutes ago",
+    "hours_ago": "{{count}} hours ago",
+    "days_ago": "{{count}} days ago",
+    "weeks_ago": "{{count}} weeks ago",
+    "months_ago": "{{count}} months ago",
+    "years_ago": "{{count}} years ago"
+  }
+}
