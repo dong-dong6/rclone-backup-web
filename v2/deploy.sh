@@ -1,7 +1,13 @@
 #!/bin/bash
 
 # ============================================
-# Rclone Backup Web V2.0 - 快速部署脚本
+# Rclone Backup Web V2.0 - 智能部署脚本
+# 特性：
+# - 自动检测Docker Compose版本
+# - 交互式配置生成
+# - 透明的数据持久化（./data目录）
+# - 智能数据清理与备份
+# - 本地镜像构建
 # ============================================
 
 set -e
@@ -12,6 +18,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
 # 打印带颜色的消息
@@ -61,22 +68,39 @@ show_help() {
 Rclone Backup Web V2.0 - 部署脚本
 
 用法:
-    ./deploy.sh [选项]
+    ./deploy.sh [命令] [选项]
 
-选项:
+命令:
     hub              部署Hub（不含Agent）
     hub-with-agent   部署Hub（含本地Agent）
     agent            部署独立Agent
     build            构建所有镜像
     status           查看服务状态
-    logs             查看服务日志
-    clean            清理所有数据和镜像
+    logs [service]   查看服务日志
+    stop             停止所有服务
+    restart          重启服务
+    clean            交互式清理数据
+    backup           备份数据目录
+    restore <file>   从备份恢复
     help             显示此帮助信息
+
+选项:
+    --clean          部署前清理数据
+    --force          跳过确认提示
+
+数据目录:
+    所有数据存储在 ./data 目录中：
+    ./data/postgres  - 数据库
+    ./data/redis     - 缓存
+    ./data/hub       - Hub数据
+    ./data/agent     - Agent数据
+    ./data/backups   - 自动备份
 
 示例:
     ./deploy.sh hub              # 部署Hub服务
     ./deploy.sh hub-with-agent   # 部署Hub和本地Agent
-    ./deploy.sh agent            # 在远程服务器部署Agent
+    ./deploy.sh backup           # 备份数据
+    ./deploy.sh logs hub-api     # 查看Hub日志
 
 EOF
 }
@@ -104,8 +128,131 @@ check_requirements() {
     print_success "依赖检查通过"
 }
 
-# 交互式生成配置
-generate_env_interactive() {
+# 显示数据目录信息
+show_data_info() {
+    echo ""
+    echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${MAGENTA}📂 数据目录结构${NC}"
+    echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "所有持久化数据将存储在 ./data 目录中："
+    echo ""
+    echo "  ./data/"
+    echo "  ├── postgres/        # PostgreSQL数据库"
+    echo "  ├── redis/           # Redis缓存"
+    echo "  ├── hub/"
+    echo "  │   ├── config/      # Hub配置文件"
+    echo "  │   ├── data/        # Hub运行数据"
+    echo "  │   └── logs/        # Hub日志"
+    echo "  ├── agent/           # Agent数据 (如果启用)"
+    echo "  └── backups/         # 数据库备份"
+    echo ""
+}
+
+# 检查现有数据
+check_existing_data() {
+    if [ -d "./data" ]; then
+        local size=$(du -sh ./data 2>/dev/null | cut -f1)
+        print_warning "检测到现有数据目录 (大小: ${size})"
+        
+        # 列出主要数据目录
+        echo ""
+        echo "现有数据内容："
+        for dir in postgres redis hub agent backups; do
+            if [ -d "./data/$dir" ]; then
+                local dir_size=$(du -sh ./data/$dir 2>/dev/null | cut -f1)
+                echo "  - $dir: $dir_size"
+            fi
+        done
+        return 0
+    else
+        return 1
+    fi
+}
+
+# 备份现有数据
+backup_existing_data() {
+    local backup_dir="./data.backup.$(date +%Y%m%d-%H%M%S)"
+    print_info "备份现有数据到 $backup_dir ..."
+    
+    # 停止容器以确保数据一致性
+    print_info "停止运行中的容器..."
+    $DOCKER_COMPOSE down 2>/dev/null || true
+    
+    # 创建备份
+    if mv ./data "$backup_dir"; then
+        print_success "数据已备份到: $backup_dir"
+        echo ""
+        echo "  提示：您可以通过以下命令恢复数据："
+        echo "  mv $backup_dir ./data"
+        echo ""
+        return 0
+    else
+        print_error "备份失败"
+        return 1
+    fi
+}
+
+# 清理数据函数（交互式）
+cleanup_data_interactive() {
+    echo ""
+    if check_existing_data; then
+        echo ""
+        print_warning "⚠️  警告：清理数据是不可逆的操作！"
+        echo ""
+        echo "请选择操作："
+        echo "  1) 保留现有数据（推荐）"
+        echo "  2) 备份后清理"
+        echo "  3) 直接清理（危险！）"
+        echo "  4) 取消操作"
+        echo ""
+        
+        print_prompt "请输入选择 [1-4]: "
+        read -r choice
+        
+        case "$choice" in
+            1)
+                print_info "保留现有数据"
+                ;;
+            2)
+                if backup_existing_data; then
+                    mkdir -p ./data
+                    print_success "数据清理完成（已备份）"
+                else
+                    print_error "备份失败，已取消清理"
+                    exit 1
+                fi
+                ;;
+            3)
+                print_prompt "请输入 'DELETE' 确认删除所有数据: "
+                read -r confirm
+                if [ "$confirm" = "DELETE" ]; then
+                    print_info "正在清理数据..."
+                    $DOCKER_COMPOSE down -v 2>/dev/null || true
+                    rm -rf ./data
+                    mkdir -p ./data
+                    print_success "数据已清理"
+                else
+                    print_info "已取消清理"
+                fi
+                ;;
+            4)
+                print_info "操作已取消"
+                exit 0
+                ;;
+            *)
+                print_error "无效的选择"
+                exit 1
+                ;;
+        esac
+    else
+        print_info "未检测到现有数据"
+        mkdir -p ./data
+    fi
+}
+
+# 生成环境配置
+generate_env_config() {
     print_info "开始配置环境变量..."
     echo ""
     
@@ -164,17 +311,13 @@ METRICS_PORT=9090
 # 应用设置
 GIN_MODE=release
 LOG_LEVEL=info
-VERSION=1.0.0
+VERSION=latest
 
 # Hub配置
 SESSION_TIMEOUT=24h
 API_KEY_EXPIRY=365d
 ENABLE_METRICS=true
 ENABLE_PROFILING=false
-
-# 前端配置
-API_URL=http://localhost:$HUB_PORT
-SSE_URL=http://localhost:$HUB_PORT
 
 # Redis配置
 REDIS_MAX_MEMORY=256mb
@@ -200,7 +343,7 @@ EOF
     print_success "配置文件 .env 已生成"
 }
 
-# 生成或更新配置
+# 设置环境配置
 setup_env() {
     if [ ! -f .env ]; then
         print_warning "未找到 .env 文件"
@@ -215,11 +358,11 @@ setup_env() {
         
         case $choice in
             1)
-                generate_env_interactive
+                generate_env_config
                 ;;
             2)
                 print_info "使用默认配置..."
-                cp .env.example .env
+                cp .env.example .env 2>/dev/null || generate_env_config
                 
                 # 生成随机密钥
                 JWT_SECRET=$(openssl rand -hex 32)
@@ -255,27 +398,59 @@ setup_env() {
     fi
 }
 
+# 设置目录权限
+setup_permissions() {
+    print_info "设置目录权限..."
+    
+    # 创建必要的目录
+    mkdir -p ./data/{postgres,redis,hub/{config,data,logs},agent,backups}
+    
+    # 设置权限（某些服务需要特定的权限）
+    # PostgreSQL需要700权限
+    chmod 700 ./data/postgres 2>/dev/null || true
+    
+    print_success "目录权限已设置"
+}
+
+# 处理网络冲突
+handle_network_conflicts() {
+    print_info "处理Docker网络..."
+    
+    # 删除可能冲突的网络
+    NETWORK_NAME="v2_backend"
+    if docker network ls | grep -q "$NETWORK_NAME"; then
+        print_warning "删除现有网络 $NETWORK_NAME..."
+        docker network rm "$NETWORK_NAME" 2>/dev/null || true
+    fi
+    
+    print_success "网络准备就绪"
+}
+
 # 构建镜像
 build_images() {
     print_info "开始构建Docker镜像..."
     
+    # 检查使用哪个配置文件
+    if [ -f "docker-compose.prod.yml" ]; then
+        COMPOSE_FILE="docker-compose.prod.yml"
+    else
+        COMPOSE_FILE="docker-compose.yml"
+    fi
+    
     # 构建Hub镜像
     print_info "构建Hub API镜像..."
-    $DOCKER_COMPOSE build hub-api
+    $DOCKER_COMPOSE -f $COMPOSE_FILE build hub-api
     
     print_info "构建Web UI镜像..."
-    $DOCKER_COMPOSE build web-ui
+    $DOCKER_COMPOSE -f $COMPOSE_FILE build web-ui
     
-    # 构建Agent镜像
-    print_info "构建Agent镜像..."
-    $DOCKER_COMPOSE --profile local-agent build local-agent
+    # 构建Agent镜像（如果需要）
+    if [[ "$1" == *"agent"* ]]; then
+        print_info "构建Agent镜像..."
+        $DOCKER_COMPOSE -f $COMPOSE_FILE --profile local-agent build local-agent 2>/dev/null || true
+    fi
     
     print_success "所有镜像构建完成"
-    
-    # 显示构建的镜像
-    echo ""
-    print_info "构建的镜像列表:"
-    docker images | grep -E "rclone-backup|REPOSITORY" | head -5
 }
 
 # 部署Hub
@@ -285,13 +460,30 @@ deploy_hub() {
     check_requirements
     setup_env
     
+    # 询问是否清理数据
+    if [[ "$2" == "--clean" ]]; then
+        cleanup_data_interactive
+    fi
+    
+    # 设置权限
+    setup_permissions
+    
+    # 处理网络冲突
+    handle_network_conflicts
+    
     # 构建镜像
-    print_info "构建Hub镜像..."
-    $DOCKER_COMPOSE build hub-api web-ui
+    build_images "hub"
+    
+    # 选择配置文件
+    if [ -f "docker-compose.prod.yml" ]; then
+        COMPOSE_FILE="docker-compose.prod.yml"
+    else
+        COMPOSE_FILE="docker-compose.yml"
+    fi
     
     # 启动服务
     print_info "启动Hub服务..."
-    $DOCKER_COMPOSE up -d postgres redis hub-api web-ui
+    $DOCKER_COMPOSE -f $COMPOSE_FILE up -d postgres redis hub-api web-ui
     
     # 等待服务启动
     print_info "等待服务启动..."
@@ -301,18 +493,7 @@ deploy_hub() {
     while [ $attempt -lt $max_attempts ]; do
         if curl -f http://localhost:${HUB_PORT:-8080}/health &> /dev/null; then
             print_success "Hub服务部署成功！"
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "访问地址:"
-            echo "  Web UI: http://localhost:${WEB_PORT:-3000}"
-            echo "  API: http://localhost:${HUB_PORT:-8080}"
-            echo "  Metrics: http://localhost:${METRICS_PORT:-9090}/metrics"
-            echo ""
-            echo "默认管理员账号:"
-            echo "  用户名: admin"
-            echo "  密码: admin"
-            echo "  (首次登录后请立即修改密码)"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            show_access_info
             return 0
         fi
         
@@ -322,7 +503,7 @@ deploy_hub() {
     done
     
     print_error "Hub服务启动超时，请检查日志"
-    $DOCKER_COMPOSE logs hub-api
+    $DOCKER_COMPOSE -f $COMPOSE_FILE logs hub-api
     exit 1
 }
 
@@ -332,6 +513,17 @@ deploy_hub_with_agent() {
     
     check_requirements
     setup_env
+    
+    # 询问是否清理数据
+    if [[ "$2" == "--clean" ]]; then
+        cleanup_data_interactive
+    fi
+    
+    # 设置权限
+    setup_permissions
+    
+    # 处理网络冲突
+    handle_network_conflicts
     
     # 先部署Hub
     deploy_hub
@@ -369,22 +561,28 @@ deploy_hub_with_agent() {
     fi
     
     # 构建Agent镜像
-    print_info "构建Agent镜像..."
-    $DOCKER_COMPOSE --profile local-agent build local-agent
+    build_images "agent"
+    
+    # 选择配置文件
+    if [ -f "docker-compose.prod.yml" ]; then
+        COMPOSE_FILE="docker-compose.prod.yml"
+    else
+        COMPOSE_FILE="docker-compose.yml"
+    fi
     
     # 启动本地Agent
     print_info "启动本地Agent..."
-    $DOCKER_COMPOSE --profile local-agent up -d local-agent local-rclone-sidecar
+    $DOCKER_COMPOSE -f $COMPOSE_FILE --profile local-agent up -d local-agent local-rclone-sidecar
     
     # 检查Agent状态
     sleep 5
-    if $DOCKER_COMPOSE ps | grep -q "local-agent.*Up\|local-agent.*running"; then
+    if $DOCKER_COMPOSE -f $COMPOSE_FILE ps | grep -q "local-agent.*Up\|local-agent.*running"; then
         print_success "Hub和本地Agent部署成功！"
         echo ""
         echo "本地Agent已启动，请在Web UI的Agents页面查看"
     else
         print_error "本地Agent启动失败，请检查日志"
-        $DOCKER_COMPOSE logs local-agent
+        $DOCKER_COMPOSE -f $COMPOSE_FILE logs local-agent
     fi
 }
 
@@ -453,12 +651,84 @@ EOF
     print_success "Agent部署成功！"
 }
 
+# 显示访问信息
+show_access_info() {
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}✨ 部署成功！${NC}"
+    echo ""
+    echo "📍 访问地址:"
+    echo "  Web UI: http://localhost:${WEB_PORT:-3000}"
+    echo "  API: http://localhost:${HUB_PORT:-8080}"
+    echo "  Metrics: http://localhost:${METRICS_PORT:-9090}/metrics"
+    echo ""
+    echo "🔑 默认管理员账号:"
+    echo "  用户名: admin"
+    echo "  密码: admin"
+    echo "  (首次登录后请立即修改密码)"
+    echo ""
+    echo "📂 数据目录:"
+    echo "  ./data/"
+    echo ""
+    echo "📝 有用的命令:"
+    echo "  查看日志: ./deploy.sh logs"
+    echo "  查看状态: ./deploy.sh status"
+    echo "  停止服务: ./deploy.sh stop"
+    echo "  备份数据: ./deploy.sh backup"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
+# 备份数据
+backup_data() {
+    if [ -d "./data" ]; then
+        local backup_file="data-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+        print_info "创建备份: $backup_file"
+        tar czf "$backup_file" ./data
+        print_success "备份完成: $backup_file ($(du -h $backup_file | cut -f1))"
+    else
+        print_error "数据目录不存在"
+        exit 1
+    fi
+}
+
+# 恢复数据
+restore_data() {
+    if [ -z "$1" ]; then
+        print_error "请指定备份文件"
+        echo "用法: ./deploy.sh restore <backup-file.tar.gz>"
+        exit 1
+    fi
+    
+    if [ -f "$1" ]; then
+        print_info "恢复备份: $1"
+        
+        # 备份现有数据
+        if [ -d "./data" ]; then
+            backup_existing_data
+        fi
+        
+        # 恢复数据
+        tar xzf "$1"
+        print_success "备份已恢复"
+    else
+        print_error "备份文件不存在: $1"
+        exit 1
+    fi
+}
+
 # 查看服务状态
 show_status() {
     check_requirements
     
+    # 选择配置文件
+    if [ -f "docker-compose.prod.yml" ]; then
+        COMPOSE_FILE="docker-compose.prod.yml"
+    else
+        COMPOSE_FILE="docker-compose.yml"
+    fi
+    
     print_info "服务状态:"
-    $DOCKER_COMPOSE ps
+    $DOCKER_COMPOSE -f $COMPOSE_FILE ps
     
     echo ""
     print_info "健康检查:"
@@ -476,57 +746,45 @@ show_status() {
     else
         print_warning "Web UI: 未响应"
     fi
+    
+    # 显示数据目录信息
+    if [ -d "./data" ]; then
+        echo ""
+        print_info "数据目录使用情况:"
+        du -sh ./data/* 2>/dev/null || echo "  无数据"
+    fi
 }
 
 # 查看日志
 show_logs() {
     check_requirements
     
+    # 选择配置文件
+    if [ -f "docker-compose.prod.yml" ]; then
+        COMPOSE_FILE="docker-compose.prod.yml"
+    else
+        COMPOSE_FILE="docker-compose.yml"
+    fi
+    
     if [ -n "$1" ]; then
         print_info "查看 $1 服务日志..."
-        $DOCKER_COMPOSE logs -f --tail=100 "$1"
+        $DOCKER_COMPOSE -f $COMPOSE_FILE logs -f --tail=100 "$1"
     else
         print_info "查看所有服务日志..."
-        $DOCKER_COMPOSE logs -f --tail=100
+        $DOCKER_COMPOSE -f $COMPOSE_FILE logs -f --tail=100
     fi
-}
-
-# 清理所有数据
-clean_all() {
-    check_requirements
-    
-    print_warning "⚠️  此操作将删除所有数据和镜像！"
-    print_prompt "请输入 'yes' 确认删除: "
-    read -r confirm
-    
-    if [ "$confirm" != "yes" ]; then
-        print_info "操作已取消"
-        exit 0
-    fi
-    
-    print_info "停止所有容器..."
-    $DOCKER_COMPOSE --profile local-agent --profile db-backup down -v
-    
-    print_info "删除镜像..."
-    docker images | grep rclone-backup | awk '{print $3}' | xargs -r docker rmi -f 2>/dev/null || true
-    
-    print_info "删除配置文件..."
-    rm -f .env .env.agent
-    
-    print_info "删除备份文件..."
-    rm -rf backups/* 2>/dev/null || true
-    
-    print_success "清理完成"
 }
 
 # 主函数
 main() {
     case "$1" in
         hub)
-            deploy_hub
+            show_data_info
+            deploy_hub "$@"
             ;;
         hub-with-agent)
-            deploy_hub_with_agent
+            show_data_info
+            deploy_hub_with_agent "$@"
             ;;
         agent)
             deploy_agent
@@ -534,7 +792,7 @@ main() {
         build)
             check_requirements
             setup_env
-            build_images
+            build_images "all"
             ;;
         status)
             show_status
@@ -542,8 +800,37 @@ main() {
         logs)
             show_logs "$2"
             ;;
+        stop)
+            check_requirements
+            if [ -f "docker-compose.prod.yml" ]; then
+                COMPOSE_FILE="docker-compose.prod.yml"
+            else
+                COMPOSE_FILE="docker-compose.yml"
+            fi
+            print_info "停止所有服务..."
+            $DOCKER_COMPOSE -f $COMPOSE_FILE --profile local-agent --profile db-backup down
+            print_success "服务已停止"
+            ;;
+        restart)
+            check_requirements
+            if [ -f "docker-compose.prod.yml" ]; then
+                COMPOSE_FILE="docker-compose.prod.yml"
+            else
+                COMPOSE_FILE="docker-compose.yml"
+            fi
+            print_info "重启服务..."
+            $DOCKER_COMPOSE -f $COMPOSE_FILE --profile local-agent --profile db-backup restart
+            print_success "服务已重启"
+            ;;
         clean)
-            clean_all
+            check_requirements
+            cleanup_data_interactive
+            ;;
+        backup)
+            backup_data
+            ;;
+        restore)
+            restore_data "$2"
             ;;
         help|--help|-h|"")
             show_help
