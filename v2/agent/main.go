@@ -42,6 +42,9 @@ type Agent struct {
 	taskCacheMux  sync.RWMutex
 	isRunningTask bool
 	runningMux    sync.Mutex
+	lastSuccessfulHeartbeat time.Time
+	lastTaskExecution      map[string]time.Time
+	hubReachable           bool
 }
 
 // Task represents a backup task
@@ -78,6 +81,8 @@ func NewAgent(config *Config) *Agent {
 		},
 		cron:      cron.New(cron.WithSeconds()),
 		taskCache: make(map[string]*Task),
+		lastTaskExecution: make(map[string]time.Time),
+		hubReachable: true,
 	}
 }
 
@@ -150,9 +155,16 @@ func (a *Agent) sendHeartbeat() {
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Heartbeat failed with status: %d", resp.StatusCode)
+		a.hubReachable = false
 		a.executeLocalFallback()
 		return
 	}
+
+	// Mark successful heartbeat
+	a.runningMux.Lock()
+	a.lastSuccessfulHeartbeat = time.Now()
+	a.hubReachable = true
+	a.runningMux.Unlock()
 
 	var heartbeatResp HeartbeatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&heartbeatResp); err != nil {
@@ -464,15 +476,53 @@ func (a *Agent) updateLocalScheduler() {
 
 // shouldExecuteLocalFallback checks if local fallback should be executed
 func (a *Agent) shouldExecuteLocalFallback() bool {
-	// Implement logic to check if hub is unreachable
-	// For now, return false to prevent automatic execution
-	return false
+	// Check if we have a last successful heartbeat
+	a.runningMux.Lock()
+	defer a.runningMux.Unlock()
+	
+	// If we haven't had a successful heartbeat in 5 minutes, enable local fallback
+	if a.lastSuccessfulHeartbeat.IsZero() {
+		return false // Never had a successful connection
+	}
+	
+	timeSinceLastHeartbeat := time.Since(a.lastSuccessfulHeartbeat)
+	return timeSinceLastHeartbeat > 5*time.Minute
 }
 
 // executeLocalFallback executes tasks based on local cache
 func (a *Agent) executeLocalFallback() {
-	// This would be called when hub is unreachable
-	// Implementation depends on specific requirements
+	log.Printf("Executing local fallback mode - Hub unreachable for %v", time.Since(a.lastSuccessfulHeartbeat))
+	
+	a.taskCacheMux.RLock()
+	defer a.taskCacheMux.RUnlock()
+	
+	// Check each cached task
+	for taskID, task := range a.taskCache {
+		// Parse cron schedule
+		schedule, err := cron.ParseStandard(task.Schedule)
+		if err != nil {
+			log.Printf("Failed to parse schedule for task %s: %v", taskID, err)
+			continue
+		}
+		
+		// Check if task should run now
+		now := time.Now()
+		next := schedule.Next(a.lastTaskExecution[taskID])
+		
+		if now.After(next) || now.Equal(next) {
+			// Task should run
+			log.Printf("Local fallback: Triggering task %s", taskID)
+			
+			// Generate a local execution ID
+			executionID := fmt.Sprintf("local-%s-%d", taskID, now.Unix())
+			
+			// Execute task asynchronously
+			go a.executeTask(executionID, task, "local_fallback")
+			
+			// Update last execution time
+			a.lastTaskExecution[taskID] = now
+		}
+	}
 }
 
 // loadCachedConfig loads configuration from disk
