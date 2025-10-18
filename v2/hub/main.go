@@ -109,10 +109,12 @@ func main() {
 	// Server-Sent Events endpoint
 	router.GET("/events", apiHandler.SSEEndpoint)
 
-	// Health check
-	router.GET("/health", func(c *gin.Context) {
+	// Health check - support both GET and HEAD methods
+	healthHandler := func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "healthy", "time": time.Now().Unix()})
-	})
+	}
+	router.GET("/health", healthHandler)
+	router.HEAD("/health", healthHandler)
 
 	// Start scheduler service
 	go schedulerService.Start()

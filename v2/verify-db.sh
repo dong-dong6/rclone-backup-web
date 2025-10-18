@@ -1,140 +1,118 @@
 #!/bin/bash
 
-# 数据库验证脚本 - 检查初始化是否成功
-
+# 验证数据库初始化状态
 set -e
 
-# 颜色定义
+# 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}   数据库初始化验证${NC}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
+print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# 检测Docker Compose
-if docker compose version &> /dev/null; then
-    DC="docker compose"
+# 检测 Docker Compose 命令
+if command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+elif docker compose version &> /dev/null 2>&1; then
+    DOCKER_COMPOSE="docker compose"
 else
-    DC="docker-compose"
-fi
-
-# 选择配置文件
-if [ -f "docker-compose.prod.yml" ]; then
-    CF="docker-compose.prod.yml"
-else
-    CF="docker-compose.yml"
+    print_error "未找到 Docker Compose"
+    exit 1
 fi
 
 # 加载环境变量
-if [ -f .env ]; then
-    source .env
-fi
-
-# 1. 检查数据库容器状态
-echo -e "${BLUE}1️⃣ 检查数据库容器状态...${NC}"
-if $DC -f $CF ps | grep -q "postgres.*running\|postgres.*Up"; then
-    echo -e "${GREEN}✅ 数据库容器运行中${NC}"
+if [ -f ".env" ]; then
+    export $(grep -v '^#' .env | xargs)
 else
-    echo -e "${RED}❌ 数据库容器未运行${NC}"
-    echo "请先运行: ./deploy.sh hub"
+    print_error "未找到 .env 文件"
     exit 1
 fi
 
-# 2. 检查数据库连接
+DB_NAME="${DB_NAME:-rclone_backup}"
+DB_USER="${DB_USER:-rclone}"
+
+echo "================================================"
+echo "   数据库验证工具"
+echo "================================================"
 echo ""
-echo -e "${BLUE}2️⃣ 测试数据库连接...${NC}"
-if $DC -f $CF exec -T postgres pg_isready -U ${DB_USER:-rclone} &> /dev/null; then
-    echo -e "${GREEN}✅ 数据库连接正常${NC}"
+
+print_info "数据库名称: $DB_NAME"
+print_info "数据库用户: $DB_USER"
+echo ""
+
+# 检查容器是否运行
+print_info "检查 PostgreSQL 容器状态..."
+if $DOCKER_COMPOSE ps | grep -q "postgres.*Up"; then
+    print_success "PostgreSQL 容器正在运行"
 else
-    echo -e "${RED}❌ 无法连接到数据库${NC}"
+    print_error "PostgreSQL 容器未运行"
     exit 1
 fi
 
-# 3. 检查数据库是否存在
-echo ""
-echo -e "${BLUE}3️⃣ 检查数据库...${NC}"
-db_exists=$($DC -f $CF exec -T postgres psql -U ${DB_USER:-rclone} -lqt 2>/dev/null | cut -d \| -f 1 | grep -w ${DB_NAME:-rclone_backup} | wc -l)
-if [ "$db_exists" -gt 0 ]; then
-    echo -e "${GREEN}✅ 数据库 '${DB_NAME:-rclone_backup}' 存在${NC}"
+# 测试数据库连接
+print_info "测试数据库连接..."
+if $DOCKER_COMPOSE exec -T postgres pg_isready -U "$DB_USER" -d "$DB_NAME" &> /dev/null; then
+    print_success "数据库连接成功"
 else
-    echo -e "${RED}❌ 数据库 '${DB_NAME:-rclone_backup}' 不存在${NC}"
+    print_error "无法连接到数据库"
     exit 1
 fi
 
-# 4. 检查必需的表
+# 检查表是否存在
+print_info "检查数据库表..."
+TABLES=$($DOCKER_COMPOSE exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT tablename FROM pg_tables WHERE schemaname='public';" 2>/dev/null)
+
+if [ -z "$TABLES" ]; then
+    print_error "数据库中没有找到任何表"
+    exit 1
+fi
+
 echo ""
-echo -e "${BLUE}4️⃣ 验证数据库表...${NC}"
+print_success "找到以下表:"
+echo "$TABLES" | sed 's/^/  - /'
 
-required_tables=(
-    "agents"
-    "rclone_remotes"
-    "backup_tasks"
-    "task_agent_assignments"
-    "task_executions"
-    "registration_tokens"
-    "users"
-    "sessions"
-)
-
-missing_tables=()
-for table in "${required_tables[@]}"; do
-    if $DC -f $CF exec -T postgres psql -U ${DB_USER:-rclone} -d ${DB_NAME:-rclone_backup} -c "SELECT 1 FROM $table LIMIT 1" &> /dev/null; then
-        echo -e "  ${GREEN}✅ $table${NC}"
+# 检查关键表
+REQUIRED_TABLES=("agents" "backup_tasks" "task_executions" "rclone_remotes" "users")
+for table in "${REQUIRED_TABLES[@]}"; do
+    if echo "$TABLES" | grep -q "$table"; then
+        print_success "✓ 表 '$table' 存在"
     else
-        echo -e "  ${RED}❌ $table (缺失)${NC}"
-        missing_tables+=("$table")
+        print_error "✗ 表 '$table' 不存在"
     fi
 done
 
-# 5. 检查初始数据
-echo ""
-echo -e "${BLUE}5️⃣ 检查初始数据...${NC}"
+# 检查初始数据
+print_info ""
+print_info "检查初始数据..."
 
-# 检查admin用户
-admin_exists=$($DC -f $CF exec -T postgres psql -U ${DB_USER:-rclone} -d ${DB_NAME:-rclone_backup} -t -c "SELECT COUNT(*) FROM users WHERE username='admin'" 2>/dev/null | xargs)
-if [ "$admin_exists" = "1" ]; then
-    echo -e "${GREEN}✅ Admin用户存在${NC}"
+# 检查默认管理员用户
+ADMIN_COUNT=$($DOCKER_COMPOSE exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM users WHERE username='admin';" 2>/dev/null | tr -d ' ')
+if [ "$ADMIN_COUNT" -gt 0 ]; then
+    print_success "默认管理员用户已创建"
 else
-    echo -e "${YELLOW}⚠️  Admin用户不存在${NC}"
+    print_warning "未找到默认管理员用户"
 fi
 
-# 6. 显示数据库统计
-echo ""
-echo -e "${BLUE}6️⃣ 数据库统计...${NC}"
-echo ""
-$DC -f $CF exec -T postgres psql -U ${DB_USER:-rclone} -d ${DB_NAME:-rclone_backup} -c "
-SELECT 
-    schemaname,
-    tablename,
-    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size
-FROM pg_tables
-WHERE schemaname = 'public'
-ORDER BY tablename;
-" 2>/dev/null || echo "无法获取统计信息"
-
-# 7. 结果总结
-echo ""
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-if [ ${#missing_tables[@]} -eq 0 ]; then
-    echo -e "${GREEN}✨ 数据库初始化成功！${NC}"
-    echo ""
-    echo "所有必需的表都已创建。"
-    echo ""
-    echo "现在可以：" 
-    echo "  1. 访问 Web UI: http://localhost:3000"
-    echo "  2. 使用 admin/admin 登录"
+# 检查系统设置
+SETTINGS_COUNT=$($DOCKER_COMPOSE exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM system_settings;" 2>/dev/null | tr -d ' ')
+if [ "$SETTINGS_COUNT" -gt 0 ]; then
+    print_success "系统设置已初始化 ($SETTINGS_COUNT 条记录)"
 else
-    echo -e "${RED}❌ 数据库初始化不完整${NC}"
-    echo ""
-    echo "缺失的表: ${missing_tables[*]}"
-    echo ""
-    echo "请尝试："
-    echo "  1. 运行: ./fix-db.sh"
-    echo "  2. 或手动检查日志: $DC -f $CF logs postgres"
+    print_warning "系统设置未初始化"
 fi
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+echo ""
+print_success "数据库验证完成！"
+echo ""
+print_info "提示："
+print_info "  - 使用以下命令连接到数据库："
+print_info "    $DOCKER_COMPOSE exec postgres psql -U $DB_USER -d $DB_NAME"
+print_info "  - 查看所有表："
+print_info "    \\dt"
+print_info "  - 退出 psql："
+print_info "    \\q"
