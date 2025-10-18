@@ -1,0 +1,149 @@
+version: '3.8'
+
+# ============================================
+# Rclone Backup Web V2.0 - Production Deployment
+# ============================================
+
+services:
+  # ============================================
+  # Core Database
+  # ============================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: rclone-backup-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-rclone_backup}
+      POSTGRES_USER: ${DB_USER:-rclone}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Database password required}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rclone}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================
+  # Hub API Server (Go)
+  # ============================================
+  hub-api:
+    build:
+      context: ./hub
+      dockerfile: Dockerfile
+      args:
+        - GO_VERSION=1.21
+    image: rclone-backup-hub:${VERSION:-latest}
+    container_name: rclone-backup-hub
+    restart: unless-stopped
+    environment:
+      # Database Configuration
+      DATABASE_URL: postgres://${DB_USER:-rclone}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-rclone_backup}?sslmode=disable
+      
+      # Security Keys (Required)
+      JWT_SECRET: ${JWT_SECRET:?JWT secret required}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Encryption key required}
+      
+      # Server Configuration
+      PORT: ${HUB_PORT:-8080}
+      GIN_MODE: ${GIN_MODE:-release}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+      # Features
+      ENABLE_METRICS: ${ENABLE_METRICS:-true}
+      ENABLE_PROFILING: ${ENABLE_PROFILING:-false}
+      
+      # Session Configuration
+      SESSION_TIMEOUT: ${SESSION_TIMEOUT:-24h}
+      API_KEY_EXPIRY: ${API_KEY_EXPIRY:-365d}
+    ports:
+      - "${HUB_PORT:-8080}:${HUB_PORT:-8080}"
+      - "${METRICS_PORT:-9090}:9090"  # Prometheus metrics
+    volumes:
+      - ./hub/config:/app/config:ro
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:${HUB_PORT:-8080}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # Web UI (React)
+  # ============================================
+  web-ui:
+    build:
+      context: ./hub/web
+      dockerfile: Dockerfile
+      args:
+        - NODE_VERSION=20-alpine
+    image: rclone-backup-web:${VERSION:-latest}
+    container_name: rclone-backup-web
+    restart: unless-stopped
+    environment:
+      REACT_APP_API_URL: ${API_URL:-http://localhost:8080}
+      REACT_APP_SSE_URL: ${SSE_URL:-http://localhost:8080}
+      REACT_APP_VERSION: ${VERSION:-latest}
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    networks:
+      - backend
+    depends_on:
+      - hub-api
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================
+  # Cache/Session Store (Optional but Recommended)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: rclone-backup-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_MAX_MEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  backend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

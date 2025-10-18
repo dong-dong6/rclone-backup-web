@@ -1,0 +1,138 @@
+version: '3.8'
+
+# ============================================
+# Rclone Backup Agent - Deployment
+# ============================================
+
+services:
+  # ============================================
+  # Agent Service (Go)
+  # ============================================
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+      args:
+        - GO_VERSION=1.21
+    image: rclone-backup-agent:${VERSION:-latest}
+    container_name: rclone-agent-${AGENT_NAME:-default}
+    restart: unless-stopped
+    environment:
+      # Hub Connection (Required)
+      HUB_URL: ${HUB_URL:?Hub URL required}
+      AGENT_ID: ${AGENT_ID:-}
+      AGENT_API_KEY: ${AGENT_API_KEY:-}
+      REGISTRATION_TOKEN: ${REGISTRATION_TOKEN:-}
+      
+      # Agent Configuration
+      AGENT_NAME: ${AGENT_NAME:-agent-$(hostname)}
+      HEARTBEAT_INTERVAL: ${HEARTBEAT_INTERVAL:-30s}
+      TASK_TIMEOUT: ${TASK_TIMEOUT:-2h}
+      
+      # Rclone Sidecar Configuration
+      RCLONE_ENDPOINT: http://rclone-sidecar:5572
+      RCLONE_RC_USER: ${RCLONE_RC_USER:-}
+      RCLONE_RC_PASS: ${RCLONE_RC_PASS:-}
+      USE_SIDECAR: ${USE_SIDECAR:-true}
+      
+      # Local Fallback Configuration
+      ENABLE_LOCAL_FALLBACK: ${ENABLE_LOCAL_FALLBACK:-true}
+      LOCAL_FALLBACK_THRESHOLD: ${LOCAL_FALLBACK_THRESHOLD:-5m}
+      CONFIG_CACHE_DIR: /data/config
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FILE: /data/logs/agent.log
+    volumes:
+      # Agent configuration and cache
+      - agent_data:/data
+      
+      # Source paths to backup (customize as needed)
+      - ${BACKUP_SOURCE_1:-/var/www}:/backup/www:ro
+      - ${BACKUP_SOURCE_2:-/home}:/backup/home:ro
+      - ${BACKUP_SOURCE_3:-/etc}:/backup/etc:ro
+      
+      # Additional custom paths can be added
+      # - /path/on/host:/backup/name:ro
+    networks:
+      - agent-network
+    depends_on:
+      rclone-sidecar:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================
+  # Rclone Sidecar (Remote Control Daemon)
+  # ============================================
+  rclone-sidecar:
+    image: rclone/rclone:${RCLONE_VERSION:-latest}
+    container_name: rclone-sidecar-${AGENT_NAME:-default}
+    restart: unless-stopped
+    command: >
+      rcd
+      --rc-addr :5572
+      --rc-no-auth
+      --rc-web-gui
+      --rc-web-gui-no-open-browser
+      --rc-web-gui-update
+      --log-level ${RCLONE_LOG_LEVEL:-INFO}
+      --log-file /logs/rclone.log
+      --cache-dir /cache
+      --config /config/rclone.conf
+      ${RCLONE_EXTRA_FLAGS:-}
+    environment:
+      RCLONE_CONFIG: /config/rclone.conf
+      RCLONE_CACHE_DIR: /cache
+      RCLONE_TEMP_DIR: /tmp
+    volumes:
+      # Rclone configuration and cache
+      - rclone_config:/config
+      - rclone_cache:/cache
+      - rclone_logs:/logs
+      
+      # Shared data volume with agent
+      - agent_data:/data:rw
+      
+      # Same backup source paths as agent
+      - ${BACKUP_SOURCE_1:-/var/www}:/backup/www:ro
+      - ${BACKUP_SOURCE_2:-/home}:/backup/home:ro
+      - ${BACKUP_SOURCE_3:-/etc}:/backup/etc:ro
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "rclone", "rc", "--rc-addr", ":5572", "core/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '${RCLONE_CPU_LIMIT:-2.0}'
+          memory: ${RCLONE_MEMORY_LIMIT:-1G}
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  agent-network:
+    driver: bridge
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  agent_data:
+    driver: local
+  rclone_config:
+    driver: local
+  rclone_cache:
+    driver: local
+  rclone_logs:
+    driver: local
