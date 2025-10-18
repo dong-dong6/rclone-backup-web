@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import Dashboard from './pages/Dashboard.neu';
-import Agents from './pages/Agents.neu';
-import Tasks from './pages/Tasks.neu';
-import Remotes from './pages/Remotes.neu';
-import Executions from './pages/Executions.neu';
-import Settings from './pages/Settings.neu';
-import Login from './pages/Login.neu';
+import Dashboard from './pages/DashboardComplete';
+import Agents from './pages/AgentsEnhanced';
+import Tasks from './pages/Tasks';
+import Remotes from './pages/Remotes';
+import Executions from './pages/Executions';
+import Settings from './pages/Settings';
+import Login from './pages/LoginNeu';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SSEProvider } from './contexts/SSEContext';
-import { ThemeProvider } from './contexts/ThemeContext';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import ProtectedRoute from './components/ProtectedRoute';
 import './styles/neumorphism.css';
-import './App.neu.css';
+import './styles/dashboard.css';
 
 const AppLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
@@ -223,9 +224,11 @@ const App: React.FC = () => {
             <Route
               path="/*"
               element={
-                <SSEProvider>
-                  <AppLayout />
-                </SSEProvider>
+                <ProtectedRoute>
+                  <SSEProvider>
+                    <AppLayout />
+                  </SSEProvider>
+                </ProtectedRoute>
               }
             />
           </Routes>

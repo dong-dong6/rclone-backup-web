@@ -39,6 +39,20 @@
     "profile": "个人信息",
     "logout": "退出登录"
   },
+  "login": {
+    "title": "登录",
+    "subtitle": "分布式备份管理系统",
+    "username": "用户名",
+    "username_placeholder": "请输入用户名",
+    "password": "密码",
+    "password_placeholder": "请输入密码",
+    "submit": "登录",
+    "logging_in": "登录中...",
+    "error": "用户名或密码错误",
+    "default_hint": "默认账号: admin / admin",
+    "forgot_password": "忘记密码？",
+    "remember_me": "记住我"
+  },
   "app": {
     "title": "分布式备份系统",
     "version": "版本 2.0",
