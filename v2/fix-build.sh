@@ -15,6 +15,23 @@ NC='\033[0m'
 echo -e "${BLUE}🔧 开始修复构建问题...${NC}"
 echo ""
 
+# 0. 检查并修复Go版本
+echo -e "${BLUE}0️⃣ 检查Go版本兼容性...${NC}"
+if grep -q "FROM golang:1.21" hub/Dockerfile 2>/dev/null; then
+    echo -e "${YELLOW}更新Hub Dockerfile的Go版本...${NC}"
+    sed -i.bak 's/FROM golang:1.21-alpine/FROM golang:1.23-alpine/' hub/Dockerfile
+    rm -f hub/Dockerfile.bak
+    echo -e "${GREEN}✅ Hub Dockerfile已更新到Go 1.23${NC}"
+fi
+
+if grep -q "FROM golang:1.21" agent/Dockerfile 2>/dev/null; then
+    echo -e "${YELLOW}更新Agent Dockerfile的Go版本...${NC}"
+    sed -i.bak 's/FROM golang:1.21-alpine/FROM golang:1.23-alpine/' agent/Dockerfile
+    rm -f agent/Dockerfile.bak
+    echo -e "${GREEN}✅ Agent Dockerfile已更新到Go 1.23${NC}"
+fi
+echo ""
+
 # 1. 复制database目录到hub
 echo -e "${BLUE}1️⃣ 复制database目录...${NC}"
 if [ ! -d "hub/database" ]; then
