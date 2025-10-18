@@ -61,6 +61,67 @@
   },
   "dashboard": {
     "title": "系统概览",
+    "loading": "正在加载仪表盘...",
+    "welcome_back": "欢迎回来",
+    "time_range": {
+      "24h": "24小时",
+      "7d": "7天",
+      "30d": "30天"
+    },
+    "agents": {
+      "title": "节点",
+      "online": "在线",
+      "offline": "离线",
+      "running": "运行中",
+      "availability": "可用性"
+    },
+    "tasks": {
+      "title": "任务",
+      "active": "活跃",
+      "scheduled_today": "今日计划",
+      "next_run": "下次执行"
+    },
+    "executions": {
+      "title_24h": "24小时执行",
+      "success": "成功",
+      "failed": "失败",
+      "success_rate": "成功率"
+    },
+    "storage": {
+      "title": "存储",
+      "daily_growth": "日增长",
+      "most_used": "最常用"
+    },
+    "charts": {
+      "execution_trend": "执行趋势",
+      "task_distribution": "任务分布",
+      "success": "成功",
+      "failed": "失败",
+      "daily": "每日",
+      "weekly": "每周",
+      "monthly": "每月",
+      "manual": "手动"
+    },
+    "recent_executions": {
+      "title": "最近执行",
+      "view_all": "查看全部",
+      "no_executions": "暂无执行记录"
+    },
+    "system_health": {
+      "title": "系统健康",
+      "hub": "中心节点",
+      "database": "数据库",
+      "agent_response": "节点响应时间",
+      "system_load": "系统负载",
+      "run_diagnostics": "运行诊断"
+    },
+    "quick_actions": {
+      "title": "快捷操作",
+      "add_agent": "添加节点",
+      "create_task": "创建任务",
+      "add_remote": "添加存储",
+      "view_logs": "查看日志"
+    },
     "stats": {
       "totalAgents": "节点总数",
       "onlineAgents": "在线节点",
@@ -68,11 +129,6 @@
       "totalTasks": "任务总数",
       "recentExecutions": "近期执行",
       "successRate": "成功率"
-    },
-    "charts": {
-      "backupTrend": "备份趋势（24小时）",
-      "agentStatus": "节点状态分布",
-      "taskDistribution": "任务分布"
     },
     "recentActivity": "最近活动",
     "systemHealth": "系统健康度",

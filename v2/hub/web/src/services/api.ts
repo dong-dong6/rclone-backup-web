@@ -131,7 +131,7 @@ export const apiService = {
   cancelExecution: (id: string) => 
     api.post(`/admin/executions/${id}/cancel`),
   
-  // Statistics
+  // Statistics & Dashboard
   getStatistics: () => 
     api.get('/admin/statistics/overview'),
   
@@ -140,6 +140,15 @@ export const apiService = {
   
   getTaskStatistics: (id: string) => 
     api.get(`/admin/statistics/tasks/${id}`),
+    
+  getDashboardStats: () => 
+    api.get('/admin/dashboard/stats'),
+    
+  getRecentActivity: () => 
+    api.get('/admin/dashboard/recent'),
+    
+  getChartData: (timeRange: string) => 
+    api.get(`/admin/dashboard/charts?range=${timeRange}`),
   
   // System
   getSystemHealth: () => 
