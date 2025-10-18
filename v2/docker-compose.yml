@@ -1,13 +1,15 @@
 version: '3.8'
 
 # ============================================
-# Rclone Backup Web V2.0 - Production Deployment
+# Rclone Backup Web V2.0 - Hub Deployment with Optional Local Agent
 # ============================================
 
 services:
   # ============================================
-  # Core Database
+  # HUB SERVICES (Always On)
   # ============================================
+  
+  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: rclone-backup-db
@@ -20,6 +22,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/migrations:/docker-entrypoint-initdb.d:ro
+      # 数据库备份目录，供本地Agent备份
+      - db_backups:/backups
     networks:
       - backend
     healthcheck:
@@ -29,16 +33,14 @@ services:
       retries: 5
       start_period: 30s
 
-  # ============================================
   # Hub API Server (Go)
-  # ============================================
   hub-api:
     build:
       context: ./hub
       dockerfile: Dockerfile
       args:
         - GO_VERSION=1.21
-    image: rclone-backup-hub:${VERSION:-latest}
+    image: ${HUB_IMAGE:-rclone-backup-hub}:${VERSION:-latest}
     container_name: rclone-backup-hub
     restart: unless-stopped
     environment:
@@ -63,9 +65,10 @@ services:
       API_KEY_EXPIRY: ${API_KEY_EXPIRY:-365d}
     ports:
       - "${HUB_PORT:-8080}:${HUB_PORT:-8080}"
-      - "${METRICS_PORT:-9090}:9090"  # Prometheus metrics
+      - "${METRICS_PORT:-9090}:9090"
     volumes:
       - ./hub/config:/app/config:ro
+      - hub_data:/data
     networks:
       - backend
     depends_on:
@@ -78,16 +81,14 @@ services:
       retries: 3
       start_period: 60s
 
-  # ============================================
   # Web UI (React)
-  # ============================================
   web-ui:
     build:
       context: ./hub/web
       dockerfile: Dockerfile
       args:
         - NODE_VERSION=20-alpine
-    image: rclone-backup-web:${VERSION:-latest}
+    image: ${WEB_IMAGE:-rclone-backup-web}:${VERSION:-latest}
     container_name: rclone-backup-web
     restart: unless-stopped
     environment:
@@ -106,9 +107,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # ============================================
-  # Cache/Session Store (Optional but Recommended)
-  # ============================================
+  # Cache/Session Store
   redis:
     image: redis:7-alpine
     container_name: rclone-backup-redis
@@ -129,6 +128,158 @@ services:
       timeout: 5s
       retries: 5
 
+  # ============================================
+  # LOCAL AGENT SERVICES (OPTIONAL - Profile: local-agent)
+  # ============================================
+  
+  # Local Agent - 用于备份Hub自身
+  local-agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+      args:
+        - GO_VERSION=1.21
+    image: ${AGENT_IMAGE:-rclone-backup-agent}:${VERSION:-latest}
+    container_name: rclone-backup-local-agent
+    restart: unless-stopped
+    profiles:
+      - local-agent  # 只有指定 --profile local-agent 时才启动
+    depends_on:
+      hub-api:
+        condition: service_healthy
+    environment:
+      # Hub连接 - 使用内部网络地址
+      HUB_URL: http://hub-api:${HUB_PORT:-8080}
+      
+      # 注册令牌（首次注册时使用）
+      REGISTRATION_TOKEN: ${LOCAL_AGENT_REGISTRATION_TOKEN:-}
+      
+      # 或使用已有凭证（注册后自动保存）
+      AGENT_ID: ${LOCAL_AGENT_ID:-}
+      AGENT_API_KEY: ${LOCAL_AGENT_API_KEY:-}
+      
+      # Agent配置
+      AGENT_NAME: ${LOCAL_AGENT_NAME:-hub-local-agent}
+      HEARTBEAT_INTERVAL: ${HEARTBEAT_INTERVAL:-30s}
+      TASK_TIMEOUT: ${TASK_TIMEOUT:-2h}
+      
+      # Sidecar配置
+      RCLONE_ENDPOINT: http://local-rclone-sidecar:5572
+      USE_SIDECAR: true
+      
+      # 本地回退
+      ENABLE_LOCAL_FALLBACK: ${ENABLE_LOCAL_FALLBACK:-true}
+      LOCAL_FALLBACK_THRESHOLD: ${LOCAL_FALLBACK_THRESHOLD:-5m}
+      CONFIG_CACHE_DIR: /data/config
+      
+      # 日志
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FILE: /data/logs/agent.log
+    volumes:
+      # Agent配置和缓存
+      - agent_data:/data
+      
+      # 挂载需要备份的Hub数据
+      - postgres_data:/backup/postgres:ro        # PostgreSQL数据
+      - db_backups:/backup/db-backups:ro        # 数据库备份
+      - hub_data:/backup/hub-data:ro            # Hub数据
+      - redis_data:/backup/redis:ro             # Redis数据
+      - ./hub/config:/backup/hub-config:ro      # Hub配置
+      
+      # 可选：备份整个项目代码
+      - ./:/backup/project:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Rclone Sidecar for Local Agent
+  local-rclone-sidecar:
+    image: rclone/rclone:${RCLONE_VERSION:-latest}
+    container_name: rclone-backup-local-sidecar
+    restart: unless-stopped
+    profiles:
+      - local-agent  # 只有指定 --profile local-agent 时才启动
+    command: >
+      rcd
+      --rc-addr :5572
+      --rc-no-auth
+      --rc-web-gui
+      --rc-web-gui-no-open-browser
+      --rc-web-gui-update
+      --log-level ${RCLONE_LOG_LEVEL:-INFO}
+      --log-file /logs/rclone.log
+      --cache-dir /cache
+      --config /config/rclone.conf
+    environment:
+      RCLONE_CONFIG: /config/rclone.conf
+      RCLONE_CACHE_DIR: /cache
+      RCLONE_TEMP_DIR: /tmp
+    volumes:
+      # Rclone配置和缓存
+      - rclone_config:/config
+      - rclone_cache:/cache
+      - rclone_logs:/logs
+      
+      # 与Agent共享数据卷
+      - agent_data:/data:rw
+      
+      # 相同的备份源路径
+      - postgres_data:/backup/postgres:ro
+      - db_backups:/backup/db-backups:ro
+      - hub_data:/backup/hub-data:ro
+      - redis_data:/backup/redis:ro
+      - ./hub/config:/backup/hub-config:ro
+      - ./:/backup/project:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "rclone", "rc", "--rc-addr", ":5572", "core/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '${RCLONE_CPU_LIMIT:-2.0}'
+          memory: ${RCLONE_MEMORY_LIMIT:-1G}
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # ============================================
+  # OPTIONAL: Database Backup Service
+  # ============================================
+  
+  # 定期备份数据库的服务
+  db-backup:
+    image: postgres:15-alpine
+    container_name: rclone-backup-db-backup
+    profiles:
+      - db-backup  # 可选profile，用于定期备份
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_backups:/backups
+    networks:
+      - backend
+    command: >
+      sh -c "while true; do
+        echo 'Backing up database...';
+        pg_dump -h postgres -U ${DB_USER:-rclone} ${DB_NAME:-rclone_backup} | 
+        gzip > /backups/backup-$$(date +%Y%m%d-%H%M%S).sql.gz;
+        echo 'Backup complete: backup-$$(date +%Y%m%d-%H%M%S).sql.gz';
+        echo 'Cleaning old backups (keeping last 7 days)...';
+        find /backups -name '*.sql.gz' -mtime +7 -delete;
+        sleep ${DB_BACKUP_INTERVAL:-86400};
+      done"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 # ============================================
 # Networks
 # ============================================
@@ -143,7 +294,22 @@ networks:
 # Volumes
 # ============================================
 volumes:
+  # Hub相关卷
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  hub_data:
+    driver: local
+  db_backups:
+    driver: local
+    
+  # Agent相关卷（仅在local-agent profile启用时创建）
+  agent_data:
+    driver: local
+  rclone_config:
+    driver: local
+  rclone_cache:
+    driver: local
+  rclone_logs:
     driver: local

@@ -9,50 +9,73 @@ help:
 	@echo "Rclone Backup Web V2.0 - 可用命令"
 	@echo ""
 	@echo "基础命令:"
-	@echo "  make up         - 启动所有服务"
-	@echo "  make down       - 停止所有服务"
-	@echo "  make restart    - 重启所有服务"
-	@echo "  make logs       - 查看服务日志"
-	@echo "  make status     - 查看服务状态"
+	@echo "  make up              - 启动Hub服务（不含Agent）"
+	@echo "  make up-with-agent   - 启动Hub服务（含本地Agent）"
+	@echo "  make down            - 停止所有服务"
+	@echo "  make restart         - 重启所有服务"
+	@echo "  make logs            - 查看服务日志"
+	@echo "  make status          - 查看服务状态"
 	@echo ""
 	@echo "构建命令:"
-	@echo "  make build      - 构建所有镜像"
-	@echo "  make rebuild    - 强制重新构建镜像"
+	@echo "  make build           - 构建所有镜像"
+	@echo "  make rebuild         - 强制重新构建镜像"
 	@echo ""
 	@echo "Agent命令:"
-	@echo "  make agent-up   - 启动Agent"
-	@echo "  make agent-down - 停止Agent"
-	@echo "  make agent-logs - 查看Agent日志"
+	@echo "  make agent-up        - 启动远程Agent"
+	@echo "  make agent-down      - 停止远程Agent"
+	@echo "  make agent-logs      - 查看远程Agent日志"
+	@echo "  make local-agent-logs - 查看本地Agent日志"
 	@echo ""
 	@echo "维护命令:"
-	@echo "  make backup     - 备份数据库"
-	@echo "  make restore    - 恢复数据库"
-	@echo "  make clean      - 清理所有数据（危险！）"
-	@echo "  make test       - 运行测试"
+	@echo "  make backup          - 备份数据库"
+	@echo "  make backup-auto     - 启动自动备份服务"
+	@echo "  make restore         - 恢复数据库"
+	@echo "  make clean           - 清理所有数据（危险！）"
+	@echo "  make test            - 运行测试"
 	@echo ""
 	@echo "调试命令:"
-	@echo "  make shell      - 进入Hub容器"
-	@echo "  make db-shell   - 进入数据库"
+	@echo "  make shell           - 进入Hub容器"
+	@echo "  make db-shell        - 进入数据库"
 
 # ============================================
 # 基础命令
 # ============================================
 
-# 启动所有服务
+# Profile变量（用于控制启动哪些服务）
+COMPOSE_PROFILES ?=
+
+# 启动Hub服务（不含Agent）
 up:
-	@echo "🚀 启动Rclone Backup服务..."
-	@docker-compose up -d
-	@echo "✅ 服务已启动！"
+	@echo "🚀 启动Rclone Backup Hub服务..."
+	@docker-compose $(if $(COMPOSE_PROFILES),--profile $(COMPOSE_PROFILES)) up -d
+	@echo "✅ Hub服务已启动！"
 	@echo ""
 	@echo "访问地址:"
 	@echo "  Web UI: http://localhost:3000"
 	@echo "  API: http://localhost:8080"
 	@echo "  Metrics: http://localhost:9090/metrics"
+	@if [ "$(COMPOSE_PROFILES)" = "local-agent" ]; then \
+		echo "  本地Agent: 已启动"; \
+	fi
+
+# 启动Hub服务（含本地Agent）
+up-with-agent:
+	@echo "🚀 启动Rclone Backup服务（含本地Agent）..."
+	@if [ -z "$${LOCAL_AGENT_REGISTRATION_TOKEN}" ] && [ -z "$${LOCAL_AGENT_API_KEY}" ]; then \
+		echo "⚠️  警告: 未配置LOCAL_AGENT_REGISTRATION_TOKEN"; \
+		echo "请先:"; \
+		echo "  1. 运行 'make up' 启动Hub"; \
+		echo "  2. 在Web UI中生成注册令牌"; \
+		echo "  3. 将令牌添加到.env文件的LOCAL_AGENT_REGISTRATION_TOKEN"; \
+		echo "  4. 再次运行 'make up-with-agent'"; \
+		exit 1; \
+	fi
+	@$(MAKE) COMPOSE_PROFILES=local-agent up
 
 # 停止所有服务
 down:
 	@echo "🛑 停止Rclone Backup服务..."
-	@docker-compose down
+	@docker-compose --profile local-agent --profile db-backup down
 
 # 重启所有服务
 restart: down up
@@ -80,12 +103,20 @@ status:
 # 构建所有镜像
 build:
 	@echo "🔨 构建Docker镜像..."
-	@docker-compose build
+	@docker-compose --profile local-agent build
 
 # 强制重新构建
 rebuild:
 	@echo "🔨 强制重新构建镜像..."
-	@docker-compose build --no-cache
+	@docker-compose --profile local-agent build --no-cache
+
+# 更新服务
+update: pull
+	@$(MAKE) COMPOSE_PROFILES=$(COMPOSE_PROFILES) up
+
+# 更新服务（含本地Agent）
+update-with-agent:
+	@$(MAKE) COMPOSE_PROFILES=local-agent update
 
 # 拉取最新镜像
 pull:
@@ -114,6 +145,14 @@ agent-logs:
 agent-status:
 	@docker-compose -f docker-compose.agent.yml ps
 
+# 查看本地Agent日志
+local-agent-logs:
+	@docker-compose logs -f --tail=100 local-agent local-rclone-sidecar
+
+# 本地Agent状态
+local-agent-status:
+	@docker-compose ps local-agent local-rclone-sidecar
+
 # ============================================
 # 维护命令
 # ============================================
@@ -122,8 +161,14 @@ agent-status:
 backup:
 	@echo "💾 备份数据库..."
 	@mkdir -p backups
-	@docker-compose exec -T postgres pg_dump -U rclone rclone_backup | gzip > backups/backup-$$(date +%Y%m%d-%H%M%S).sql.gz
+	@docker-compose exec -T postgres pg_dump -U $${DB_USER:-rclone} $${DB_NAME:-rclone_backup} | gzip > backups/backup-$$(date +%Y%m%d-%H%M%S).sql.gz
 	@echo "✅ 备份完成: backups/backup-$$(date +%Y%m%d-%H%M%S).sql.gz"
+
+# 启动自动备份服务
+backup-auto:
+	@echo "🔄 启动自动备份服务..."
+	@docker-compose --profile db-backup up -d db-backup
+	@echo "✅ 自动备份服务已启动（每24小时备份一次）"
 
 # 恢复数据库 (使用: make restore FILE=backups/backup-xxx.sql.gz)
 restore:
