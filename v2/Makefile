@@ -44,10 +44,16 @@ help:
 # Profile变量（用于控制启动哪些服务）
 COMPOSE_PROFILES ?=
 
+# Docker Compose命令检测（支持新版docker compose）
+DOCKER_COMPOSE := $(shell command -v docker-compose 2> /dev/null)
+ifeq ($(DOCKER_COMPOSE),)
+    DOCKER_COMPOSE := docker compose
+endif
+
 # 启动Hub服务（不含Agent）
 up:
 	@echo "🚀 启动Rclone Backup Hub服务..."
-	@docker-compose $(if $(COMPOSE_PROFILES),--profile $(COMPOSE_PROFILES)) up -d
+	@$(DOCKER_COMPOSE) $(if $(COMPOSE_PROFILES),--profile $(COMPOSE_PROFILES)) up -d
 	@echo "✅ Hub服务已启动！"
 	@echo ""
 	@echo "访问地址:"
@@ -75,23 +81,23 @@ up-with-agent:
 # 停止所有服务
 down:
 	@echo "🛑 停止Rclone Backup服务..."
-	@docker-compose --profile local-agent --profile db-backup down
+	@$(DOCKER_COMPOSE) --profile local-agent --profile db-backup down
 
 # 重启所有服务
 restart: down up
 
 # 查看日志
 logs:
-	@docker-compose logs -f --tail=100
+	@$(DOCKER_COMPOSE) logs -f --tail=100
 
 # 查看特定服务日志
 logs-%:
-	@docker-compose logs -f --tail=100 $*
+	@$(DOCKER_COMPOSE) logs -f --tail=100 $*
 
 # 查看服务状态
 status:
 	@echo "📊 服务状态:"
-	@docker-compose ps
+	@$(DOCKER_COMPOSE) ps
 	@echo ""
 	@echo "🏥 健康检查:"
 	@curl -s http://localhost:8080/health | jq '.' || echo "Hub API未响应"
@@ -103,14 +109,14 @@ status:
 # 构建所有镜像（本地构建）
 build:
 	@echo "🔨 本地构建Docker镜像..."
-	@docker-compose --profile local-agent build
+	@$(DOCKER_COMPOSE) --profile local-agent build
 	@echo "✅ 镜像构建完成！"
 	@docker images | grep rclone-backup
 
 # 强制重新构建（清除缓存）
 rebuild:
 	@echo "🔨 强制重新构建镜像..."
-	@docker-compose --profile local-agent build --no-cache
+	@$(DOCKER_COMPOSE) --profile local-agent build --no-cache
 	@echo "✅ 镜像重新构建完成！"
 
 # 构建并启动
@@ -132,7 +138,7 @@ update-with-agent:
 # 拉取最新镜像
 pull:
 	@echo "📥 拉取最新镜像..."
-	@docker-compose pull
+	@$(DOCKER_COMPOSE) pull
 
 # ============================================
 # Agent命令
@@ -141,28 +147,28 @@ pull:
 # 启动Agent
 agent-up:
 	@echo "🚀 启动Agent..."
-	@docker-compose -f docker-compose.agent.yml up -d
+	@$(DOCKER_COMPOSE) -f docker-compose.agent.yml up -d
 
 # 停止Agent
 agent-down:
 	@echo "🛑 停止Agent..."
-	@docker-compose -f docker-compose.agent.yml down
+	@$(DOCKER_COMPOSE) -f docker-compose.agent.yml down
 
 # 查看Agent日志
 agent-logs:
-	@docker-compose -f docker-compose.agent.yml logs -f --tail=100
+	@$(DOCKER_COMPOSE) -f docker-compose.agent.yml logs -f --tail=100
 
 # Agent状态
 agent-status:
-	@docker-compose -f docker-compose.agent.yml ps
+	@$(DOCKER_COMPOSE) -f docker-compose.agent.yml ps
 
 # 查看本地Agent日志
 local-agent-logs:
-	@docker-compose logs -f --tail=100 local-agent local-rclone-sidecar
+	@$(DOCKER_COMPOSE) logs -f --tail=100 local-agent local-rclone-sidecar
 
 # 本地Agent状态
 local-agent-status:
-	@docker-compose ps local-agent local-rclone-sidecar
+	@$(DOCKER_COMPOSE) ps local-agent local-rclone-sidecar
 
 # ============================================
 # 维护命令
@@ -172,13 +178,13 @@ local-agent-status:
 backup:
 	@echo "💾 备份数据库..."
 	@mkdir -p backups
-	@docker-compose exec -T postgres pg_dump -U $${DB_USER:-rclone} $${DB_NAME:-rclone_backup} | gzip > backups/backup-$$(date +%Y%m%d-%H%M%S).sql.gz
+	@$(DOCKER_COMPOSE) exec -T postgres pg_dump -U $${DB_USER:-rclone} $${DB_NAME:-rclone_backup} | gzip > backups/backup-$$(date +%Y%m%d-%H%M%S).sql.gz
 	@echo "✅ 备份完成: backups/backup-$$(date +%Y%m%d-%H%M%S).sql.gz"
 
 # 启动自动备份服务
 backup-auto:
 	@echo "🔄 启动自动备份服务..."
-	@docker-compose --profile db-backup up -d db-backup
+	@$(DOCKER_COMPOSE) --profile db-backup up -d db-backup
 	@echo "✅ 自动备份服务已启动（每24小时备份一次）"
 
 # 恢复数据库 (使用: make restore FILE=backups/backup-xxx.sql.gz)
@@ -188,7 +194,7 @@ restore:
 		exit 1; \
 	fi
 	@echo "🔄 恢复数据库..."
-	@gunzip < $(FILE) | docker-compose exec -T postgres psql -U rclone rclone_backup
+	@gunzip < $(FILE) | $(DOCKER_COMPOSE) exec -T postgres psql -U $${DB_USER:-rclone} $${DB_NAME:-rclone_backup}
 	@echo "✅ 恢复完成"
 
 # 清理所有数据（危险！）
@@ -196,7 +202,7 @@ clean:
 	@echo "⚠️  警告: 这将删除所有数据！"
 	@echo "按 Ctrl+C 取消，或按 Enter 继续..."
 	@read confirm
-	@docker-compose down -v
+	@$(DOCKER_COMPOSE) --profile local-agent --profile db-backup down -v
 	@rm -rf backups/*
 	@echo "🗑️  所有数据已清理"
 
@@ -225,19 +231,19 @@ test-scheduling:
 
 # 进入Hub容器
 shell:
-	@docker-compose exec hub-api sh
+	@$(DOCKER_COMPOSE) exec hub-api sh
 
 # 进入数据库
 db-shell:
-	@docker-compose exec postgres psql -U rclone rclone_backup
+	@$(DOCKER_COMPOSE) exec postgres psql -U $${DB_USER:-rclone} $${DB_NAME:-rclone_backup}
 
 # 查看数据库表
 db-tables:
-	@docker-compose exec postgres psql -U rclone -d rclone_backup -c "\dt"
+	@$(DOCKER_COMPOSE) exec postgres psql -U $${DB_USER:-rclone} -d $${DB_NAME:-rclone_backup} -c "\dt"
 
 # 查看环境变量
 env:
-	@docker-compose config
+	@$(DOCKER_COMPOSE) config
 
 # ============================================
 # 开发命令
@@ -246,13 +252,13 @@ env:
 # 开发模式（实时重载）
 dev:
 	@echo "🔧 启动开发模式..."
-	@GIN_MODE=debug LOG_LEVEL=debug docker-compose up
+	@GIN_MODE=debug LOG_LEVEL=debug $(DOCKER_COMPOSE) up
 
 # 监视文件变化
 watch:
 	@echo "👁️  监视文件变化..."
-	@docker-compose up -d
-	@docker-compose logs -f hub-api
+	@$(DOCKER_COMPOSE) up -d
+	@$(DOCKER_COMPOSE) logs -f hub-api
 
 # 格式化代码
 fmt:
@@ -273,7 +279,7 @@ lint:
 # 生产环境启动
 prod:
 	@echo "🚀 启动生产环境..."
-	@docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 # 生成密钥
 gen-keys:

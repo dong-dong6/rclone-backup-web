@@ -33,21 +33,30 @@
 
 ## 🚀 快速开始
 
-### 使用部署脚本（推荐）
+### 方式一：使用部署脚本（推荐）
 
 ```bash
 # 克隆仓库
 git clone https://github.com/yourusername/rclone-backup-web.git
 cd rclone-backup-web/v2
 
-# 部署Hub
-./deploy.sh hub
+# 运行部署脚本（交互式）
+./deploy.sh
 
-# 或部署Hub + 本地Agent（自我备份）
-./deploy.sh hub-with-agent
+# 或直接指定部署类型
+./deploy.sh hub              # 仅部署Hub
+./deploy.sh hub-with-agent   # 部署Hub和本地Agent  
+./deploy.sh agent            # 部署独立Agent
 ```
 
-### 使用Makefile
+部署脚本特性：
+- ✅ 自动检测Docker Compose版本（支持`docker compose`和`docker-compose`）
+- ✅ 交互式配置环境变量（无需手动创建.env）
+- ✅ 自动生成安全密钥
+- ✅ 本地构建所有Docker镜像
+- ✅ 健康检查和状态监控
+
+### 方式二：使用Makefile
 
 ```bash
 # 初始化环境
