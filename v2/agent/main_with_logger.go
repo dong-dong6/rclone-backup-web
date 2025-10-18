@@ -19,7 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"github.com/robfig/cron/v3"
-	"github.com/rclone-backup-web/shared/logger"
+	// "github.com/rclone-backup-web/shared/logger" // TODO: implement shared logger
 )
 
 // Global logger instance
