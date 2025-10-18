@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -182,7 +183,8 @@ func (s *TaskService) BuildTaskDetailsForAgent(ctx context.Context, task *models
 	// Add rclone arguments if present
 	if task.RcloneArgs != nil {
 		var args []string
-		if err := task.RcloneArgs.UnmarshalJSON(&args); err == nil {
+		// RcloneArgs is already a JSONB type ([]byte), unmarshal it properly
+		if err := json.Unmarshal(task.RcloneArgs, &args); err == nil {
 			taskDetails["rclone_args"] = args
 		}
 	}

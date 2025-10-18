@@ -2,11 +2,9 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -264,14 +262,9 @@ func (a *Agent) executeTask(executionID string, task *Task, triggerMode string) 
 		a.runningMux.Unlock()
 	}()
 
-	// Check if we should use sidecar or direct execution
-	if a.UseSidecar() {
-		// Use Rclone Sidecar for execution
-		a.executeTaskWithSidecar(executionID, task, triggerMode)
-	} else {
-		// Fallback to direct execution
-		a.executeTaskDirect(executionID, task, triggerMode)
-	}
+	// For now, always use direct execution
+	// TODO: Implement sidecar support
+	a.executeTaskDirect(executionID, task, triggerMode)
 }
 
 // executeTaskDirect executes task directly (fallback method)

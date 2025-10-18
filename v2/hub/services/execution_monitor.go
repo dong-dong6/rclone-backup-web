@@ -82,8 +82,6 @@ func (m *ExecutionMonitor) checkExecutions(ctx context.Context) {
 
 // checkTimedOutExecutions marks executions that have been running too long as failed
 func (m *ExecutionMonitor) checkTimedOutExecutions(ctx context.Context) {
-	executionModel := models.NewExecutionModel(m.db)
-	
 	// Find executions that have been running for too long
 	cutoffTime := time.Now().Add(-m.executionTimeout)
 	

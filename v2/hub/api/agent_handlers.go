@@ -385,3 +385,4 @@ func (h *Handler) StreamExecutionLogs(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{"message": "Logs received"})
+}
