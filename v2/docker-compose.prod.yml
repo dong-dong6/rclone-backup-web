@@ -18,7 +18,7 @@ services:
     volumes:
       # 使用绑定挂载 - 数据存储在 ./data/postgres
       - ./data/postgres:/var/lib/postgresql/data
-      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+      - ./hub/database/migrations:/docker-entrypoint-initdb.d:ro
     networks:
       - backend
     healthcheck:

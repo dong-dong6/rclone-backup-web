@@ -21,7 +21,7 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+      - ./hub/database/migrations:/docker-entrypoint-initdb.d:ro
       # 数据库备份目录，供本地Agent备份
       - db_backups:/backups
     networks:

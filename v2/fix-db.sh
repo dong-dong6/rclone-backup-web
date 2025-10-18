@@ -108,7 +108,12 @@ fi
 # 7. 验证数据库表
 echo ""
 echo -e "${BLUE}7️⃣ 验证数据库表...${NC}"
-tables=$($DC -f $CF exec -T postgres psql -U ${DB_USER:-rclone} -d ${DB_NAME:-rclone_backup} -c "\dt" 2>/dev/null | grep -E "agents|backup_tasks|rclone_remotes" | wc -l)
+
+# 等待一下让初始化脚本执行
+sleep 3
+
+# 检查核心表是否存在
+tables=$($DC -f $CF exec -T postgres psql -U ${DB_USER:-rclone} -d ${DB_NAME:-rclone_backup} -c "\dt" 2>/dev/null | grep -E "agents|backup_tasks|rclone_remotes|task_executions|users" | wc -l)
 
 if [ "$tables" -gt 0 ]; then
     echo -e "${GREEN}✅ 数据库表创建成功${NC}"
