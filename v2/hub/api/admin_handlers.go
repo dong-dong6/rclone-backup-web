@@ -33,26 +33,50 @@ func (h *Handler) AdminLogin(c *gin.Context) {
 		return
 	}
 
-	// Simple hardcoded admin check (in production, use database)
-	// You should implement proper user authentication
-	if req.Username != "admin" || req.Password != "admin" {
+	// Authenticate user
+	userModel := models.NewUserModel(h.db)
+	user, err := userModel.Authenticate(c.Request.Context(), req.Username, req.Password)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
 	// Generate JWT token
-	token, err := h.authService.GenerateJWT("admin-user-id", "admin")
+	token, err := h.authService.GenerateJWT(user.ID.String(), user.Role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
 
+	// Get client info
+	ipAddress := c.ClientIP()
+	userAgent := c.Request.UserAgent()
+
+	// Create session
+	tokenHash, err := h.authService.HashAPIKey(token)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+		return
+	}
+
+	_, err = userModel.CreateSession(c.Request.Context(), user.ID, tokenHash, ipAddress, userAgent, 24*time.Hour)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+		return
+	}
+
+	// Log audit event
+	h.logAuditEvent(c, user.ID, "login", "user", user.ID, map[string]interface{}{
+		"ip_address": ipAddress,
+		"user_agent": userAgent,
+	})
+
 	response := LoginResponse{
 		Token: token,
 	}
-	response.User.ID = "admin-user-id"
-	response.User.Name = "Admin"
-	response.User.Role = "admin"
+	response.User.ID = user.ID.String()
+	response.User.Name = user.FullName
+	response.User.Role = user.Role
 
 	c.JSON(http.StatusOK, response)
 }
