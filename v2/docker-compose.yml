@@ -40,7 +40,7 @@ services:
       dockerfile: Dockerfile
       args:
         - GO_VERSION=1.21
-    image: ${HUB_IMAGE:-rclone-backup-hub}:${VERSION:-latest}
+    image: rclone-backup-hub:${VERSION:-latest}
     container_name: rclone-backup-hub
     restart: unless-stopped
     environment:
@@ -88,7 +88,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NODE_VERSION=20-alpine
-    image: ${WEB_IMAGE:-rclone-backup-web}:${VERSION:-latest}
+    image: rclone-backup-web:${VERSION:-latest}
     container_name: rclone-backup-web
     restart: unless-stopped
     environment:
@@ -139,7 +139,7 @@ services:
       dockerfile: Dockerfile
       args:
         - GO_VERSION=1.21
-    image: ${AGENT_IMAGE:-rclone-backup-agent}:${VERSION:-latest}
+    image: rclone-backup-agent:${VERSION:-latest}
     container_name: rclone-backup-local-agent
     restart: unless-stopped
     profiles:

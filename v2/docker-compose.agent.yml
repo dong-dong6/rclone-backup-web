@@ -1,13 +1,11 @@
 version: '3.8'
 
 # ============================================
-# Rclone Backup Agent - Deployment
+# 独立Agent部署配置 - 用于远程服务器
 # ============================================
 
 services:
-  # ============================================
-  # Agent Service (Go)
-  # ============================================
+  # Agent Service
   agent:
     build:
       context: ./agent
@@ -18,41 +16,43 @@ services:
     container_name: rclone-agent-${AGENT_NAME:-default}
     restart: unless-stopped
     environment:
-      # Hub Connection (Required)
+      # Hub连接配置（必需）
       HUB_URL: ${HUB_URL:?Hub URL required}
-      AGENT_ID: ${AGENT_ID:-}
-      AGENT_API_KEY: ${AGENT_API_KEY:-}
-      REGISTRATION_TOKEN: ${REGISTRATION_TOKEN:-}
       
-      # Agent Configuration
+      # 注册方式（二选一）
+      REGISTRATION_TOKEN: ${REGISTRATION_TOKEN:-}  # 首次注册
+      AGENT_ID: ${AGENT_ID:-}                      # 已注册
+      AGENT_API_KEY: ${AGENT_API_KEY:-}            # 已注册
+      
+      # Agent配置
       AGENT_NAME: ${AGENT_NAME:-agent-$(hostname)}
       HEARTBEAT_INTERVAL: ${HEARTBEAT_INTERVAL:-30s}
       TASK_TIMEOUT: ${TASK_TIMEOUT:-2h}
       
-      # Rclone Sidecar Configuration
+      # Rclone Sidecar配置
       RCLONE_ENDPOINT: http://rclone-sidecar:5572
       RCLONE_RC_USER: ${RCLONE_RC_USER:-}
       RCLONE_RC_PASS: ${RCLONE_RC_PASS:-}
       USE_SIDECAR: ${USE_SIDECAR:-true}
       
-      # Local Fallback Configuration
+      # 本地回退
       ENABLE_LOCAL_FALLBACK: ${ENABLE_LOCAL_FALLBACK:-true}
       LOCAL_FALLBACK_THRESHOLD: ${LOCAL_FALLBACK_THRESHOLD:-5m}
       CONFIG_CACHE_DIR: /data/config
       
-      # Logging
+      # 日志
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FILE: /data/logs/agent.log
     volumes:
-      # Agent configuration and cache
+      # Agent配置和缓存
       - agent_data:/data
       
-      # Source paths to backup (customize as needed)
+      # 备份源路径（根据实际需求修改）
       - ${BACKUP_SOURCE_1:-/var/www}:/backup/www:ro
       - ${BACKUP_SOURCE_2:-/home}:/backup/home:ro
       - ${BACKUP_SOURCE_3:-/etc}:/backup/etc:ro
       
-      # Additional custom paths can be added
+      # 添加更多路径：
       # - /path/on/host:/backup/name:ro
     networks:
       - agent-network
@@ -65,9 +65,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # ============================================
-  # Rclone Sidecar (Remote Control Daemon)
-  # ============================================
+  # Rclone Sidecar
   rclone-sidecar:
     image: rclone/rclone:${RCLONE_VERSION:-latest}
     container_name: rclone-sidecar-${AGENT_NAME:-default}
@@ -89,15 +87,15 @@ services:
       RCLONE_CACHE_DIR: /cache
       RCLONE_TEMP_DIR: /tmp
     volumes:
-      # Rclone configuration and cache
+      # Rclone配置和缓存
       - rclone_config:/config
       - rclone_cache:/cache
       - rclone_logs:/logs
       
-      # Shared data volume with agent
+      # 与Agent共享数据卷
       - agent_data:/data:rw
       
-      # Same backup source paths as agent
+      # 相同的备份源路径
       - ${BACKUP_SOURCE_1:-/var/www}:/backup/www:ro
       - ${BACKUP_SOURCE_2:-/home}:/backup/home:ro
       - ${BACKUP_SOURCE_3:-/etc}:/backup/etc:ro
@@ -117,16 +115,10 @@ services:
           cpus: '0.25'
           memory: 128M
 
-# ============================================
-# Networks
-# ============================================
 networks:
   agent-network:
     driver: bridge
 
-# ============================================
-# Volumes
-# ============================================
 volumes:
   agent_data:
     driver: local

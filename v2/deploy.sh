@@ -1,192 +1,305 @@
 #!/bin/bash
 
-# Rclone-Backup-Web V2.0 Deployment Script
-# This script helps deploy the distributed backup system
+# ============================================
+# Rclone Backup Web V2.0 - 快速部署脚本
+# ============================================
 
 set -e
 
-# Colors for output
+# 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Functions
+# 打印带颜色的消息
+print_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
 print_success() {
-    echo -e "${GREEN}✓${NC} $1"
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
 print_error() {
-    echo -e "${RED}✗${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1"
 }
 
-print_info() {
-    echo -e "${YELLOW}➜${NC} $1"
+# 显示帮助信息
+show_help() {
+    cat << EOF
+Rclone Backup Web V2.0 - 部署脚本
+
+用法:
+    ./deploy.sh [选项]
+
+选项:
+    hub              部署Hub（不含Agent）
+    hub-with-agent   部署Hub（含本地Agent）
+    agent            部署独立Agent
+    build            构建所有镜像
+    clean            清理所有数据和镜像
+    help             显示此帮助信息
+
+示例:
+    ./deploy.sh hub              # 部署Hub服务
+    ./deploy.sh hub-with-agent   # 部署Hub和本地Agent
+    ./deploy.sh agent            # 在远程服务器部署Agent
+
+EOF
 }
 
-# Check prerequisites
-check_prerequisites() {
-    print_info "Checking prerequisites..."
+# 检查依赖
+check_requirements() {
+    print_info "检查系统依赖..."
     
-    # Check Docker
+    # 检查Docker
     if ! command -v docker &> /dev/null; then
-        print_error "Docker is not installed"
+        print_error "Docker未安装，请先安装Docker"
         exit 1
     fi
-    print_success "Docker is installed"
     
-    # Check Docker Compose
+    # 检查Docker Compose
     if ! command -v docker-compose &> /dev/null; then
-        print_error "Docker Compose is not installed"
+        print_error "Docker Compose未安装，请先安装Docker Compose"
         exit 1
     fi
-    print_success "Docker Compose is installed"
+    
+    print_success "依赖检查通过"
 }
 
-# Deploy Hub
-deploy_hub() {
-    print_info "Deploying Hub (Central Node)..."
+# 生成安全密钥
+generate_keys() {
+    print_info "生成安全密钥..."
     
-    cd docker/hub
-    
-    # Copy environment file if not exists
     if [ ! -f .env ]; then
         cp .env.example .env
-        print_info "Created .env file from template"
-        print_info "Please edit docker/hub/.env to set your passwords and secrets"
-        read -p "Press enter to continue after editing .env file..."
-    fi
-    
-    # Start services
-    docker-compose up -d
-    
-    print_success "Hub deployed successfully"
-    print_info "Hub API: http://localhost:8080"
-    print_info "Web UI: http://localhost"
-}
-
-# Register Agent
-register_agent() {
-    print_info "Registering a new Agent..."
-    
-    read -p "Enter Hub URL (e.g., http://hub.example.com): " hub_url
-    read -p "Enter Agent name: " agent_name
-    
-    # Create registration token
-    print_info "Creating registration token..."
-    
-    # This would normally call the API to create a token
-    # For now, we'll provide instructions
-    print_info "Please follow these steps:"
-    echo "1. Open the Web UI at $hub_url"
-    echo "2. Login with admin credentials"
-    echo "3. Go to Agents page"
-    echo "4. Click 'Create Registration Token'"
-    echo "5. Copy the token"
-    
-    read -p "Enter the registration token: " token
-    
-    # Register agent
-    response=$(curl -s -X POST "$hub_url/api/v1/agent/register" \
-        -H "Content-Type: application/json" \
-        -d "{\"token\": \"$token\", \"name\": \"$agent_name\"}")
-    
-    agent_id=$(echo $response | grep -o '"agent_id":"[^"]*' | sed 's/"agent_id":"//')
-    api_key=$(echo $response | grep -o '"api_key":"[^"]*' | sed 's/"api_key":"//')
-    
-    if [ -z "$agent_id" ] || [ -z "$api_key" ]; then
-        print_error "Failed to register agent"
-        echo "Response: $response"
-        exit 1
-    fi
-    
-    print_success "Agent registered successfully"
-    echo "Agent ID: $agent_id"
-    echo "API Key: $api_key"
-    
-    # Save to agent .env file
-    cd docker/agent
-    cp .env.example .env
-    sed -i "s|HUB_URL=.*|HUB_URL=$hub_url|" .env
-    sed -i "s|AGENT_ID=.*|AGENT_ID=$agent_id|" .env
-    sed -i "s|AGENT_API_KEY=.*|AGENT_API_KEY=$api_key|" .env
-    
-    print_success "Agent configuration saved to docker/agent/.env"
-}
-
-# Deploy Agent
-deploy_agent() {
-    print_info "Deploying Agent..."
-    
-    cd docker/agent
-    
-    if [ ! -f .env ]; then
-        print_error "Agent not configured. Please register the agent first."
-        exit 1
-    fi
-    
-    docker-compose up -d
-    
-    print_success "Agent deployed successfully"
-}
-
-# Show status
-show_status() {
-    print_info "System Status:"
-    
-    echo ""
-    echo "Hub Services:"
-    cd docker/hub
-    docker-compose ps
-    
-    echo ""
-    echo "Agent Services:"
-    cd ../agent
-    if [ -f docker-compose.yml ]; then
-        docker-compose ps
+        
+        # 生成随机密钥
+        JWT_SECRET=$(openssl rand -hex 32)
+        ENCRYPTION_KEY=$(openssl rand -hex 16)
+        DB_PASSWORD=$(openssl rand -base64 20 | tr -d "=+/" | cut -c1-20)
+        
+        # 替换默认值
+        sed -i.bak "s/JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" .env
+        sed -i.bak "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=$ENCRYPTION_KEY/" .env
+        sed -i.bak "s/DB_PASSWORD=.*/DB_PASSWORD=$DB_PASSWORD/" .env
+        
+        rm -f .env.bak
+        print_success "安全密钥已生成并保存到 .env"
     else
-        echo "No agents deployed"
+        print_warning ".env 文件已存在，跳过密钥生成"
     fi
 }
 
-# Main menu
-show_menu() {
-    echo ""
-    echo "Rclone-Backup-Web V2.0 Deployment Tool"
-    echo "======================================="
-    echo "1) Deploy Hub (Central Node)"
-    echo "2) Register Agent"
-    echo "3) Deploy Agent"
-    echo "4) Show Status"
-    echo "5) Exit"
-    echo ""
-    read -p "Select an option: " choice
+# 构建镜像
+build_images() {
+    print_info "开始构建Docker镜像..."
     
-    case $choice in
-        1)
-            check_prerequisites
+    # 构建Hub镜像
+    print_info "构建Hub API镜像..."
+    docker-compose build hub-api
+    
+    print_info "构建Web UI镜像..."
+    docker-compose build web-ui
+    
+    # 构建Agent镜像
+    print_info "构建Agent镜像..."
+    docker-compose --profile local-agent build local-agent
+    
+    print_success "所有镜像构建完成"
+    
+    # 显示构建的镜像
+    echo ""
+    print_info "构建的镜像列表:"
+    docker images | grep -E "rclone-backup|REPOSITORY" | head -5
+}
+
+# 部署Hub
+deploy_hub() {
+    print_info "开始部署Hub服务..."
+    
+    check_requirements
+    generate_keys
+    
+    # 构建镜像
+    print_info "构建Hub镜像..."
+    docker-compose build hub-api web-ui
+    
+    # 启动服务
+    print_info "启动Hub服务..."
+    docker-compose up -d postgres redis hub-api web-ui
+    
+    # 等待服务启动
+    print_info "等待服务启动..."
+    sleep 10
+    
+    # 检查服务状态
+    if curl -f http://localhost:8080/health &> /dev/null; then
+        print_success "Hub服务部署成功！"
+        echo ""
+        echo "访问地址:"
+        echo "  Web UI: http://localhost:3000"
+        echo "  API: http://localhost:8080"
+        echo "  Metrics: http://localhost:9090/metrics"
+    else
+        print_error "Hub服务启动失败，请检查日志"
+        docker-compose logs hub-api
+        exit 1
+    fi
+}
+
+# 部署Hub和本地Agent
+deploy_hub_with_agent() {
+    print_info "开始部署Hub服务（含本地Agent）..."
+    
+    check_requirements
+    generate_keys
+    
+    # 先部署Hub
+    deploy_hub
+    
+    # 提示获取令牌
+    echo ""
+    print_warning "请完成以下步骤："
+    echo "1. 访问 http://localhost:3000"
+    echo "2. 登录系统"
+    echo "3. 进入 Agents 页面"
+    echo "4. 点击 '生成注册令牌'"
+    echo "5. 复制令牌"
+    echo ""
+    read -p "请输入注册令牌: " token
+    
+    if [ -z "$token" ]; then
+        print_error "令牌不能为空"
+        exit 1
+    fi
+    
+    # 更新.env文件
+    echo "LOCAL_AGENT_REGISTRATION_TOKEN=$token" >> .env
+    
+    # 构建Agent镜像
+    print_info "构建Agent镜像..."
+    docker-compose --profile local-agent build local-agent
+    
+    # 重启服务（含Agent）
+    print_info "启动本地Agent..."
+    docker-compose --profile local-agent up -d local-agent local-rclone-sidecar
+    
+    # 检查Agent状态
+    sleep 5
+    if docker-compose ps | grep -q "local-agent.*Up"; then
+        print_success "Hub和本地Agent部署成功！"
+    else
+        print_error "本地Agent启动失败，请检查日志"
+        docker-compose logs local-agent
+    fi
+}
+
+# 部署独立Agent
+deploy_agent() {
+    print_info "开始部署独立Agent..."
+    
+    check_requirements
+    
+    # 创建Agent环境文件
+    if [ ! -f .env.agent ]; then
+        cat > .env.agent << EOF
+# Agent配置
+HUB_URL=http://your-hub-server:8080
+REGISTRATION_TOKEN=
+AGENT_NAME=$(hostname)
+
+# 备份源路径
+BACKUP_SOURCE_1=/var/www
+BACKUP_SOURCE_2=/home
+BACKUP_SOURCE_3=/etc
+
+# Rclone配置
+RCLONE_VERSION=latest
+RCLONE_CPU_LIMIT=2.0
+RCLONE_MEMORY_LIMIT=1G
+EOF
+        
+        print_warning "请编辑 .env.agent 文件，设置HUB_URL和REGISTRATION_TOKEN"
+        exit 0
+    fi
+    
+    # 加载配置
+    source .env.agent
+    
+    if [ -z "$HUB_URL" ] || [ -z "$REGISTRATION_TOKEN" ]; then
+        print_error "请先配置HUB_URL和REGISTRATION_TOKEN"
+        exit 1
+    fi
+    
+    # 构建Agent镜像
+    print_info "构建Agent镜像..."
+    docker-compose -f docker-compose.agent.yml build
+    
+    # 启动Agent
+    print_info "启动Agent服务..."
+    docker-compose -f docker-compose.agent.yml up -d
+    
+    print_success "Agent部署成功！"
+}
+
+# 清理所有数据
+clean_all() {
+    print_warning "此操作将删除所有数据和镜像，是否继续？(y/N)"
+    read -r confirm
+    
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        print_info "操作已取消"
+        exit 0
+    fi
+    
+    print_info "停止所有容器..."
+    docker-compose --profile local-agent --profile db-backup down -v
+    
+    print_info "删除镜像..."
+    docker images | grep rclone-backup | awk '{print $3}' | xargs -r docker rmi -f
+    
+    print_info "删除备份文件..."
+    rm -rf backups/*
+    
+    print_success "清理完成"
+}
+
+# 主函数
+main() {
+    case "$1" in
+        hub)
             deploy_hub
             ;;
-        2)
-            register_agent
+        hub-with-agent)
+            deploy_hub_with_agent
             ;;
-        3)
+        agent)
             deploy_agent
             ;;
-        4)
-            show_status
+        build)
+            check_requirements
+            build_images
             ;;
-        5)
-            exit 0
+        clean)
+            clean_all
+            ;;
+        help|--help|-h)
+            show_help
             ;;
         *)
-            print_error "Invalid option"
+            print_error "未知命令: $1"
+            show_help
+            exit 1
             ;;
     esac
-    
-    show_menu
 }
 
-# Start
-cd "$(dirname "$0")"
-show_menu
+# 执行主函数
+main "$@"

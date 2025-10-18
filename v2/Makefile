@@ -100,18 +100,29 @@ status:
 # 构建命令
 # ============================================
 
-# 构建所有镜像
+# 构建所有镜像（本地构建）
 build:
-	@echo "🔨 构建Docker镜像..."
+	@echo "🔨 本地构建Docker镜像..."
 	@docker-compose --profile local-agent build
+	@echo "✅ 镜像构建完成！"
+	@docker images | grep rclone-backup
 
-# 强制重新构建
+# 强制重新构建（清除缓存）
 rebuild:
 	@echo "🔨 强制重新构建镜像..."
 	@docker-compose --profile local-agent build --no-cache
+	@echo "✅ 镜像重新构建完成！"
 
-# 更新服务
-update: pull
+# 构建并启动
+build-and-up: build up
+
+# 构建并启动（含本地Agent）
+build-and-up-with-agent: build up-with-agent
+
+# 更新服务（本地构建）
+update:
+	@echo "🔄 更新服务..."
+	@$(MAKE) build
 	@$(MAKE) COMPOSE_PROFILES=$(COMPOSE_PROFILES) up
 
 # 更新服务（含本地Agent）

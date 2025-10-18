@@ -1,296 +1,250 @@
-# Rclone-Backup-Web V2.0 - 分布式备份系统
+# 🚀 Rclone Backup Web V2.0
 
-## 概述
+一个强大的分布式备份管理系统，基于Hub-and-Spoke架构设计。
 
-Rclone-Backup-Web V2.0 是一个基于 Hub-and-Spoke 架构的分布式备份解决方案，实现了集中管理、分布式执行的备份策略。系统支持多节点部署，具有高可用性和资源高效的特点。
+## ✨ 特性
 
-### 主要特性
+- 🌐 **分布式架构** - 中央Hub管理，多Agent执行
+- 📅 **智能调度** - Cron表达式支持，防重复执行
+- 🔄 **实时监控** - SSE推送，实时日志流
+- 🛡️ **高可用性** - Agent本地回退机制
+- 🎨 **现代UI** - React + TypeScript，响应式设计
+- 🔒 **安全加密** - JWT认证，AES-256加密存储
+- 📦 **容器化部署** - Docker Compose一键部署
 
-- **集中管理**: 通过单一 Web 界面管理所有备份节点和任务
-- **分布式执行**: 轻量级 Agent 在各 VPS 节点上执行备份任务
-- **高可用性**: 支持本地回退机制，即使中央节点离线也能继续执行
-- **实时监控**: 通过 SSE 实时查看备份状态和日志
-- **安全加密**: 敏感数据使用 AES-256 加密，通信使用 TLS
-- **灵活调度**: 支持 Cron 表达式的灵活任务调度
-
-## 系统架构
+## 🏗️ 架构
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     中央节点 (Hub)                        │
-│  ┌─────────┐  ┌──────────┐  ┌────────────┐            │
-│  │ Web UI  │──│ API Server│──│ PostgreSQL │            │
-│  └─────────┘  └──────────┘  └────────────┘            │
-└──────────────────────┬──────────────────────────────────┘
-                       │ HTTPS/WSS
-        ┌──────────────┼──────────────┐
-        │              │              │
-┌───────▼─────┐ ┌──────▼─────┐ ┌─────▼──────┐
-│  Agent #1   │ │  Agent #2   │ │  Agent #3  │
-│  ┌────────┐ │ │  ┌────────┐ │ │ ┌────────┐ │
-│  │ Agent  │ │ │  │ Agent  │ │ │ │ Agent  │ │
-│  └───┬────┘ │ │  └───┬────┘ │ │ └───┬────┘ │
-│      │      │ │      │      │ │     │      │
-│  ┌───▼────┐ │ │  ┌───▼────┐ │ │ ┌───▼────┐ │
-│  │Rclone  │ │ │  │Rclone  │ │ │ │Rclone  │ │
-│  │Sidecar │ │ │  │Sidecar │ │ │ │Sidecar │ │
-│  └────────┘ │ │  └────────┘ │ │ └────────┘ │
-└─────────────┘ └─────────────┘ └─────────────┘
-   子节点 #1       子节点 #2       子节点 #3
+┌─────────────────────────────────────────────┐
+│                  Hub (中央节点)               │
+│  ┌─────────┐  ┌─────────┐  ┌─────────────┐ │
+│  │ Web UI  │  │ API     │  │ PostgreSQL  │ │
+│  └─────────┘  └─────────┘  └─────────────┘ │
+└───────────────────┬─────────────────────────┘
+                    │ HTTPS/WSS
+    ┌───────────────┴───────────────┐
+    │                               │
+┌───▼────┐                    ┌────▼───┐
+│ Agent  │                    │ Agent  │
+│   +    │                    │   +    │
+│Sidecar │                    │Sidecar │
+└────────┘                    └────────┘
 ```
 
-## 快速开始
+## 🚀 快速开始
 
-### 1. 部署中央节点
+### 使用部署脚本（推荐）
 
 ```bash
 # 克隆仓库
-git clone https://github.com/your-repo/rclone-backup-web.git
+git clone https://github.com/yourusername/rclone-backup-web.git
 cd rclone-backup-web/v2
 
-# 配置环境变量
-cp docker/hub/.env.example docker/hub/.env
-# 编辑 .env 文件，设置数据库密码、JWT密钥、加密密钥等
+# 部署Hub
+./deploy.sh hub
 
-# 启动中央节点
-cd docker/hub
-docker-compose up -d
-
-# 查看日志
-docker-compose logs -f
+# 或部署Hub + 本地Agent（自我备份）
+./deploy.sh hub-with-agent
 ```
 
-### 2. 注册并部署 Agent 节点
-
-#### 在 Web UI 中创建注册令牌
-
-1. 访问 http://your-hub-domain
-2. 登录管理界面
-3. 进入 "Agents" 页面
-4. 点击 "Create Registration Token"
-5. 复制生成的令牌
-
-#### 在目标 VPS 上部署 Agent
+### 使用Makefile
 
 ```bash
-# 复制 agent 部署文件到目标 VPS
-scp -r docker/agent/ user@vps-ip:/opt/rclone-agent/
+# 初始化环境
+make init
 
-# SSH 到目标 VPS
-ssh user@vps-ip
+# 构建镜像
+make build
 
-# 配置 Agent
-cd /opt/rclone-agent
+# 启动服务
+make up                # 仅Hub
+make up-with-agent     # Hub + 本地Agent
+```
+
+## 📋 部署方案
+
+### 方案1：仅Hub部署
+
+适合集中管理，Agent部署在其他服务器：
+
+```bash
+# 1. 配置环境变量
 cp .env.example .env
+vim .env  # 编辑配置
 
-# 首次注册（使用注册令牌）
-curl -X POST http://your-hub-domain/api/v1/agent/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "token": "your-registration-token",
-    "name": "vps-node-01"
-  }'
+# 2. 构建并启动
+make build
+make up
 
-# 将返回的 agent_id 和 api_key 填入 .env 文件
-
-# 启动 Agent
-docker-compose up -d
+# 3. 访问Web UI
+# http://localhost:3000
 ```
 
-### 3. 配置备份任务
+### 方案2：Hub + 本地Agent
 
-#### 通过 Web UI
-
-1. **添加 Rclone 远程存储**
-   - 进入 "Remotes" 页面
-   - 点击 "Add Remote"
-   - 输入远程存储配置（S3、Google Drive、OneDrive 等）
-
-2. **创建备份任务**
-   - 进入 "Tasks" 页面
-   - 点击 "Create Task"
-   - 选择远程存储、源路径、目标路径
-   - 设置 Cron 调度表达式
-   - 分配到相应的 Agent 节点
-
-3. **监控执行**
-   - 在 "Dashboard" 查看整体状态
-   - 在 "Executions" 查看详细执行历史
-   - 实时日志会自动推送到界面
-
-## API 文档
-
-### Agent API
-
-#### 注册 Agent
-```http
-POST /api/v1/agent/register
-Content-Type: application/json
-
-{
-  "token": "registration-token",
-  "name": "agent-name"
-}
-```
-
-#### 发送心跳
-```http
-POST /api/v1/agent/heartbeat
-Authorization: Bearer <api-key>
-Content-Type: application/json
-
-{
-  "status": "idle"
-}
-```
-
-### Admin API
-
-#### 登录
-```http
-POST /api/v1/admin/login
-Content-Type: application/json
-
-{
-  "username": "admin",
-  "password": "password"
-}
-```
-
-#### 获取 Agent 列表
-```http
-GET /api/v1/admin/agents
-Authorization: Bearer <jwt-token>
-```
-
-#### 创建备份任务
-```http
-POST /api/v1/admin/tasks
-Authorization: Bearer <jwt-token>
-Content-Type: application/json
-
-{
-  "name": "Daily Website Backup",
-  "rclone_remote_id": "uuid",
-  "source_path": "/var/www/html",
-  "destination_path": "backups/website",
-  "schedule": "0 2 * * *",
-  "assigned_agent_ids": ["agent-uuid"]
-}
-```
-
-## 配置说明
-
-### 中央节点环境变量
+Hub可以备份自身数据：
 
 ```bash
-# 数据库配置
-DATABASE_URL=postgres://user:pass@localhost:5432/dbname
+# 1. 先启动Hub
+make up
 
-# 安全配置
-JWT_SECRET=your-jwt-secret-key
-ENCRYPTION_KEY=your-encryption-key
+# 2. 获取注册令牌
+# 在Web UI的Agents页面生成令牌
 
-# 服务配置
-PORT=8080
-GIN_MODE=release
+# 3. 配置本地Agent
+echo "LOCAL_AGENT_REGISTRATION_TOKEN=xxx" >> .env
+
+# 4. 重启服务
+make down
+make up-with-agent
 ```
 
-### Agent 环境变量
+### 方案3：独立Agent部署
+
+在远程服务器部署Agent：
 
 ```bash
-# Hub 连接配置
-HUB_URL=http://hub.example.com
-AGENT_ID=agent-uuid
-AGENT_API_KEY=agent-api-key
+# 1. 复制Agent配置
+scp -r v2/agent v2/docker-compose.agent.yml remote-server:
 
-# Agent 配置
-HEARTBEAT_INTERVAL=30s
-CONFIG_CACHE_DIR=/var/lib/rclone-agent
+# 2. 在远程服务器
+cd agent
+docker-compose -f docker-compose.agent.yml up -d
 ```
 
-## 安全考虑
+## 🔧 配置说明
 
-1. **通信加密**: 生产环境必须使用 HTTPS/TLS
-2. **凭证保护**: 
-   - API Key 使用 bcrypt 哈希存储
-   - Rclone 配置使用 AES-256 加密
-3. **访问控制**: 
-   - Agent 只能访问分配给自己的任务
-   - Admin API 需要 JWT 认证
-4. **输入验证**: 所有输入都经过严格验证
+### 必需的环境变量
 
-## 故障排查
+| 变量 | 说明 | 示例 |
+|------|------|------|
+| `DB_PASSWORD` | 数据库密码 | `strong_password` |
+| `JWT_SECRET` | JWT签名密钥 | 64位随机字符串 |
+| `ENCRYPTION_KEY` | 加密密钥 | 32位随机字符串 |
 
-### Agent 无法连接到 Hub
-
-1. 检查网络连接
-2. 验证 HUB_URL 配置
-3. 确认 API Key 正确
-4. 查看 Hub 日志
-
-### 备份任务执行失败
-
-1. 检查 Rclone 配置
-2. 验证源路径存在且有读权限
-3. 确认远程存储凭证有效
-4. 查看执行日志
-
-### 本地回退不工作
-
-1. 确认配置已缓存到本地
-2. 检查 Cron 调度器状态
-3. 验证本地时间同步
-
-## 开发指南
-
-### 本地开发环境
+### 生成安全密钥
 
 ```bash
-# 启动数据库
-docker run -d \
-  -e POSTGRES_PASSWORD=password \
-  -p 5432:5432 \
-  postgres:15-alpine
+# 自动生成所有密钥
+make gen-keys >> .env
 
-# 运行 Hub API
-cd v2/hub
-go mod download
-go run .
-
-# 运行 Web UI 开发服务器
-cd v2/hub/web
-npm install
-npm run dev
-
-# 运行 Agent
-cd v2/agent
-go mod download
-go run .
+# 或手动生成
+openssl rand -hex 32  # JWT_SECRET
+openssl rand -hex 16  # ENCRYPTION_KEY
 ```
 
-### 构建生产镜像
+## 📦 镜像构建
+
+所有镜像都在本地构建，无需依赖外部镜像仓库：
 
 ```bash
-# 构建 Hub
-cd v2/hub
-docker build -t rclone-hub:v2.0.0 .
+# 构建所有镜像
+make build
 
-# 构建 Agent
-cd v2/agent
-docker build -t rclone-agent:v2.0.0 .
+# 查看构建的镜像
+docker images | grep rclone-backup
+
+# 输出:
+# rclone-backup-hub      latest    xxx    1.2GB
+# rclone-backup-web      latest    xxx    45MB
+# rclone-backup-agent    latest    xxx    850MB
 ```
 
-## 许可证
+## 🌐 访问地址
+
+启动后可以访问：
+
+- **Web UI**: http://localhost:3000
+- **API**: http://localhost:8080
+- **Metrics**: http://localhost:9090/metrics
+
+默认管理员账号：
+- 用户名：`admin`
+- 密码：`admin` （首次登录后请修改）
+
+## 📊 监控与维护
+
+### 查看服务状态
+
+```bash
+make status           # 服务状态
+make logs            # 查看日志
+make local-agent-logs # 本地Agent日志
+```
+
+### 数据库备份
+
+```bash
+make backup          # 手动备份
+make backup-auto     # 启动自动备份
+make restore FILE=backups/xxx.sql.gz  # 恢复
+```
+
+### 健康检查
+
+```bash
+curl http://localhost:8080/health
+```
+
+## 🔄 更新升级
+
+```bash
+# 更新代码
+git pull
+
+# 重新构建并更新
+make update              # 更新Hub
+make update-with-agent   # 更新Hub和Agent
+```
+
+## 🛠️ 故障排查
+
+### Hub无法启动
+
+```bash
+# 检查日志
+docker-compose logs hub-api
+
+# 检查数据库连接
+docker-compose exec postgres pg_isready
+
+# 重置环境（谨慎）
+make clean
+```
+
+### Agent无法连接
+
+```bash
+# 检查网络
+docker-compose exec local-agent curl http://hub-api:8080/health
+
+# 重新注册
+make down
+rm -rf agent_data
+make up-with-agent
+```
+
+## 📚 文档
+
+- [部署指南](deploy/README.md)
+- [本地Agent配置](deploy/LOCAL_AGENT.md)
+- [API文档](docs/API.md)
+- [架构设计](docs/ARCHITECTURE.md)
+
+## 🤝 贡献
+
+欢迎提交Issue和Pull Request！
+
+## 📄 许可
 
 MIT License
 
-## 贡献
+## 🙏 致谢
 
-欢迎提交 Issue 和 Pull Request！
+- [Rclone](https://rclone.org/) - 强大的云存储工具
+- [Docker](https://www.docker.com/) - 容器化平台
+- 所有贡献者
 
-## 支持
+---
 
-- GitHub Issues: [链接]
-- 文档: [链接]
-- 社区讨论: [链接]
+**Made with ❤️ by the Community**
