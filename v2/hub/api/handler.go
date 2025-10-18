@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"time"
 	
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -59,4 +60,33 @@ func (h *Handler) logAuditEvent(c *gin.Context, userID uuid.UUID, action, resour
 			fmt.Printf("Failed to log audit event: %v\n", err)
 		}
 	}()
+}
+
+// checkScheduledTasksForAgent checks if there are any tasks scheduled to run now for this agent
+func (h *Handler) checkScheduledTasksForAgent(ctx context.Context, agentID uuid.UUID) ([]*models.BackupTask, error) {
+	// Get all active tasks assigned to this agent
+	taskModel := models.NewTaskModel(h.db)
+	tasks, err := taskModel.GetAgentTasks(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+
+	var scheduledTasks []*models.BackupTask
+	now := time.Now()
+
+	for _, task := range tasks {
+		if !task.IsActive || task.Schedule == "" {
+			continue
+		}
+
+		// Check if this task should run now based on its schedule
+		if h.schedulerService.ShouldTaskRunNow(task.ID, task.Schedule, now) {
+			scheduledTasks = append(scheduledTasks, task)
+			
+			// Mark that we've dispatched this task
+			h.schedulerService.MarkTaskDispatched(task.ID, now)
+		}
+	}
+
+	return scheduledTasks, nil
 }

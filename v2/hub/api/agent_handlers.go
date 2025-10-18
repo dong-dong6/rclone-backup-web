@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/base64"
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -111,13 +112,65 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 	// Check for pending actions
 	actions := []HeartbeatAction{}
 
-	// Check if there are any pending executions for this agent
+	// CRITICAL: Check for scheduled tasks that need to be executed NOW
+	taskModel := models.NewTaskModel(h.db)
+	scheduledTasks, err := h.checkScheduledTasksForAgent(c.Request.Context(), agentID)
+	if err == nil && len(scheduledTasks) > 0 {
+		for _, task := range scheduledTasks {
+			// Create execution record for this scheduled task
+			executionModel := models.NewExecutionModel(h.db)
+			execution, err := executionModel.Create(c.Request.Context(), task.ID, agentID, "central")
+			if err != nil {
+				continue
+			}
+
+			// Get remote config
+			remoteModel := models.NewRemoteModel(h.db)
+			remote, err := remoteModel.GetByID(c.Request.Context(), task.RcloneRemoteID)
+			if err != nil {
+				continue
+			}
+
+			// Decrypt remote config
+			decryptedConfig, err := h.cryptoService.Decrypt(remote.ConfigData)
+			if err != nil {
+				continue
+			}
+
+			// Build task data for agent
+			taskData := map[string]interface{}{
+				"task_id":           task.ID.String(),
+				"task_name":         task.Name,
+				"remote_id":         task.RcloneRemoteID.String(),
+				"source_path":       task.SourcePath,
+				"destination_path":  task.DestinationPath,
+				"rclone_args":       task.RcloneArgs,
+				"rclone_config_b64": base64.StdEncoding.EncodeToString([]byte(decryptedConfig)),
+			}
+
+			taskJSON, _ := json.Marshal(taskData)
+
+			actions = append(actions, HeartbeatAction{
+				Action:      "EXECUTE_TASK",
+				ExecutionID: execution.ID.String(),
+				Task:        taskJSON,
+			})
+
+			// Mark execution as running
+			executionModel.UpdateStatus(c.Request.Context(), execution.ID, "running", nil)
+			
+			// Log task dispatch
+			log.Printf("Dispatching task %s to agent %s (execution: %s)", 
+				task.Name, agentID.String(), execution.ID.String())
+		}
+	}
+
+	// Check if there are any manually triggered pending executions
 	executionModel := models.NewExecutionModel(h.db)
 	pendingExecutions, err := executionModel.GetPendingForAgent(c.Request.Context(), agentID)
 	if err == nil && len(pendingExecutions) > 0 {
 		for _, exec := range pendingExecutions {
 			// Get task details
-			taskModel := models.NewTaskModel(h.db)
 			task, err := taskModel.GetByID(c.Request.Context(), exec.TaskID)
 			if err != nil {
 				continue
@@ -137,8 +190,9 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 			}
 
 			taskData := map[string]interface{}{
-				"task_id":           task.ID,
-				"remote_id":         task.RcloneRemoteID,
+				"task_id":           task.ID.String(),
+				"task_name":         task.Name,
+				"remote_id":         task.RcloneRemoteID.String(),
 				"source_path":       task.SourcePath,
 				"destination_path":  task.DestinationPath,
 				"rclone_args":       task.RcloneArgs,
@@ -170,6 +224,7 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 	h.sseService.SendEvent("agent.heartbeat", map[string]interface{}{
 		"agent_id": agentID,
 		"status":   req.Status,
+		"actions":  len(actions),
 	})
 
 	c.JSON(http.StatusOK, HeartbeatResponse{
@@ -324,17 +379,31 @@ func (h *Handler) StreamExecutionLogs(c *gin.Context) {
 		return
 	}
 
-	// Forward logs to SSE
-	for _, log := range req.Logs {
+	// Convert to LogEntry format for database storage
+	logEntries := make([]models.LogEntry, len(req.Logs))
+	for i, log := range req.Logs {
+		logEntries[i] = models.LogEntry{
+			Timestamp: log.Timestamp,
+			Message:   log.Message,
+		}
+	}
+
+	// Store logs in database
+	if err := executionModel.StreamLogs(c.Request.Context(), executionID, logEntries); err != nil {
+		log.Printf("Failed to store execution logs: %v", err)
+		// Don't fail the request, logs are best-effort
+	}
+
+	// Forward logs to SSE for real-time updates
+	for _, logEntry := range req.Logs {
 		h.sseService.SendEvent("execution.log.update", map[string]interface{}{
 			"execution_id": executionID,
 			"agent_id":     agentID,
 			"log": map[string]interface{}{
-				"timestamp": log.Timestamp,
-				"message":   log.Message,
+				"timestamp": logEntry.Timestamp,
+				"message":   logEntry.Message,
 			},
 		})
 	}
 
-	c.JSON(http.StatusAccepted, gin.H{})
-}
+	c.JSON(http.StatusAccepted, gin.H{"message": "Logs received"})

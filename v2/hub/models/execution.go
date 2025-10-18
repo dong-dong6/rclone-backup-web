@@ -210,7 +210,7 @@ func (m *ExecutionModel) UpdateStatus(ctx context.Context, id uuid.UUID, status 
 	return err
 }
 
-// UpdateLogs updates the log output of an execution
+// UpdateLogs updates the log output of an execution (replaces existing logs)
 func (m *ExecutionModel) UpdateLogs(ctx context.Context, id uuid.UUID, logs string) error {
 	query := `
 		UPDATE task_executions
@@ -220,6 +220,35 @@ func (m *ExecutionModel) UpdateLogs(ctx context.Context, id uuid.UUID, logs stri
 
 	_, err := m.db.Exec(ctx, query, id, logs)
 	return err
+}
+
+// AppendLogs appends logs to existing execution log output
+func (m *ExecutionModel) AppendLogs(ctx context.Context, id uuid.UUID, newLogs string) error {
+	query := `
+		UPDATE task_executions
+		SET log_output = COALESCE(log_output, '') || $2
+		WHERE id = $1
+	`
+
+	_, err := m.db.Exec(ctx, query, id, newLogs)
+	return err
+}
+
+// StreamLogs adds timestamped log entries to execution
+func (m *ExecutionModel) StreamLogs(ctx context.Context, id uuid.UUID, logEntries []LogEntry) error {
+	// Format log entries with timestamps
+	var formattedLogs string
+	for _, entry := range logEntries {
+		formattedLogs += fmt.Sprintf("[%s] %s\n", entry.Timestamp, entry.Message)
+	}
+
+	return m.AppendLogs(ctx, id, formattedLogs)
+}
+
+// LogEntry represents a single log entry with timestamp
+type LogEntry struct {
+	Timestamp string `json:"timestamp"`
+	Message   string `json:"message"`
 }
 
 // GetStatsByAgent gets execution statistics for an agent

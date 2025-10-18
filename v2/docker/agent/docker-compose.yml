@@ -14,8 +14,11 @@ services:
       HEARTBEAT_INTERVAL: ${HEARTBEAT_INTERVAL:-30s}
       CONFIG_CACHE_DIR: /var/lib/rclone-agent
       RCLONE_ENDPOINT: http://rclone-sidecar:5572
+      RCLONE_RC_USER: ${RCLONE_RC_USER:-}
+      RCLONE_RC_PASS: ${RCLONE_RC_PASS:-}
     volumes:
       - agent_config:/var/lib/rclone-agent
+      - shared_data:/data:rw  # Shared volume for data exchange
       - /var/www:/var/www:ro  # Example source paths to backup
       - /home:/home:ro
       - /etc:/etc:ro
@@ -24,24 +27,55 @@ services:
     depends_on:
       - rclone-sidecar
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Rclone Sidecar
+  # Rclone Sidecar - Remote Control Daemon
   rclone-sidecar:
     image: rclone/rclone:latest
     container_name: rclone-sidecar
-    command: rcd --rc-addr :5572 --rc-no-auth --rc-web-gui --rc-web-gui-no-open-browser
+    command: >
+      rcd 
+      --rc-addr :5572 
+      --rc-web-gui 
+      --rc-web-gui-no-open-browser
+      --rc-web-gui-update
+      --rc-serve
+      --rc-allow-origin "*"
+      ${RCLONE_RC_USER:+--rc-user ${RCLONE_RC_USER}}
+      ${RCLONE_RC_PASS:+--rc-pass ${RCLONE_RC_PASS}}
+      --log-level ${RCLONE_LOG_LEVEL:-INFO}
+      --log-file /logs/rclone.log
     environment:
       RCLONE_CONFIG: /config/rclone.conf
+      RCLONE_CACHE_DIR: /cache
+      RCLONE_TEMP_DIR: /tmp
     volumes:
       - rclone_config:/config
+      - rclone_cache:/cache
+      - rclone_logs:/logs
+      - shared_data:/data:rw  # Shared volume for data exchange
+      # Mount source paths that need to be backed up
       - /var/www:/var/www:ro
       - /home:/home:ro
       - /etc:/etc:ro
+      # Additional mounts can be added here
     networks:
       - agent-network
     ports:
-      - "5572:5572"  # Expose for debugging, remove in production
+      - "${RCLONE_PORT:-5572}:5572"  # Configurable port, can be disabled in production
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rclone", "rc", "core/stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    resource_limits:
+      memory: ${RCLONE_MEMORY_LIMIT:-512M}
+      cpus: ${RCLONE_CPU_LIMIT:-1.0}
 
 networks:
   agent-network:
@@ -49,4 +83,12 @@ networks:
 
 volumes:
   agent_config:
+    driver: local
   rclone_config:
+    driver: local
+  rclone_cache:
+    driver: local
+  rclone_logs:
+    driver: local
+  shared_data:
+    driver: local

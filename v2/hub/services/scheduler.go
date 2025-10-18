@@ -19,6 +19,8 @@ type SchedulerService struct {
 	mu            sync.RWMutex
 	syncFlags     map[uuid.UUID]bool
 	syncMu        sync.RWMutex
+	lastDispatch  map[uuid.UUID]time.Time
+	dispatchMu    sync.RWMutex
 }
 
 func NewSchedulerService(db *pgxpool.Pool) *SchedulerService {
@@ -27,6 +29,7 @@ func NewSchedulerService(db *pgxpool.Pool) *SchedulerService {
 		cron:          cron.New(cron.WithSeconds()),
 		taskSchedules: make(map[uuid.UUID]cron.EntryID),
 		syncFlags:     make(map[uuid.UUID]bool),
+		lastDispatch:  make(map[uuid.UUID]time.Time),
 	}
 }
 
@@ -188,4 +191,38 @@ func (s *SchedulerService) periodicallyReloadTasks() {
 	for range ticker.C {
 		s.reloadTasks()
 	}
+}
+
+// ShouldTaskRunNow checks if a task should run based on its cron schedule
+func (s *SchedulerService) ShouldTaskRunNow(taskID uuid.UUID, cronExpr string, now time.Time) bool {
+	// Parse cron expression
+	schedule, err := cron.ParseStandard(cronExpr)
+	if err != nil {
+		log.Printf("Failed to parse cron expression %s: %v", cronExpr, err)
+		return false
+	}
+
+	// Get last dispatch time
+	s.dispatchMu.RLock()
+	lastDispatch, exists := s.lastDispatch[taskID]
+	s.dispatchMu.RUnlock()
+
+	// If never dispatched, use a time 1 hour ago as reference
+	if !exists {
+		lastDispatch = now.Add(-1 * time.Hour)
+	}
+
+	// Calculate next run time after last dispatch
+	nextRun := schedule.Next(lastDispatch)
+
+	// Check if it's time to run (with 1-minute tolerance)
+	return now.After(nextRun) || now.Equal(nextRun) || 
+		(now.After(nextRun.Add(-1*time.Minute)) && now.Before(nextRun.Add(1*time.Minute)))
+}
+
+// MarkTaskDispatched marks that a task has been dispatched
+func (s *SchedulerService) MarkTaskDispatched(taskID uuid.UUID, dispatchTime time.Time) {
+	s.dispatchMu.Lock()
+	defer s.dispatchMu.Unlock()
+	s.lastDispatch[taskID] = dispatchTime
 }
