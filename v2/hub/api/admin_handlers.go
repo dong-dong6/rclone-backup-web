@@ -460,14 +460,14 @@ func (h *Handler) TestRemote(c *gin.Context) {
 	}
 	
 	// Decrypt the config
-	decryptedConfig, err := h.cryptoService.Decrypt(remote.ConfigData)
+	_, err = h.cryptoService.Decrypt(remote.ConfigData)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decrypt remote config"})
 		return
 	}
 	
-	// TODO: Implement actual rclone test
-	// For now, just return success
+	// TODO: Implement actual rclone test with decrypted config
+	// For now, just validate the config can be decrypted
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Remote connection test successful",
@@ -502,7 +502,7 @@ func (h *Handler) CancelExecution(c *gin.Context) {
 	}
 	
 	// Broadcast cancellation event
-	h.sseService.BroadcastEvent("execution.status.update", gin.H{
+	h.sseService.SendEvent("execution.status.update", map[string]interface{}{
 		"execution_id": executionID,
 		"status": "cancelled",
 		"timestamp": time.Now().Format(time.RFC3339),
@@ -537,7 +537,7 @@ func (h *Handler) GetDashboardStats(c *gin.Context) {
 	
 	// Get recent execution stats
 	executionModel := models.NewExecutionModel(h.db)
-	executions, _ := executionModel.List(ctx, 100, 0, "")
+	executions, _ := executionModel.List(ctx, 100, 0)
 	
 	successCount := 0
 	failedCount := 0
