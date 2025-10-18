@@ -27,7 +27,9 @@
     "tasks": "Tasks",
     "remotes": "Remotes",
     "executions": "Executions",
-    "settings": "Settings"
+    "settings": "Settings",
+    "profile": "Profile",
+    "logout": "Logout"
   },
   "dashboard": {
     "title": "System Overview",

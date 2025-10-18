@@ -11,7 +11,9 @@ import {
   UserOutlined,
   LogoutOutlined,
   BellOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import Dashboard from './pages/Dashboard';
 import Agents from './pages/Agents';
 import Tasks from './pages/Tasks';
@@ -28,6 +30,7 @@ const { Header, Sider, Content } = Layout;
 const AppLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const { user, logout } = useAuth();
+  const { t, i18n } = useTranslation();
   const [selectedKey, setSelectedKey] = useState('dashboard');
 
   useEffect(() => {
@@ -43,10 +46,20 @@ const AppLayout: React.FC = () => {
   const userMenu = (
     <Menu>
       <Menu.Item key="profile" icon={<UserOutlined />}>
-        Profile
+        {t('menu.profile')}
+      </Menu.Item>
+      <Menu.Item key="language" icon={<GlobalOutlined />}>
+        <Menu>
+          <Menu.Item key="zh" onClick={() => i18n.changeLanguage('zh')}>
+            中文
+          </Menu.Item>
+          <Menu.Item key="en" onClick={() => i18n.changeLanguage('en')}>
+            English
+          </Menu.Item>
+        </Menu>
       </Menu.Item>
       <Menu.Item key="logout" icon={<LogoutOutlined />} onClick={logout}>
-        Logout
+        {t('menu.logout')}
       </Menu.Item>
     </Menu>
   );
@@ -55,37 +68,37 @@ const AppLayout: React.FC = () => {
     {
       key: 'dashboard',
       icon: <DashboardOutlined />,
-      label: 'Dashboard',
+      label: t('menu.dashboard'),
       path: '/dashboard',
     },
     {
       key: 'agents',
       icon: <CloudServerOutlined />,
-      label: 'Agents',
+      label: t('menu.agents'),
       path: '/agents',
     },
     {
       key: 'tasks',
       icon: <ScheduleOutlined />,
-      label: 'Tasks',
+      label: t('menu.tasks'),
       path: '/tasks',
     },
     {
       key: 'remotes',
       icon: <DatabaseOutlined />,
-      label: 'Remotes',
+      label: t('menu.remotes'),
       path: '/remotes',
     },
     {
       key: 'executions',
       icon: <HistoryOutlined />,
-      label: 'Executions',
+      label: t('menu.executions'),
       path: '/executions',
     },
     {
       key: 'settings',
       icon: <SettingOutlined />,
-      label: 'Settings',
+      label: t('menu.settings'),
       path: '/settings',
     },
   ];
@@ -106,7 +119,7 @@ const AppLayout: React.FC = () => {
         }}
       >
         <div className="logo">
-          {collapsed ? 'RB' : 'Rclone Backup'}
+          {collapsed ? 'RB' : t('app.title')}
         </div>
         <Menu
           theme="dark"
@@ -135,7 +148,7 @@ const AppLayout: React.FC = () => {
           }}
         >
           <h1 style={{ margin: 0, fontSize: '20px' }}>
-            Distributed Backup System
+            {t('app.title')}
           </h1>
           <Space size="large">
             <Badge count={5} size="small">
