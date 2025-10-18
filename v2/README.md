@@ -33,30 +33,52 @@
 
 ## 🚀 快速开始
 
-### 方式一：使用部署脚本（推荐）
+### 使用部署脚本（推荐）
 
 ```bash
 # 克隆仓库
 git clone https://github.com/yourusername/rclone-backup-web.git
 cd rclone-backup-web/v2
 
-# 运行部署脚本（交互式）
-./deploy.sh
+# 部署Hub服务
+./deploy.sh hub
 
-# 或直接指定部署类型
-./deploy.sh hub              # 仅部署Hub
-./deploy.sh hub-with-agent   # 部署Hub和本地Agent  
-./deploy.sh agent            # 部署独立Agent
+# 或部署Hub + 本地Agent（自我备份）
+./deploy.sh hub-with-agent
 ```
 
-部署脚本特性：
-- ✅ 自动检测Docker Compose版本（支持`docker compose`和`docker-compose`）
-- ✅ 交互式配置环境变量（无需手动创建.env）
-- ✅ 自动生成安全密钥
-- ✅ 本地构建所有Docker镜像
-- ✅ 健康检查和状态监控
+### 部署脚本功能
 
-### 方式二：使用Makefile
+```bash
+./deploy.sh [命令] [选项]
+
+命令：
+  hub              # 部署Hub服务
+  hub-with-agent   # 部署Hub和本地Agent
+  agent            # 部署独立Agent
+  build            # 构建镜像
+  status           # 查看状态
+  logs [service]   # 查看日志
+  stop             # 停止服务
+  restart          # 重启服务
+  clean            # 交互式清理数据
+  backup           # 备份数据
+  restore <file>   # 恢复备份
+  help             # 显示帮助
+
+选项：
+  --clean          # 部署前清理数据
+```
+
+### 核心特性
+
+- ✅ **透明数据管理** - 所有数据存储在 `./data` 目录
+- ✅ **智能清理** - 交互式数据清理，自动备份
+- ✅ **版本兼容** - 自动检测Docker Compose V1/V2
+- ✅ **本地构建** - 所有镜像本地构建，无需外部仓库
+- ✅ **交互配置** - 首次运行自动生成配置
+
+### 使用Makefile（可选）
 
 ```bash
 # 初始化环境
