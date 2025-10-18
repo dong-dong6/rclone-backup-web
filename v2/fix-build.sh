@@ -77,7 +77,21 @@ else
 fi
 cd ..
 
-# 4. 检查Web UI的package-lock.json
+# 4. 修复Web UI Dockerfile
+echo ""
+echo -e "${BLUE}4️⃣ 检查Web UI Dockerfile...${NC}"
+if [ -f "hub/web/Dockerfile" ]; then
+    if grep -q "npm ci --only=production" hub/web/Dockerfile 2>/dev/null; then
+        echo -e "${YELLOW}修复npm安装命令...${NC}"
+        sed -i.bak 's/npm ci --only=production/npm ci/' hub/web/Dockerfile
+        rm -f hub/web/Dockerfile.bak
+        echo -e "${GREEN}✅ Web UI Dockerfile已修复${NC}"
+    else
+        echo -e "${GREEN}✅ Web UI Dockerfile正确${NC}"
+    fi
+fi
+
+# 5. 检查Web UI的package-lock.json
 echo ""
 echo -e "${BLUE}4️⃣ 检查Web UI依赖...${NC}"
 if [ -d "hub/web" ]; then
@@ -92,7 +106,7 @@ if [ -d "hub/web" ]; then
     cd ../..
 fi
 
-# 5. 验证修复结果
+# 6. 验证修复结果
 echo ""
 echo -e "${BLUE}5️⃣ 验证修复结果...${NC}"
 
