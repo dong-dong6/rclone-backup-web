@@ -166,4 +166,6 @@ export const apiService = {
   },
 };
 
+// Export both named and default
+export { api as apiClient };
 export default api;
