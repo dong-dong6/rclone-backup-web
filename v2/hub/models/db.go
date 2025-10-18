@@ -13,9 +13,38 @@ var dbPool *pgxpool.Pool
 
 // InitDB initializes the database connection pool
 func InitDB() (*pgxpool.Pool, error) {
+	// Build database URL from environment variables
+	dbHost := os.Getenv("DB_HOST")
+	if dbHost == "" {
+		dbHost = "localhost" // Default for local development
+	}
+	
+	dbPort := os.Getenv("DB_PORT")
+	if dbPort == "" {
+		dbPort = "5432"
+	}
+	
+	dbUser := os.Getenv("DB_USER")
+	if dbUser == "" {
+		dbUser = "postgres"
+	}
+	
+	dbPassword := os.Getenv("DB_PASSWORD")
+	if dbPassword == "" {
+		dbPassword = "password"
+	}
+	
+	dbName := os.Getenv("DB_NAME")
+	if dbName == "" {
+		dbName = "rclone_backup"
+	}
+	
+	// Check for complete DATABASE_URL first (for compatibility)
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://postgres:password@localhost:5432/rclone_backup?sslmode=disable"
+		// Build URL from individual components
+		dbURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+			dbUser, dbPassword, dbHost, dbPort, dbName)
 	}
 
 	config, err := pgxpool.ParseConfig(dbURL)

@@ -57,7 +57,7 @@ services:
     image: rclone-backup-hub:${VERSION:-latest}
     restart: always
     environment:
-      # Database Configuration
+      # Database Configuration (Use service name, not localhost!)
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-rclone_backup}

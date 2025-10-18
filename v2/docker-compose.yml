@@ -44,7 +44,8 @@ services:
     container_name: rclone-backup-hub
     restart: unless-stopped
     environment:
-      # Database Configuration
+      # Database Configuration (CRITICAL: Use service name, not localhost!)
+      DB_HOST: postgres
       DATABASE_URL: postgres://${DB_USER:-rclone}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-rclone_backup}?sslmode=disable
       
       # Security Keys (Required)

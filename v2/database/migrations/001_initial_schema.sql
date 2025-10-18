@@ -3,5 +3,5 @@
 -- Date: 2025-10-17
 
 -- This migration creates the initial database schema
--- Run the main schema file
-\i ../schema.sql
+-- Include the schema (schema.sql should be in the same directory)
+\i schema.sql

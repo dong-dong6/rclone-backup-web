@@ -481,9 +481,35 @@ deploy_hub() {
         COMPOSE_FILE="docker-compose.yml"
     fi
     
-    # 启动服务
+    # 启动服务（分步启动以确保依赖顺序）
+    print_info "启动数据库服务..."
+    $DOCKER_COMPOSE -f $COMPOSE_FILE up -d postgres
+    
+    # 等待数据库完全就绪
+    print_info "等待数据库初始化..."
+    local db_ready=0
+    for i in {1..30}; do
+        if $DOCKER_COMPOSE -f $COMPOSE_FILE exec -T postgres pg_isready -U ${DB_USER:-rclone} &> /dev/null; then
+            db_ready=1
+            break
+        fi
+        echo -n "."
+        sleep 2
+    done
+    echo ""
+    
+    if [ $db_ready -eq 0 ]; then
+        print_error "数据库启动失败"
+        print_info "查看数据库日志："
+        $DOCKER_COMPOSE -f $COMPOSE_FILE logs postgres | tail -20
+        exit 1
+    fi
+    
+    print_success "数据库已就绪"
+    
+    # 启动其他服务
     print_info "启动Hub服务..."
-    $DOCKER_COMPOSE -f $COMPOSE_FILE up -d postgres redis hub-api web-ui
+    $DOCKER_COMPOSE -f $COMPOSE_FILE up -d redis hub-api web-ui
     
     # 等待服务启动
     print_info "等待服务启动..."
