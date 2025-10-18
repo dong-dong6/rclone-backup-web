@@ -81,6 +81,7 @@ func main() {
 		{
 			// Authentication
 			admin.POST("/login", apiHandler.AdminLogin)
+			admin.POST("/logout", apiHandler.AdminLogout)
 			
 			// Agents management
 			admin.GET("/agents", apiHandler.ListAgents)
@@ -89,20 +90,27 @@ func main() {
 			
 			// Tasks management
 			admin.GET("/tasks", apiHandler.ListTasks)
+			admin.GET("/tasks/:id", apiHandler.GetTask)
 			admin.POST("/tasks", apiHandler.CreateTask)
 			admin.PUT("/tasks/:id", apiHandler.UpdateTask)
 			admin.DELETE("/tasks/:id", apiHandler.DeleteTask)
 			
 			// Remotes management
 			admin.GET("/remotes", apiHandler.ListRemotes)
+			admin.GET("/remotes/:id", apiHandler.GetRemote)
 			admin.POST("/remotes", apiHandler.CreateRemote)
 			admin.PUT("/remotes/:id", apiHandler.UpdateRemote)
 			admin.DELETE("/remotes/:id", apiHandler.DeleteRemote)
+			admin.POST("/remotes/:id/test", apiHandler.TestRemote)
 			
 			// Executions
 			admin.GET("/executions", apiHandler.ListExecutions)
 			admin.GET("/executions/:id", apiHandler.GetExecutionDetail)
 			admin.POST("/executions/trigger", apiHandler.TriggerExecution)
+			admin.POST("/executions/:id/cancel", apiHandler.CancelExecution)
+			
+			// Dashboard & Statistics
+			admin.GET("/dashboard/stats", apiHandler.GetDashboardStats)
 		}
 	}
 

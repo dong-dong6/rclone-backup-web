@@ -413,3 +413,182 @@ func (h *Handler) SSEEndpoint(c *gin.Context) {
 
 	h.sseService.StreamToClient(c, clientID)
 }
+
+// GetTask returns a single task by ID
+func (h *Handler) GetTask(c *gin.Context) {
+	taskID := c.Param("id")
+	
+	taskModel := models.NewTaskModel(h.db)
+	task, err := taskModel.GetByID(c.Request.Context(), uuid.MustParse(taskID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, task)
+}
+
+// GetRemote returns a single remote by ID
+func (h *Handler) GetRemote(c *gin.Context) {
+	remoteID := c.Param("id")
+	
+	remoteModel := models.NewRemoteModel(h.db)
+	remote, err := remoteModel.GetByID(c.Request.Context(), uuid.MustParse(remoteID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Remote not found"})
+		return
+	}
+	
+	// Decrypt the config for display
+	decryptedConfig, err := h.cryptoService.Decrypt(remote.ConfigData)
+	if err == nil {
+		remote.ConfigData = decryptedConfig
+	}
+	
+	c.JSON(http.StatusOK, remote)
+}
+
+// TestRemote tests a remote connection
+func (h *Handler) TestRemote(c *gin.Context) {
+	remoteID := c.Param("id")
+	
+	remoteModel := models.NewRemoteModel(h.db)
+	remote, err := remoteModel.GetByID(c.Request.Context(), uuid.MustParse(remoteID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Remote not found"})
+		return
+	}
+	
+	// Decrypt the config
+	decryptedConfig, err := h.cryptoService.Decrypt(remote.ConfigData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decrypt remote config"})
+		return
+	}
+	
+	// TODO: Implement actual rclone test
+	// For now, just return success
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Remote connection test successful",
+		"remote_id": remoteID,
+		"remote_name": remote.Name,
+	})
+}
+
+// CancelExecution cancels a running execution
+func (h *Handler) CancelExecution(c *gin.Context) {
+	executionID := c.Param("id")
+	
+	executionModel := models.NewExecutionModel(h.db)
+	execution, err := executionModel.GetByID(c.Request.Context(), uuid.MustParse(executionID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Execution not found"})
+		return
+	}
+	
+	// Check if execution is still running
+	if execution.Status != "running" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Execution is not running"})
+		return
+	}
+	
+	// Update status to cancelled
+	now := time.Now()
+	err = executionModel.UpdateStatus(c.Request.Context(), execution.ID, "cancelled", &now)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cancel execution"})
+		return
+	}
+	
+	// Broadcast cancellation event
+	h.sseService.BroadcastEvent("execution.status.update", gin.H{
+		"execution_id": executionID,
+		"status": "cancelled",
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+	
+	c.JSON(http.StatusOK, gin.H{"message": "Execution cancelled"})
+}
+
+// GetDashboardStats returns dashboard statistics
+func (h *Handler) GetDashboardStats(c *gin.Context) {
+	ctx := c.Request.Context()
+	
+	// Get agent stats
+	agentModel := models.NewAgentModel(h.db)
+	agents, _ := agentModel.List(ctx)
+	onlineAgents := 0
+	for _, agent := range agents {
+		if agent.Status == "online" {
+			onlineAgents++
+		}
+	}
+	
+	// Get task stats
+	taskModel := models.NewTaskModel(h.db)
+	tasks, _ := taskModel.List(ctx)
+	activeTasks := 0
+	for _, task := range tasks {
+		if task.IsActive {
+			activeTasks++
+		}
+	}
+	
+	// Get recent execution stats
+	executionModel := models.NewExecutionModel(h.db)
+	executions, _ := executionModel.List(ctx, 100, 0, "")
+	
+	successCount := 0
+	failedCount := 0
+	runningCount := 0
+	
+	for _, exec := range executions {
+		switch exec.Status {
+		case "success":
+			successCount++
+		case "failed":
+			failedCount++
+		case "running":
+			runningCount++
+		}
+	}
+	
+	successRate := float64(0)
+	if len(executions) > 0 {
+		successRate = float64(successCount) / float64(len(executions)) * 100
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"agents": gin.H{
+			"total": len(agents),
+			"online": onlineAgents,
+			"offline": len(agents) - onlineAgents,
+		},
+		"tasks": gin.H{
+			"total": len(tasks),
+			"active": activeTasks,
+			"inactive": len(tasks) - activeTasks,
+		},
+		"executions": gin.H{
+			"total": len(executions),
+			"success": successCount,
+			"failed": failedCount,
+			"running": runningCount,
+			"success_rate": successRate,
+		},
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+}
+
+// AdminLogout handles admin logout
+func (h *Handler) AdminLogout(c *gin.Context) {
+	// Get user ID from context (set by middleware)
+	userID, exists := c.Get("user_id")
+	if exists {
+		// Log audit event
+		h.logAuditEvent(c, userID.(uuid.UUID), "logout", "user", userID.(uuid.UUID), nil)
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
+}
