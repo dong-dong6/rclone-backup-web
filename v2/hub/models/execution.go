@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -286,4 +287,40 @@ func (m *ExecutionModel) GetStatsByAgent(ctx context.Context, agentID uuid.UUID,
 	}
 
 	return stats, nil
+}
+
+// GetLastExecutionForTask gets the most recent execution for a specific task
+func (m *ExecutionModel) GetLastExecutionForTask(ctx context.Context, taskID uuid.UUID) (*TaskExecution, error) {
+	execution := &TaskExecution{}
+	query := `
+		SELECT 
+			id, task_id, agent_id, status, trigger_mode,
+			log_output, error_message, started_at, ended_at, created_at
+		FROM task_executions
+		WHERE task_id = $1
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	err := m.db.QueryRow(ctx, query, taskID).Scan(
+		&execution.ID,
+		&execution.TaskID,
+		&execution.AgentID,
+		&execution.Status,
+		&execution.TriggerMode,
+		&execution.LogOutput,
+		&execution.ErrorMessage,
+		&execution.StartedAt,
+		&execution.EndedAt,
+		&execution.CreatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // No previous execution
+		}
+		return nil, err
+	}
+
+	return execution, nil
 }

@@ -109,118 +109,96 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 		return
 	}
 
-	// Check for pending actions
+	// Initialize actions array
 	actions := []HeartbeatAction{}
 
-	// CRITICAL: Check for scheduled tasks that need to be executed NOW
-	taskModel := models.NewTaskModel(h.db)
-	scheduledTasks, err := h.checkScheduledTasksForAgent(c.Request.Context(), agentID)
-	if err == nil && len(scheduledTasks) > 0 {
-		for _, task := range scheduledTasks {
-			// Create execution record for this scheduled task
-			executionModel := models.NewExecutionModel(h.db)
-			execution, err := executionModel.Create(c.Request.Context(), task.ID, agentID, "central")
-			if err != nil {
-				continue
-			}
-
-			// Get remote config
-			remoteModel := models.NewRemoteModel(h.db)
-			remote, err := remoteModel.GetByID(c.Request.Context(), task.RcloneRemoteID)
-			if err != nil {
-				continue
-			}
-
-			// Decrypt remote config
-			decryptedConfig, err := h.cryptoService.Decrypt(remote.ConfigData)
-			if err != nil {
-				continue
-			}
-
-			// Build task data for agent
-			taskData := map[string]interface{}{
-				"task_id":           task.ID.String(),
-				"task_name":         task.Name,
-				"remote_id":         task.RcloneRemoteID.String(),
-				"source_path":       task.SourcePath,
-				"destination_path":  task.DestinationPath,
-				"rclone_args":       task.RcloneArgs,
-				"rclone_config_b64": base64.StdEncoding.EncodeToString([]byte(decryptedConfig)),
-			}
-
-			taskJSON, _ := json.Marshal(taskData)
-
-			actions = append(actions, HeartbeatAction{
-				Action:      "EXECUTE_TASK",
-				ExecutionID: execution.ID.String(),
-				Task:        taskJSON,
-			})
-
-			// Mark execution as running
-			executionModel.UpdateStatus(c.Request.Context(), execution.ID, "running", nil)
-			
-			// Log task dispatch
-			log.Printf("Dispatching task %s to agent %s (execution: %s)", 
-				task.Name, agentID.String(), execution.ID.String())
-		}
+	// If agent is already running a task, don't dispatch new ones
+	if req.Status == "running_task" {
+		log.Printf("Agent %s is busy, skipping task dispatch", agentID)
+		c.JSON(http.StatusOK, HeartbeatResponse{Actions: actions})
+		return
 	}
 
-	// Check if there are any manually triggered pending executions
-	executionModel := models.NewExecutionModel(h.db)
-	pendingExecutions, err := executionModel.GetPendingForAgent(c.Request.Context(), agentID)
-	if err == nil && len(pendingExecutions) > 0 {
-		for _, exec := range pendingExecutions {
-			// Get task details
-			task, err := taskModel.GetByID(c.Request.Context(), exec.TaskID)
+	// Use TaskService to find pending tasks
+	taskService := services.NewTaskService(h.db)
+	pendingTask, err := taskService.FindPendingTaskForAgent(c.Request.Context(), agentID)
+	
+	if err != nil {
+		log.Printf("Error finding pending task for agent %s: %v", agentID, err)
+	} else if pendingTask != nil {
+		// We have a task to execute!
+		log.Printf("Found pending task %s (%s) for agent %s", 
+			pendingTask.ID, pendingTask.Name, agentID)
+
+		// Determine trigger mode
+		triggerMode := "central" // Default to scheduled/central trigger
+		
+		// Check if there's already a pending execution (manual trigger)
+		executionModel := models.NewExecutionModel(h.db)
+		pendingExecutions, _ := executionModel.GetPendingForAgent(c.Request.Context(), agentID)
+		
+		var execution *models.TaskExecution
+		if len(pendingExecutions) > 0 && pendingExecutions[0].TaskID == pendingTask.ID {
+			// Use existing pending execution
+			execution = pendingExecutions[0]
+			triggerMode = execution.TriggerMode
+		} else {
+			// Create new execution for scheduled task
+			execution, err = taskService.CreateExecution(c.Request.Context(), 
+				pendingTask.ID, agentID, triggerMode)
 			if err != nil {
-				continue
+				log.Printf("Failed to create execution: %v", err)
+				c.JSON(http.StatusOK, HeartbeatResponse{Actions: actions})
+				return
 			}
-
-			// Get remote config
-			remoteModel := models.NewRemoteModel(h.db)
-			remote, err := remoteModel.GetByID(c.Request.Context(), task.RcloneRemoteID)
-			if err != nil {
-				continue
-			}
-
-			// Decrypt remote config
-			decryptedConfig, err := h.cryptoService.Decrypt(remote.ConfigData)
-			if err != nil {
-				continue
-			}
-
-			taskData := map[string]interface{}{
-				"task_id":           task.ID.String(),
-				"task_name":         task.Name,
-				"remote_id":         task.RcloneRemoteID.String(),
-				"source_path":       task.SourcePath,
-				"destination_path":  task.DestinationPath,
-				"rclone_args":       task.RcloneArgs,
-				"rclone_config_b64": base64.StdEncoding.EncodeToString([]byte(decryptedConfig)),
-			}
-
-			taskJSON, _ := json.Marshal(taskData)
-
-			actions = append(actions, HeartbeatAction{
-				Action:      "EXECUTE_TASK",
-				ExecutionID: exec.ID.String(),
-				Task:        taskJSON,
-			})
-
-			// Mark execution as running
-			executionModel.UpdateStatus(c.Request.Context(), exec.ID, "running", nil)
 		}
+
+		// Build task details for agent
+		taskDetails, err := taskService.BuildTaskDetailsForAgent(c.Request.Context(), 
+			pendingTask, execution.ID, h.cryptoService)
+		if err != nil {
+			log.Printf("Failed to build task details: %v", err)
+			// Mark execution as failed
+			executionModel.UpdateStatus(c.Request.Context(), execution.ID, "failed", nil)
+			c.JSON(http.StatusOK, HeartbeatResponse{Actions: actions})
+			return
+		}
+
+		// Convert to JSON for HeartbeatAction
+		taskJSON, _ := json.Marshal(taskDetails)
+
+		// Create EXECUTE_TASK action
+		actions = append(actions, HeartbeatAction{
+			Action:      "EXECUTE_TASK",
+			ExecutionID: execution.ID.String(),
+			Task:        taskJSON,
+		})
+
+		// Mark execution as running
+		now := time.Now()
+		executionModel.UpdateStatus(c.Request.Context(), execution.ID, "running", &now)
+		
+		log.Printf("✅ Dispatching task %s to agent %s (execution: %s, trigger: %s)", 
+			pendingTask.Name, agentID.String(), execution.ID.String(), triggerMode)
+		
+		// Send SSE event for real-time UI update
+		h.sseService.SendEvent("task.dispatched", map[string]interface{}{
+			"task_id":      pendingTask.ID.String(),
+			"task_name":    pendingTask.Name,
+			"agent_id":     agentID.String(),
+			"execution_id": execution.ID.String(),
+			"trigger_mode": triggerMode,
+		})
 	}
 
 	// Check if agent needs to sync config
-	// This could be triggered by config changes, new task assignments, etc.
 	if h.schedulerService.NeedsConfigSync(agentID) {
 		actions = append(actions, HeartbeatAction{
 			Action: "SYNC_CONFIG",
 		})
 	}
 
-	// Send SSE event
+	// Send SSE event for heartbeat
 	h.sseService.SendEvent("agent.heartbeat", map[string]interface{}{
 		"agent_id": agentID,
 		"status":   req.Status,

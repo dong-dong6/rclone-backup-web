@@ -70,8 +70,8 @@ func (a *Agent) executeTaskWithSidecar(executionID string, task *Task, triggerMo
 	logChan := make(chan string, 100)
 	go a.streamLogsFromChannel(executionID, logChan)
 
-	// Start stats monitoring
-	go a.monitorTransferStats(ctx, rcloneClient, logChan)
+	// Start stats monitoring with execution ID for log tracking
+	go a.monitorTransferStats(ctx, rcloneClient, executionID, logChan)
 
 	// Execute sync operation
 	logChan <- fmt.Sprintf("Starting backup: %s -> %s", source, destination)
@@ -137,13 +137,20 @@ func (a *Agent) executeTaskWithSidecar(executionID string, task *Task, triggerMo
 }
 
 // monitorTransferStats monitors and reports transfer statistics
-func (a *Agent) monitorTransferStats(ctx context.Context, client *rclone.Client, logChan chan<- string) {
+func (a *Agent) monitorTransferStats(ctx context.Context, client *rclone.Client, executionID string, logChan chan<- string) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+
+	lastLogBatch := time.Now()
+	logBatch := []map[string]string{}
 
 	for {
 		select {
 		case <-ctx.Done():
+			// Send any remaining logs
+			if len(logBatch) > 0 {
+				a.sendLogBatch(executionID, logBatch)
+			}
 			return
 		case <-ticker.C:
 			stats, err := client.GetStats(ctx)
@@ -153,12 +160,40 @@ func (a *Agent) monitorTransferStats(ctx context.Context, client *rclone.Client,
 
 			if stats.Transfers > 0 || stats.Bytes > 0 {
 				logMsg := fmt.Sprintf(
-					"Progress: %d files, %.2f MB transferred, %.2f MB/s",
+					"Progress: %d files, %.2f MB transferred, %.2f MB/s, %d errors",
 					stats.Transfers,
 					float64(stats.Bytes)/1024/1024,
 					stats.Speed/1024/1024,
+					stats.Errors,
 				)
 				logChan <- logMsg
+				
+				// Add to batch for hub reporting
+				logBatch = append(logBatch, map[string]string{
+					"timestamp": time.Now().Format(time.RFC3339),
+					"message":   logMsg,
+				})
+				
+				// Send batch if it's been 10 seconds or we have 10+ logs
+				if time.Since(lastLogBatch) > 10*time.Second || len(logBatch) >= 10 {
+					a.sendLogBatch(executionID, logBatch)
+					logBatch = []map[string]string{}
+					lastLogBatch = time.Now()
+				}
+			}
+
+			// Check for detailed transfer information
+			if detailedStats, err := client.GetTransferStats(ctx, "job/"+executionID); err == nil {
+				for _, file := range detailedStats.Transferring {
+					fileMsg := fmt.Sprintf(
+						"Transferring: %s (%.1f%% of %.2f MB @ %.2f MB/s)",
+						file.Name,
+						file.Percentage,
+						float64(file.Size)/1024/1024,
+						file.Speed/1024/1024,
+					)
+					logChan <- fileMsg
+				}
 			}
 		}
 	}

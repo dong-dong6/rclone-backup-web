@@ -244,6 +244,51 @@ func (c *Client) GetStats(ctx context.Context) (*CoreStats, error) {
 	return &stats, nil
 }
 
+// GetTransferStats gets detailed transfer statistics for a job
+func (c *Client) GetTransferStats(ctx context.Context, group string) (*TransferStats, error) {
+	params := map[string]interface{}{
+		"group": group,
+	}
+
+	resp, err := c.request(ctx, "POST", "/core/stats-delete", params)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var stats TransferStats
+	if err := json.NewDecoder(resp.Body).Decode(&stats); err != nil {
+		return nil, fmt.Errorf("failed to decode transfer stats: %w", err)
+	}
+
+	return &stats, nil
+}
+
+// TransferStats represents detailed transfer statistics
+type TransferStats struct {
+	Bytes          int64              `json:"bytes"`
+	Checks         int                `json:"checks"`
+	Deletes        int                `json:"deletes"`
+	ElapsedTime    float64            `json:"elapsedTime"`
+	Errors         int                `json:"errors"`
+	ETA            float64            `json:"eta"`
+	FatalError     bool               `json:"fatalError"`
+	Speed          float64            `json:"speed"`
+	Transfers      int                `json:"transfers"`
+	TransferTime   float64            `json:"transferTime"`
+	Transferring   []TransferringFile `json:"transferring"`
+}
+
+// TransferringFile represents a file being transferred
+type TransferringFile struct {
+	Name       string  `json:"name"`
+	Size       int64   `json:"size"`
+	Bytes      int64   `json:"bytes"`
+	Percentage float64 `json:"percentage"`
+	Speed      float64 `json:"speed"`
+	ETA        float64 `json:"eta"`
+}
+
 // ListRemotes lists configured remotes
 func (c *Client) ListRemotes(ctx context.Context) ([]string, error) {
 	resp, err := c.request(ctx, "POST", "/config/listremotes", nil)
