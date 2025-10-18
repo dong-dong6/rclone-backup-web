@@ -324,3 +324,39 @@ func (m *ExecutionModel) GetLastExecutionForTask(ctx context.Context, taskID uui
 
 	return execution, nil
 }
+
+// GetLastSuccessfulExecutionForTask gets the most recent successful execution for a task
+func (m *ExecutionModel) GetLastSuccessfulExecutionForTask(ctx context.Context, taskID uuid.UUID) (*TaskExecution, error) {
+	execution := &TaskExecution{}
+	query := `
+		SELECT 
+			id, task_id, agent_id, status, trigger_mode,
+			log_output, error_message, started_at, ended_at, created_at
+		FROM task_executions
+		WHERE task_id = $1 AND status = 'success'
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	err := m.db.QueryRow(ctx, query, taskID).Scan(
+		&execution.ID,
+		&execution.TaskID,
+		&execution.AgentID,
+		&execution.Status,
+		&execution.TriggerMode,
+		&execution.LogOutput,
+		&execution.ErrorMessage,
+		&execution.StartedAt,
+		&execution.EndedAt,
+		&execution.CreatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // No successful execution
+		}
+		return nil, err
+	}
+
+	return execution, nil
+}

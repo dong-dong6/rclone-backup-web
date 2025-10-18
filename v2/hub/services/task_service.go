@@ -14,12 +14,16 @@ import (
 
 // TaskService handles task scheduling and execution logic
 type TaskService struct {
-	db *pgxpool.Pool
+	db        *pgxpool.Pool
+	scheduler *CronScheduler
 }
 
 // NewTaskService creates a new task service
 func NewTaskService(db *pgxpool.Pool) *TaskService {
-	return &TaskService{db: db}
+	return &TaskService{
+		db:        db,
+		scheduler: NewCronScheduler(db),
+	}
 }
 
 // FindPendingTaskForAgent finds a task that needs to be executed by the agent
@@ -30,16 +34,33 @@ func (s *TaskService) FindPendingTaskForAgent(ctx context.Context, agentID uuid.
 	if err == nil && len(pendingExecutions) > 0 {
 		// Return the task for the first pending execution
 		taskModel := models.NewTaskModel(s.db)
-		return taskModel.GetByID(ctx, pendingExecutions[0].TaskID)
+		task, err := taskModel.GetByID(ctx, pendingExecutions[0].TaskID)
+		if err == nil {
+			log.Printf("[TaskService] Found manually triggered task %s for agent %s", 
+				task.Name, agentID)
+			return task, nil
+		}
 	}
 
 	// Second, check for scheduled tasks that need to run
-	task, err := s.findScheduledTaskForAgent(ctx, agentID)
+	dueTasks, err := s.scheduler.GetDueTasksForAgent(ctx, agentID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get due tasks: %w", err)
 	}
 
-	return task, nil
+	if len(dueTasks) > 0 {
+		// Return the first due task
+		task := dueTasks[0]
+		log.Printf("[TaskService] Found scheduled task %s for agent %s", 
+			task.Name, agentID)
+		
+		// Mark that we're executing this task now
+		s.scheduler.MarkTaskExecuted(task.ID, time.Now())
+		
+		return task, nil
+	}
+
+	return nil, nil // No task needs to run
 }
 
 // findScheduledTaskForAgent checks if any scheduled task should run now

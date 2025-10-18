@@ -34,6 +34,7 @@ func main() {
 	authService := services.NewAuthService(os.Getenv("JWT_SECRET"))
 	schedulerService := services.NewSchedulerService(db)
 	sseService := services.NewSSEService()
+	executionMonitor := services.NewExecutionMonitor(db)
 
 	// Setup Gin router
 	router := gin.Default()
@@ -118,6 +119,10 @@ func main() {
 	
 	// Start SSE service
 	go sseService.Start()
+	
+	// Start execution monitor
+	monitorCtx := context.Background()
+	go executionMonitor.Start(monitorCtx)
 
 	// Setup server
 	srv := &http.Server{
