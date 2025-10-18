@@ -313,3 +313,14 @@ volumes:
     driver: local
   rclone_logs:
     driver: local
+
+# ============================================
+# 网络配置
+# ============================================
+networks:
+  backend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+          gateway: 172.30.0.1
