@@ -23,6 +23,7 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SSEProvider } from './contexts/SSEContext';
+import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
 const { Header, Sider, Content } = Layout;
@@ -187,9 +188,11 @@ const App: React.FC = () => {
           <Route
             path="/*"
             element={
-              <SSEProvider>
-                <AppLayout />
-              </SSEProvider>
+              <ProtectedRoute>
+                <SSEProvider>
+                  <AppLayout />
+                </SSEProvider>
+              </ProtectedRoute>
             }
           />
         </Routes>
