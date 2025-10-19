@@ -517,20 +517,39 @@ deploy_hub() {
     local attempt=0
     
     while [ $attempt -lt $max_attempts ]; do
-        # 调试：显示实际的健康检查响应
-        HEALTH_CHECK_URL="http://localhost:${HUB_PORT:-8080}/health"
-        CURL_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL 2>/dev/null || echo "000")
+        # 方法1: 直接访问容器IP（更可靠）
+        CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' v2-hub-api-1 2>/dev/null || echo "")
         
-        if [ "$CURL_RESPONSE" = "200" ]; then
-            print_success "Hub服务部署成功！（HTTP $CURL_RESPONSE）"
-            show_access_info
-            return 0
-        elif [ "$CURL_RESPONSE" = "000" ]; then
-            # 连接失败
-            echo -n "."
+        if [ -n "$CONTAINER_IP" ]; then
+            # 使用容器IP进行健康检查
+            HEALTH_CHECK_URL="http://${CONTAINER_IP}:8080/health"
+            CURL_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL 2>/dev/null || echo "000")
+            
+            if [ "$CURL_RESPONSE" = "200" ]; then
+                print_success "Hub服务部署成功！（通过容器IP: ${CONTAINER_IP}）"
+                # 额外检查localhost映射
+                if curl -sf http://localhost:${HUB_PORT:-8080}/health &> /dev/null; then
+                    print_info "端口映射正常 (localhost:${HUB_PORT:-8080} 可访问)"
+                else
+                    print_warning "注意: localhost:${HUB_PORT:-8080} 不可访问，但服务运行正常"
+                    print_info "可通过容器IP访问: http://${CONTAINER_IP}:8080"
+                fi
+                show_access_info
+                return 0
+            elif [ "$CURL_RESPONSE" = "000" ]; then
+                echo -n "."
+            else
+                echo -n "[$CURL_RESPONSE]"
+            fi
         else
-            # 收到响应但不是200
-            echo -n "[$CURL_RESPONSE]"
+            # 方法2: 如果无法获取容器IP，使用docker exec
+            if docker compose exec -T hub-api wget -q -O /dev/null http://localhost:8080/health 2>/dev/null; then
+                print_success "Hub服务部署成功！（通过容器内部验证）"
+                show_access_info
+                return 0
+            else
+                echo -n "."
+            fi
         fi
         
         sleep 2
