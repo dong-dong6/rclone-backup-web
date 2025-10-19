@@ -1,0 +1,440 @@
+/* ========================================
+   真正的新拟态设计系统
+   ========================================
+   第二阶段：回到初心
+   ======================================== */
+
+:root {
+  /* 新拟态核心颜色 - 柔和的灰色 */
+  --neu-bg: #e0e5ec;
+  --neu-bg-light: #f0f5fc;
+  
+  /* 阴影颜色 */
+  --neu-shadow-dark: #a3b1c6;
+  --neu-shadow-light: #ffffff;
+  
+  /* 文字颜色 */
+  --neu-text-primary: #31344b;
+  --neu-text-secondary: #44476a;
+  --neu-text-muted: #8d93ab;
+  
+  /* 强调色 - 用于重要元素 */
+  --neu-accent: #6c63ff;
+  --neu-accent-light: #8b85ff;
+  --neu-success: #2ed573;
+  --neu-warning: #ffa502;
+  --neu-danger: #ff4757;
+}
+
+/* ----------------------------------------
+   基础设置
+   ---------------------------------------- */
+
+body.neumorphic-mode {
+  background: var(--neu-bg) !important;
+  color: var(--neu-text-primary) !important;
+}
+
+/* ----------------------------------------
+   新拟态卡片
+   ---------------------------------------- */
+
+.neu-card {
+  background: var(--neu-bg) !important;
+  border-radius: 20px !important;
+  border: none !important;
+  padding: 30px !important;
+  box-shadow: 
+    9px 9px 16px var(--neu-shadow-dark),
+    -9px -9px 16px var(--neu-shadow-light) !important;
+  transition: all 0.3s ease !important;
+}
+
+/* 卡片悬停效果 - 更强的凸起感 */
+.neu-card:hover {
+  box-shadow: 
+    12px 12px 20px var(--neu-shadow-dark),
+    -12px -12px 20px var(--neu-shadow-light) !important;
+}
+
+/* 卡片按压效果 */
+.neu-card:active,
+.neu-card.pressed {
+  box-shadow: 
+    inset 5px 5px 10px var(--neu-shadow-dark),
+    inset -5px -5px 10px var(--neu-shadow-light) !important;
+}
+
+/* ----------------------------------------
+   新拟态按钮
+   ---------------------------------------- */
+
+.neu-button {
+  background: var(--neu-bg) !important;
+  border: none !important;
+  border-radius: 15px !important;
+  padding: 12px 30px !important;
+  color: var(--neu-text-primary) !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  cursor: pointer;
+  box-shadow: 
+    6px 6px 12px var(--neu-shadow-dark),
+    -6px -6px 12px var(--neu-shadow-light) !important;
+  transition: all 0.2s ease !important;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 按钮悬停 */
+.neu-button:hover {
+  box-shadow: 
+    8px 8px 16px var(--neu-shadow-dark),
+    -8px -8px 16px var(--neu-shadow-light) !important;
+}
+
+/* 按钮按下 */
+.neu-button:active {
+  box-shadow: 
+    inset 3px 3px 6px var(--neu-shadow-dark),
+    inset -3px -3px 6px var(--neu-shadow-light) !important;
+}
+
+/* 主按钮 - 带渐变色 */
+.neu-button-primary {
+  background: linear-gradient(145deg, var(--neu-accent-light), var(--neu-accent)) !important;
+  color: white !important;
+  box-shadow: 
+    6px 6px 12px var(--neu-shadow-dark),
+    -6px -6px 12px var(--neu-shadow-light),
+    inset 0 0 0 0 rgba(255, 255, 255, 0.2) !important;
+}
+
+.neu-button-primary:hover {
+  box-shadow: 
+    8px 8px 16px var(--neu-shadow-dark),
+    -8px -8px 16px var(--neu-shadow-light),
+    inset 0 0 20px 0 rgba(255, 255, 255, 0.2) !important;
+}
+
+/* ----------------------------------------
+   新拟态输入框
+   ---------------------------------------- */
+
+.neu-input {
+  background: var(--neu-bg) !important;
+  border: none !important;
+  border-radius: 15px !important;
+  padding: 12px 20px !important;
+  font-size: 14px !important;
+  color: var(--neu-text-primary) !important;
+  box-shadow: 
+    inset 4px 4px 8px var(--neu-shadow-dark),
+    inset -4px -4px 8px var(--neu-shadow-light) !important;
+  transition: all 0.3s ease !important;
+  outline: none !important;
+}
+
+.neu-input:focus {
+  box-shadow: 
+    inset 6px 6px 12px var(--neu-shadow-dark),
+    inset -6px -6px 12px var(--neu-shadow-light) !important;
+}
+
+.neu-input::placeholder {
+  color: var(--neu-text-muted) !important;
+}
+
+/* ----------------------------------------
+   新拟态开关
+   ---------------------------------------- */
+
+.neu-switch {
+  width: 60px;
+  height: 30px;
+  background: var(--neu-bg) !important;
+  border-radius: 30px;
+  position: relative;
+  cursor: pointer;
+  box-shadow: 
+    inset 3px 3px 6px var(--neu-shadow-dark),
+    inset -3px -3px 6px var(--neu-shadow-light) !important;
+  transition: all 0.3s ease;
+}
+
+.neu-switch-handle {
+  width: 24px;
+  height: 24px;
+  background: var(--neu-bg);
+  border-radius: 50%;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  box-shadow: 
+    3px 3px 6px var(--neu-shadow-dark),
+    -3px -3px 6px var(--neu-shadow-light);
+  transition: all 0.3s ease;
+}
+
+.neu-switch.active .neu-switch-handle {
+  left: 33px;
+  background: var(--neu-accent);
+  box-shadow: 
+    0 0 10px var(--neu-accent),
+    3px 3px 6px var(--neu-shadow-dark),
+    -3px -3px 6px var(--neu-shadow-light);
+}
+
+/* ----------------------------------------
+   新拟态统计卡片
+   ---------------------------------------- */
+
+.neu-stat-card {
+  background: var(--neu-bg) !important;
+  border-radius: 25px !important;
+  padding: 25px !important;
+  position: relative;
+  box-shadow: 
+    10px 10px 20px var(--neu-shadow-dark),
+    -10px -10px 20px var(--neu-shadow-light) !important;
+}
+
+.neu-stat-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--neu-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  box-shadow: 
+    5px 5px 10px var(--neu-shadow-dark),
+    -5px -5px 10px var(--neu-shadow-light);
+  margin-bottom: 15px;
+}
+
+.neu-stat-value {
+  font-size: 36px !important;
+  font-weight: 700 !important;
+  color: var(--neu-text-primary) !important;
+  line-height: 1 !important;
+  margin: 15px 0 5px 0 !important;
+}
+
+.neu-stat-label {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--neu-text-muted) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+}
+
+/* ----------------------------------------
+   新拟态进度条
+   ---------------------------------------- */
+
+.neu-progress {
+  height: 20px;
+  background: var(--neu-bg);
+  border-radius: 20px;
+  box-shadow: 
+    inset 4px 4px 8px var(--neu-shadow-dark),
+    inset -4px -4px 8px var(--neu-shadow-light);
+  overflow: hidden;
+  position: relative;
+}
+
+.neu-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--neu-accent), var(--neu-accent-light));
+  border-radius: 20px;
+  box-shadow: 
+    0 0 10px var(--neu-accent);
+  transition: width 0.6s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.neu-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ----------------------------------------
+   新拟态标签
+   ---------------------------------------- */
+
+.neu-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--neu-bg);
+  box-shadow: 
+    3px 3px 6px var(--neu-shadow-dark),
+    -3px -3px 6px var(--neu-shadow-light);
+  margin: 0 5px;
+}
+
+.neu-tag-success {
+  color: var(--neu-success);
+  box-shadow: 
+    inset 2px 2px 4px var(--neu-shadow-dark),
+    inset -2px -2px 4px var(--neu-shadow-light),
+    0 0 5px var(--neu-success);
+}
+
+.neu-tag-warning {
+  color: var(--neu-warning);
+  box-shadow: 
+    inset 2px 2px 4px var(--neu-shadow-dark),
+    inset -2px -2px 4px var(--neu-shadow-light),
+    0 0 5px var(--neu-warning);
+}
+
+.neu-tag-danger {
+  color: var(--neu-danger);
+  box-shadow: 
+    inset 2px 2px 4px var(--neu-shadow-dark),
+    inset -2px -2px 4px var(--neu-shadow-light),
+    0 0 5px var(--neu-danger);
+}
+
+/* ----------------------------------------
+   新拟态表格
+   ---------------------------------------- */
+
+.neu-table {
+  background: var(--neu-bg);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 
+    8px 8px 16px var(--neu-shadow-dark),
+    -8px -8px 16px var(--neu-shadow-light);
+}
+
+.neu-table thead {
+  background: var(--neu-bg);
+  box-shadow: 
+    0 3px 6px var(--neu-shadow-dark);
+}
+
+.neu-table th {
+  padding: 15px;
+  font-weight: 600;
+  color: var(--neu-text-primary);
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 1px;
+  border: none;
+}
+
+.neu-table td {
+  padding: 15px;
+  color: var(--neu-text-secondary);
+  border-bottom: 1px solid rgba(163, 177, 198, 0.2);
+}
+
+.neu-table tr:hover {
+  background: rgba(163, 177, 198, 0.1);
+}
+
+/* ----------------------------------------
+   新拟态导航栏
+   ---------------------------------------- */
+
+.neu-navbar {
+  background: var(--neu-bg);
+  padding: 15px 30px;
+  box-shadow: 
+    0 6px 12px var(--neu-shadow-dark);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.neu-nav-item {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 20px;
+  margin: 0 10px;
+  border-radius: 15px;
+  background: var(--neu-bg);
+  color: var(--neu-text-secondary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.neu-nav-item:hover {
+  box-shadow: 
+    4px 4px 8px var(--neu-shadow-dark),
+    -4px -4px 8px var(--neu-shadow-light);
+}
+
+.neu-nav-item.active {
+  box-shadow: 
+    inset 3px 3px 6px var(--neu-shadow-dark),
+    inset -3px -3px 6px var(--neu-shadow-light);
+  color: var(--neu-accent);
+}
+
+/* ----------------------------------------
+   应用到 Element Plus 组件
+   ---------------------------------------- */
+
+/* 将新拟态应用到 Element Plus 卡片 */
+body.neumorphic-mode .el-card {
+  background: var(--neu-bg) !important;
+  border-radius: 20px !important;
+  border: none !important;
+  box-shadow: 
+    9px 9px 16px var(--neu-shadow-dark),
+    -9px -9px 16px var(--neu-shadow-light) !important;
+}
+
+/* 将新拟态应用到 Element Plus 按钮 */
+body.neumorphic-mode .el-button {
+  background: var(--neu-bg) !important;
+  border: none !important;
+  border-radius: 15px !important;
+  box-shadow: 
+    6px 6px 12px var(--neu-shadow-dark),
+    -6px -6px 12px var(--neu-shadow-light) !important;
+}
+
+body.neumorphic-mode .el-button:active {
+  box-shadow: 
+    inset 3px 3px 6px var(--neu-shadow-dark),
+    inset -3px -3px 6px var(--neu-shadow-light) !important;
+}
+
+/* 将新拟态应用到 Element Plus 输入框 */
+body.neumorphic-mode .el-input__inner {
+  background: var(--neu-bg) !important;
+  border: none !important;
+  border-radius: 15px !important;
+  box-shadow: 
+    inset 4px 4px 8px var(--neu-shadow-dark),
+    inset -4px -4px 8px var(--neu-shadow-light) !important;
+}
