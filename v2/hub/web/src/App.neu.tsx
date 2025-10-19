@@ -7,13 +7,13 @@ import Tasks from './pages/Tasks';
 import Remotes from './pages/Remotes';
 import Executions from './pages/Executions';
 import Settings from './pages/Settings';
-import Login from './pages/LoginNeu';
+import Login from './pages/LoginBW';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SSEProvider } from './contexts/SSEContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute';
-import './styles/neumorphism.css';
-import './styles/dashboard.css';
+import './styles/neumorphism-bw.css';
+import './App.bw.css';
 
 const AppLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
