@@ -23,6 +23,11 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
+# Security configuration
+CREATE_DEDICATED_USER=${CREATE_DEDICATED_USER:-true}
+DEDICATED_USER="rclone-agent"
+DEDICATED_GROUP="rclone-agent"
+
 echo "========================================="
 echo "Rclone Backup Agent Installation Script"
 echo "========================================="
@@ -79,13 +84,20 @@ if [[ -z "$AGENT_NAME" ]]; then
     echo -e "${GREEN}Using hostname as agent name: $AGENT_NAME${NC}"
 fi
 
-# Step 1: Create agent user
-echo -e "\n${YELLOW}Step 1: Creating agent user...${NC}"
-if id "$AGENT_USER" &>/dev/null; then
-    echo -e "${GREEN}User $AGENT_USER already exists${NC}"
+# Step 1: Create dedicated user (if enabled)
+echo -e "\n${YELLOW}Step 1: Setting up user...${NC}"
+if [[ "$CREATE_DEDICATED_USER" == "true" ]]; then
+    if id "$DEDICATED_USER" &>/dev/null; then
+        echo -e "${GREEN}User $DEDICATED_USER already exists${NC}"
+    else
+        # Create system user with no login shell for security
+        useradd -r -m -d "$AGENT_HOME" -s /usr/sbin/nologin "$DEDICATED_USER"
+        echo -e "${GREEN}Created dedicated user $DEDICATED_USER (no login)${NC}"
+    fi
+    AGENT_USER="$DEDICATED_USER"
 else
-    useradd -r -m -d "$AGENT_HOME" -s /bin/bash "$AGENT_USER"
-    echo -e "${GREEN}Created user $AGENT_USER${NC}"
+    echo -e "${YELLOW}Running as root (not recommended for production)${NC}"
+    AGENT_USER="root"
 fi
 
 # Step 2: Create directory structure
