@@ -517,13 +517,22 @@ deploy_hub() {
     local attempt=0
     
     while [ $attempt -lt $max_attempts ]; do
-        if curl -f http://localhost:${HUB_PORT:-8080}/health &> /dev/null; then
-            print_success "Hub服务部署成功！"
+        # 调试：显示实际的健康检查响应
+        HEALTH_CHECK_URL="http://localhost:${HUB_PORT:-8080}/health"
+        CURL_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL 2>/dev/null || echo "000")
+        
+        if [ "$CURL_RESPONSE" = "200" ]; then
+            print_success "Hub服务部署成功！（HTTP $CURL_RESPONSE）"
             show_access_info
             return 0
+        elif [ "$CURL_RESPONSE" = "000" ]; then
+            # 连接失败
+            echo -n "."
+        else
+            # 收到响应但不是200
+            echo -n "[$CURL_RESPONSE]"
         fi
         
-        echo -n "."
         sleep 2
         ((attempt++))
     done
