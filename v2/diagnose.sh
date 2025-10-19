@@ -118,20 +118,40 @@ check_port 3000 "Web UI"
 # 7. 测试健康检查端点
 print_info "测试健康检查端点..."
 
-# 测试Hub API健康检查
-if curl -sf http://localhost:8080/health &> /dev/null; then
-    HEALTH_RESPONSE=$(curl -s http://localhost:8080/health)
-    print_success "Hub API健康检查通过: $HEALTH_RESPONSE"
-else
-    print_error "Hub API健康检查失败"
+# 获取Hub API容器信息
+CONTAINER_ID=$(docker ps -q -f name=hub-api)
+if [ -n "$CONTAINER_ID" ]; then
+    # 获取容器IP
+    CONTAINER_IP=$(docker inspect $CONTAINER_ID --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' | head -1)
+    # 获取容器端口
+    CONTAINER_PORT=$(docker inspect $CONTAINER_ID --format='{{range .Config.Env}}{{println .}}{{end}}' | grep "^PORT=" | cut -d= -f2 || echo "8080")
     
-    # 尝试直接访问容器
-    CONTAINER_ID=$(docker ps -q -f name=rclone-backup-hub)
-    if [ -n "$CONTAINER_ID" ]; then
-        print_info "尝试直接访问容器..."
-        docker exec $CONTAINER_ID wget -q -O - http://localhost:8080/health || \
-        print_error "容器内部健康检查也失败"
+    if [ -n "$CONTAINER_IP" ]; then
+        print_info "容器地址: ${CONTAINER_IP}:${CONTAINER_PORT}"
+        
+        # 测试容器IP直接访问
+        if curl -sf http://${CONTAINER_IP}:${CONTAINER_PORT}/health &> /dev/null; then
+            HEALTH_RESPONSE=$(curl -s http://${CONTAINER_IP}:${CONTAINER_PORT}/health)
+            print_success "健康检查通过: $HEALTH_RESPONSE"
+        else
+            print_error "健康检查失败"
+        fi
+        
+        # 检查本地端口映射
+        MAPPED_PORT=$(docker port $CONTAINER_ID ${CONTAINER_PORT} 2>/dev/null | cut -d: -f2)
+        if [ -n "$MAPPED_PORT" ]; then
+            print_info "本地映射端口: localhost:${MAPPED_PORT}"
+            if curl -sf http://localhost:${MAPPED_PORT}/health &> /dev/null; then
+                print_success "本地访问正常"
+            else
+                print_warning "本地访问失败，但容器内部正常"
+            fi
+        fi
+    else
+        print_error "无法获取容器IP"
     fi
+else
+    print_error "Hub API容器未运行"
 fi
 
 # 8. 检查数据库连接
