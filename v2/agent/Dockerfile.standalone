@@ -1,0 +1,93 @@
+# Multi-stage Dockerfile for standalone Rclone Backup Agent
+
+# Stage 1: Builder
+FROM golang:1.23-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git make gcc musl-dev
+
+# Set working directory
+WORKDIR /build
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the agent
+ARG VERSION=dev
+ARG BUILD_TIME
+ARG GIT_COMMIT
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-s -w \
+    -X 'main.Version=${VERSION}' \
+    -X 'main.BuildTime=${BUILD_TIME}' \
+    -X 'main.GitCommit=${GIT_COMMIT}'" \
+    -o rclone-agent \
+    main_standalone.go
+
+# Stage 2: Runtime
+FROM alpine:3.19
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    curl \
+    bash
+
+# Create agent user
+RUN addgroup -g 1000 -S agent && \
+    adduser -u 1000 -S agent -G agent
+
+# Create working directories
+RUN mkdir -p /opt/rclone-agent/{bin,configs,tasks,logs} && \
+    chown -R agent:agent /opt/rclone-agent
+
+# Copy binary from builder
+COPY --from=builder /build/rclone-agent /opt/rclone-agent/rclone-agent
+
+# Set permissions
+RUN chmod 755 /opt/rclone-agent/rclone-agent
+
+# Create default configuration
+RUN echo '{ \
+  "hub_url": "${HUB_URL:-http://hub-api:8080}", \
+  "registration_token": "${REGISTRATION_TOKEN}", \
+  "agent_name": "${AGENT_NAME:-docker-agent}", \
+  "work_dir": "/opt/rclone-agent", \
+  "max_concurrent": 3, \
+  "heartbeat_interval": 30, \
+  "enable_local_fallback": true, \
+  "enable_auto_update": false, \
+  "enable_metrics": true, \
+  "metrics_port": 9091, \
+  "run_as_service": false, \
+  "log_file": "", \
+  "pid_file": "" \
+}' > /opt/rclone-agent/agent.json.template
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD ["/opt/rclone-agent/rclone-agent", "-version"]
+
+# Switch to non-root user
+USER agent
+WORKDIR /opt/rclone-agent
+
+# Expose metrics port
+EXPOSE 9091
+
+# Entry point script
+RUN echo '#!/bin/sh\n\
+# Substitute environment variables in config\n\
+envsubst < agent.json.template > agent.json\n\
+# Run agent\n\
+exec /opt/rclone-agent/rclone-agent -config agent.json\n\
+' > /opt/rclone-agent/entrypoint.sh && \
+    chmod +x /opt/rclone-agent/entrypoint.sh
+
+ENTRYPOINT ["/opt/rclone-agent/entrypoint.sh"]
