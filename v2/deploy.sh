@@ -530,7 +530,7 @@ deploy_hub() {
         
         # 显示当前状态
         if [ $attempt -eq 0 ]; then
-            print_info "等待容器健康检查..."
+            print_info "等待服务健康检查..."
         fi
         
         # 检查所有服务是否健康
@@ -541,7 +541,7 @@ deploy_hub() {
             print_success "所有服务健康检查通过！"
             print_info "服务状态："
             print_info "  PostgreSQL: ✓ healthy"
-            print_info "  Redis: ✓ healthy"
+            print_info "  Redis: ✓ healthy"  
             print_info "  Hub API: ✓ healthy"
             print_info "  Web UI: ✓ healthy"
             show_access_info
@@ -552,7 +552,12 @@ deploy_hub() {
             # 显示各服务状态
             if [ $((attempt % 5)) -eq 0 ] && [ $attempt -gt 0 ]; then
                 echo ""
-                print_info "当前状态: DB:$POSTGRES_HEALTH Redis:$REDIS_HEALTH API:$HUB_API_HEALTH UI:$WEB_UI_HEALTH"
+                echo -n "  状态: "
+                [ "$POSTGRES_HEALTH" = "healthy" ] && echo -n "DB✓ " || echo -n "DB:$POSTGRES_HEALTH "
+                [ "$REDIS_HEALTH" = "healthy" ] && echo -n "Redis✓ " || echo -n "Redis:$REDIS_HEALTH "
+                [ "$HUB_API_HEALTH" = "healthy" ] && echo -n "API✓ " || echo -n "API:$HUB_API_HEALTH "
+                [ "$WEB_UI_HEALTH" = "healthy" ] && echo -n "UI✓" || echo -n "UI:$WEB_UI_HEALTH"
+                echo ""
             else
                 echo -n "."
             fi

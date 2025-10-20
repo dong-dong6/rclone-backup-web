@@ -154,12 +154,22 @@ get_health_status v2-hub-api-1
 echo -n "  Web UI: "
 get_health_status v2-web-ui-1
 
-# 显示容器固定IP
-print_info "容器网络配置（固定IP）:"
-echo "  PostgreSQL: 172.30.0.10:5432"
-echo "  Redis: 172.30.0.11:6379"
-echo "  Hub API: 172.30.0.20:8080"
-echo "  Web UI: 172.30.0.30:80"
+# 显示容器网络信息（动态获取）
+print_info "容器网络配置:"
+for container in v2-postgres-1 v2-redis-1 v2-hub-api-1 v2-web-ui-1; do
+    if docker ps -q -f name=$container &> /dev/null; then
+        # 获取容器在backend网络中的IP
+        IP=$(docker inspect $container --format='{{range .NetworkSettings.Networks}}{{if eq .NetworkID ""}}{{else}}{{.IPAddress}}{{end}}{{end}}' 2>/dev/null | head -1)
+        if [ -n "$IP" ]; then
+            case $container in
+                v2-postgres-1) echo "  PostgreSQL: $IP:5432" ;;
+                v2-redis-1) echo "  Redis: $IP:6379" ;;
+                v2-hub-api-1) echo "  Hub API: $IP:8080" ;;
+                v2-web-ui-1) echo "  Web UI: $IP:80" ;;
+            esac
+        fi
+    fi
+done
 
 # 测试外部访问
 WEB_PORT="${WEB_PORT:-3000}"
