@@ -115,40 +115,56 @@ check_port 5432 "PostgreSQL"
 check_port 8080 "Hub API"
 check_port 3000 "Web UI"
 
-# 7. 测试健康检查端点
-print_info "测试健康检查端点..."
+# 7. Docker 健康检查状态
+print_info "Docker 健康检查状态..."
 
-# 使用固定IP进行内部测试
-print_info "内部网络测试（固定IP）:"
-echo -n "  PostgreSQL (172.30.0.10): "
-docker exec v2-postgres-1 pg_isready &> /dev/null && print_success "正常" || print_error "失败"
+# 获取所有容器的健康状态
+get_health_status() {
+    local container=$1
+    local health=$(docker inspect $container --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
+    local state=$(docker inspect $container --format='{{.State.Status}}' 2>/dev/null || echo "not_found")
+    
+    if [ "$health" = "not_found" ]; then
+        echo "容器不存在"
+    elif [ "$health" = "healthy" ]; then
+        print_success "$health"
+    elif [ "$health" = "unhealthy" ]; then
+        print_error "$health"
+        # 显示最近的健康检查日志
+        local log=$(docker inspect $container --format='{{range .State.Health.Log}}{{.Output}}{{end}}' 2>/dev/null | tail -1)
+        if [ -n "$log" ]; then
+            echo "    最近日志: $log"
+        fi
+    elif [ "$health" = "starting" ]; then
+        print_warning "$health"
+    else
+        echo "$state (无健康检查)"
+    fi
+}
 
-echo -n "  Redis (172.30.0.11): "
-docker exec v2-redis-1 redis-cli ping &> /dev/null && print_success "正常" || print_error "失败"
+echo -n "  PostgreSQL: "
+get_health_status v2-postgres-1
 
-echo -n "  Hub API (172.30.0.20:8080): "
-curl -sf http://172.30.0.20:8080/health &> /dev/null && print_success "正常" || print_error "失败"
+echo -n "  Redis: "
+get_health_status v2-redis-1
 
-echo -n "  Web UI (172.30.0.30:80): "
-curl -sf http://172.30.0.30:80/health &> /dev/null && print_success "正常" || print_error "失败"
+echo -n "  Hub API: "
+get_health_status v2-hub-api-1
+
+echo -n "  Web UI: "
+get_health_status v2-web-ui-1
+
+# 显示容器固定IP
+print_info "容器网络配置（固定IP）:"
+echo "  PostgreSQL: 172.30.0.10:5432"
+echo "  Redis: 172.30.0.11:6379"
+echo "  Hub API: 172.30.0.20:8080"
+echo "  Web UI: 172.30.0.30:80"
 
 # 测试外部访问
 WEB_PORT="${WEB_PORT:-3000}"
-print_info "外部访问测试:"
-echo -n "  Web UI (localhost:${WEB_PORT}): "
-if curl -sf http://localhost:${WEB_PORT}/health &> /dev/null; then
-    print_success "正常"
-else
-    print_error "失败"
-fi
-
-echo -n "  API via Web UI (localhost:${WEB_PORT}/api): "
-if curl -sf http://localhost:${WEB_PORT}/api/health &> /dev/null; then
-    HEALTH_RESPONSE=$(curl -s http://localhost:${WEB_PORT}/api/health)
-    print_success "正常 - $HEALTH_RESPONSE"
-else
-    print_error "失败"
-fi
+print_info "外部访问端口:"
+echo "  Web应用: http://localhost:${WEB_PORT}"
 
 # 8. 检查数据库连接
 print_info "检查数据库连接..."

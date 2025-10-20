@@ -80,9 +80,10 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
+      interval: 5s
+      timeout: 3s
       retries: 3
+      start_period: 10s
       start_period: 60s
 
   # Web UI (React)
@@ -108,9 +109,10 @@ services:
       - hub-api
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:80"]
-      interval: 30s
-      timeout: 10s
+      interval: 5s
+      timeout: 3s
       retries: 3
+      start_period: 10s
 
   # Cache/Session Store
   redis:

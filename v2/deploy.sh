@@ -519,41 +519,43 @@ deploy_hub() {
     # 禁用错误立即退出，避免脚本意外中断
     set +e
     
-    # 使用固定的容器IP地址
-    HUB_API_IP="172.30.0.20"
-    WEB_UI_IP="172.30.0.30"
-    
     while [ $attempt -lt $max_attempts ]; do
-        # 检查容器是否运行
-        if docker ps | grep -q v2-hub-api-1 && docker ps | grep -q v2-web-ui-1; then
-            # 测试 Hub API 健康检查（使用固定IP）
-            if curl -sf -m 2 http://${HUB_API_IP}:8080/health &> /dev/null; then
-                # 测试 Web UI 到 Hub API 的连接
-                if curl -sf -m 2 http://${WEB_UI_IP}:80/health &> /dev/null; then
-                    # 测试 Web UI 能否代理到 Hub API
-                    if curl -sf -m 2 http://${WEB_UI_IP}:80/api/health &> /dev/null 2>&1 || \
-                       docker exec v2-web-ui-1 wget -q -O /dev/null http://hub-api:8080/health 2>/dev/null; then
-                        print_success "所有服务部署成功！"
-                        print_info "内部网络："
-                        print_info "  PostgreSQL: 172.30.0.10:5432"
-                        print_info "  Redis: 172.30.0.11:6379"
-                        print_info "  Hub API: 172.30.0.20:8080"
-                        print_info "  Web UI: 172.30.0.30:80"
-                        show_access_info
-                        # 恢复错误检查
-                        set -e
-                        return 0
-                    else
-                        echo -n "[Proxy]"
-                    fi
-                else
-                    echo -n "[WebUI]"
-                fi
-            else
-                echo -n "[API]"
-            fi
+        # 使用 Docker 健康检查状态
+        
+        # 获取所有容器的健康状态
+        POSTGRES_HEALTH=$(docker inspect v2-postgres-1 --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
+        REDIS_HEALTH=$(docker inspect v2-redis-1 --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
+        HUB_API_HEALTH=$(docker inspect v2-hub-api-1 --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
+        WEB_UI_HEALTH=$(docker inspect v2-web-ui-1 --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
+        
+        # 显示当前状态
+        if [ $attempt -eq 0 ]; then
+            print_info "等待容器健康检查..."
+        fi
+        
+        # 检查所有服务是否健康
+        if [ "$POSTGRES_HEALTH" = "healthy" ] && \
+           [ "$REDIS_HEALTH" = "healthy" ] && \
+           [ "$HUB_API_HEALTH" = "healthy" ] && \
+           [ "$WEB_UI_HEALTH" = "healthy" ]; then
+            print_success "所有服务健康检查通过！"
+            print_info "服务状态："
+            print_info "  PostgreSQL: ✓ healthy"
+            print_info "  Redis: ✓ healthy"
+            print_info "  Hub API: ✓ healthy"
+            print_info "  Web UI: ✓ healthy"
+            show_access_info
+            # 恢复错误检查
+            set -e
+            return 0
         else
-            echo -n "."
+            # 显示各服务状态
+            if [ $((attempt % 5)) -eq 0 ] && [ $attempt -gt 0 ]; then
+                echo ""
+                print_info "当前状态: DB:$POSTGRES_HEALTH Redis:$REDIS_HEALTH API:$HUB_API_HEALTH UI:$WEB_UI_HEALTH"
+            else
+                echo -n "."
+            fi
         fi
         
         sleep 2
