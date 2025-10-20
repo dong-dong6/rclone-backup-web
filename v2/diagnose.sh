@@ -118,32 +118,36 @@ check_port 3000 "Web UI"
 # 7. 测试健康检查端点
 print_info "测试健康检查端点..."
 
-WEB_PORT="${WEB_PORT:-3000}"
+# 使用固定IP进行内部测试
+print_info "内部网络测试（固定IP）:"
+echo -n "  PostgreSQL (172.30.0.10): "
+docker exec v2-postgres-1 pg_isready &> /dev/null && print_success "正常" || print_error "失败"
 
-# 测试 Web UI 健康检查
-echo -n "  Web UI 健康检查: "
+echo -n "  Redis (172.30.0.11): "
+docker exec v2-redis-1 redis-cli ping &> /dev/null && print_success "正常" || print_error "失败"
+
+echo -n "  Hub API (172.30.0.20:8080): "
+curl -sf http://172.30.0.20:8080/health &> /dev/null && print_success "正常" || print_error "失败"
+
+echo -n "  Web UI (172.30.0.30:80): "
+curl -sf http://172.30.0.30:80/health &> /dev/null && print_success "正常" || print_error "失败"
+
+# 测试外部访问
+WEB_PORT="${WEB_PORT:-3000}"
+print_info "外部访问测试:"
+echo -n "  Web UI (localhost:${WEB_PORT}): "
 if curl -sf http://localhost:${WEB_PORT}/health &> /dev/null; then
     print_success "正常"
 else
     print_error "失败"
 fi
 
-# 测试 API 通过 Web UI 访问
-echo -n "  API (通过Web UI): "
+echo -n "  API via Web UI (localhost:${WEB_PORT}/api): "
 if curl -sf http://localhost:${WEB_PORT}/api/health &> /dev/null; then
     HEALTH_RESPONSE=$(curl -s http://localhost:${WEB_PORT}/api/health)
     print_success "正常 - $HEALTH_RESPONSE"
 else
     print_error "失败"
-fi
-
-# 测试容器间通信
-print_info "容器间通信测试:"
-# 从 web-ui 容器测试访问 hub-api
-if docker compose exec -T web-ui wget -q -O - http://hub-api:8080/health &> /dev/null; then
-    print_success "Web UI → Hub API: 正常"
-else
-    print_error "Web UI → Hub API: 失败"
 fi
 
 # 8. 检查数据库连接

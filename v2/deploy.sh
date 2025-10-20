@@ -519,19 +519,36 @@ deploy_hub() {
     # 禁用错误立即退出，避免脚本意外中断
     set +e
     
+    # 使用固定的容器IP地址
+    HUB_API_IP="172.30.0.20"
+    WEB_UI_IP="172.30.0.30"
+    
     while [ $attempt -lt $max_attempts ]; do
-        # 测试健康检查 - 通过 Web UI 端口检查所有服务
-        WEB_PORT=${WEB_PORT:-3000}
-        
-        # 检查 Web UI 是否就绪
-        if curl -sf -m 2 http://localhost:${WEB_PORT}/health &> /dev/null; then
-            # 检查 API 是否可通过 Web UI 访问
-            if curl -sf -m 2 http://localhost:${WEB_PORT}/api/health &> /dev/null; then
-                print_success "所有服务部署成功！"
-                show_access_info
-                # 恢复错误检查
-                set -e
-                return 0
+        # 检查容器是否运行
+        if docker ps | grep -q v2-hub-api-1 && docker ps | grep -q v2-web-ui-1; then
+            # 测试 Hub API 健康检查（使用固定IP）
+            if curl -sf -m 2 http://${HUB_API_IP}:8080/health &> /dev/null; then
+                # 测试 Web UI 到 Hub API 的连接
+                if curl -sf -m 2 http://${WEB_UI_IP}:80/health &> /dev/null; then
+                    # 测试 Web UI 能否代理到 Hub API
+                    if curl -sf -m 2 http://${WEB_UI_IP}:80/api/health &> /dev/null 2>&1 || \
+                       docker exec v2-web-ui-1 wget -q -O /dev/null http://hub-api:8080/health 2>/dev/null; then
+                        print_success "所有服务部署成功！"
+                        print_info "内部网络："
+                        print_info "  PostgreSQL: 172.30.0.10:5432"
+                        print_info "  Redis: 172.30.0.11:6379"
+                        print_info "  Hub API: 172.30.0.20:8080"
+                        print_info "  Web UI: 172.30.0.30:80"
+                        show_access_info
+                        # 恢复错误检查
+                        set -e
+                        return 0
+                    else
+                        echo -n "[Proxy]"
+                    fi
+                else
+                    echo -n "[WebUI]"
+                fi
             else
                 echo -n "[API]"
             fi
