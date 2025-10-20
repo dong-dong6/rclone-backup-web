@@ -516,6 +516,9 @@ deploy_hub() {
     local max_attempts=30
     local attempt=0
     
+    # 禁用错误立即退出，避免脚本意外中断
+    set +e
+    
     while [ $attempt -lt $max_attempts ]; do
         # 获取Hub API容器在Docker网络中的IP地址
         CONTAINER_IP=$(docker inspect v2-hub-api-1 2>/dev/null | \
@@ -526,29 +529,47 @@ deploy_hub() {
         
         if [ -n "$CONTAINER_IP" ] && [ "$CONTAINER_IP" != "" ]; then
             # 获取容器内部监听的端口（从环境变量PORT）
-            CONTAINER_PORT=$(docker inspect v2-hub-api-1 --format='{{range .Config.Env}}{{println .}}{{end}}' | \
-                grep "^PORT=" | cut -d= -f2 || echo "8080")
+            # 修复：正确处理环境变量格式
+            CONTAINER_PORT=$(docker inspect v2-hub-api-1 2>/dev/null | \
+                grep '"PORT=' | \
+                head -1 | \
+                sed 's/.*"PORT=\([0-9]*\)".*/\1/')
+            
+            # 如果获取失败，尝试从日志中获取
+            if [ -z "$CONTAINER_PORT" ] || [ "$CONTAINER_PORT" = "" ]; then
+                # 尝试从容器日志中获取实际端口
+                CONTAINER_PORT=$(docker logs v2-hub-api-1 2>&1 | \
+                    grep "server started on port" | \
+                    tail -1 | \
+                    sed 's/.*port \([0-9]*\).*/\1/')
+            fi
+            
+            # 如果还是获取失败，使用默认值
+            if [ -z "$CONTAINER_PORT" ] || [ "$CONTAINER_PORT" = "" ]; then
+                CONTAINER_PORT="8080"
+            fi
             
             # 使用容器IP和实际端口进行健康检查
-            if curl -sf http://${CONTAINER_IP}:${CONTAINER_PORT}/health &> /dev/null; then
+            if curl -sf -m 5 http://${CONTAINER_IP}:${CONTAINER_PORT}/health &> /dev/null; then
                 print_success "Hub服务部署成功！"
                 print_info "容器内部地址: http://${CONTAINER_IP}:${CONTAINER_PORT}"
                 
-                # 检查localhost映射是否正常
-                LOCAL_PORT=${HUB_PORT:-8080}
-                if curl -sf http://localhost:${LOCAL_PORT}/health &> /dev/null; then
-                    print_info "本地映射正常: http://localhost:${LOCAL_PORT}"
-                else
-                    # 尝试找到实际映射的端口
-                    ACTUAL_PORT=$(docker port v2-hub-api-1 ${CONTAINER_PORT} 2>/dev/null | cut -d: -f2)
-                    if [ -n "$ACTUAL_PORT" ]; then
-                        print_warning "注意: 服务映射到端口 ${ACTUAL_PORT} 而非 ${LOCAL_PORT}"
-                        print_info "请访问: http://localhost:${ACTUAL_PORT}"
+                # 检查localhost映射
+                # 尝试多个可能的端口
+                for try_port in ${CONTAINER_PORT} ${HUB_PORT:-8080} 8080 38080 48080; do
+                    if curl -sf -m 2 http://localhost:${try_port}/health &> /dev/null; then
+                        print_info "本地访问地址: http://localhost:${try_port}"
+                        break
                     fi
-                fi
+                done
                 
                 show_access_info
+                # 恢复错误检查
+                set -e
                 return 0
+            else
+                # 健康检查失败，显示更多信息
+                echo -n "[${CONTAINER_IP}:${CONTAINER_PORT}]"
             fi
         else
             # 容器可能还在启动中
@@ -556,8 +577,11 @@ deploy_hub() {
         fi
         
         sleep 2
-        ((attempt++))
+        attempt=$((attempt + 1))
     done
+    
+    # 恢复错误检查
+    set -e
     
     print_error "Hub服务启动超时，请检查日志"
     $DOCKER_COMPOSE -f $COMPOSE_FILE logs hub-api
