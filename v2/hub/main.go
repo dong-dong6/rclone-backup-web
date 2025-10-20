@@ -119,7 +119,24 @@ func main() {
 
 	// Health check - support both GET and HEAD methods
 	healthHandler := func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "healthy", "time": time.Now().Unix()})
+		// 深度健康检查
+		health := gin.H{
+			"status": "healthy",
+			"time":   time.Now().Unix(),
+		}
+		
+		// 检查数据库连接
+		if err := db.Ping(); err != nil {
+			c.JSON(503, gin.H{
+				"status": "unhealthy",
+				"error":  "database connection failed",
+				"time":   time.Now().Unix(),
+			})
+			return
+		}
+		
+		// 返回健康状态
+		c.JSON(200, health)
 	}
 	router.GET("/health", healthHandler)
 	router.HEAD("/health", healthHandler)

@@ -77,11 +77,12 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
-      interval: 5s
-      timeout: 3s
+      # 使用 wget 检查健康端点，确保返回 200
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 30s  # 给服务充足的启动时间
 
   # Web UI (React)
   web-ui:
@@ -104,9 +105,10 @@ services:
     depends_on:
       - hub-api
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"]
-      interval: 5s
-      timeout: 3s
+      # Nginx 容器使用 curl 检查（已安装）
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
       retries: 3
       start_period: 10s
 
