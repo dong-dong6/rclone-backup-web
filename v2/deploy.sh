@@ -520,16 +520,25 @@ deploy_hub() {
     set +e
     
     while [ $attempt -lt $max_attempts ]; do
-        # 测试健康检查 - 使用配置的主机端口
-        if curl -sf -m 2 http://localhost:${HUB_PORT:-8080}/health &> /dev/null; then
-            print_success "Hub服务部署成功！"
-            show_access_info
-            # 恢复错误检查
-            set -e
-            return 0
+        # 测试健康检查 - 通过 Web UI 端口检查所有服务
+        WEB_PORT=${WEB_PORT:-3000}
+        
+        # 检查 Web UI 是否就绪
+        if curl -sf -m 2 http://localhost:${WEB_PORT}/health &> /dev/null; then
+            # 检查 API 是否可通过 Web UI 访问
+            if curl -sf -m 2 http://localhost:${WEB_PORT}/api/health &> /dev/null; then
+                print_success "所有服务部署成功！"
+                show_access_info
+                # 恢复错误检查
+                set -e
+                return 0
+            else
+                echo -n "[API]"
+            fi
+        else
+            echo -n "."
         fi
         
-        echo -n "."
         sleep 2
         attempt=$((attempt + 1))
     done
@@ -694,18 +703,15 @@ show_access_info() {
     echo ""
     echo "📍 访问地址:"
     
-    # 使用实际检测到的端口，如果有的话
-    if [ -n "${HUB_PORT}" ]; then
-        HUB_ACTUAL_PORT=${HUB_PORT}
-    else
-        # 尝试从日志获取
-        HUB_ACTUAL_PORT=$(docker logs v2-hub-api-1 2>&1 | grep "server started on port" | tail -1 | sed 's/.*port \([0-9]*\).*/\1/' || echo "8080")
-    fi
-    WEB_ACTUAL_PORT="${WEB_PORT:-3000}"
+    WEB_PORT="${WEB_PORT:-3000}"
     
-    echo "  Web UI: http://localhost:${WEB_ACTUAL_PORT}"
-    echo "  API: http://localhost:${HUB_ACTUAL_PORT}"
-    echo "  Metrics: http://localhost:${METRICS_PORT:-9090}/metrics"
+    echo "  应用地址: http://localhost:${WEB_PORT}"
+    echo ""
+    echo "  具体端点:"
+    echo "    Web界面: http://localhost:${WEB_PORT}"
+    echo "    API接口: http://localhost:${WEB_PORT}/api"
+    echo "    SSE事件: http://localhost:${WEB_PORT}/events"
+    echo "    监控指标: http://localhost:${WEB_PORT}/metrics"
     echo ""
     echo "🔑 默认管理员账号:"
     echo "  用户名: admin"

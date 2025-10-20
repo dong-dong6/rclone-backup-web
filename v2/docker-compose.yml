@@ -64,9 +64,10 @@ services:
       # Session Configuration
       SESSION_TIMEOUT: ${SESSION_TIMEOUT:-24h}
       API_KEY_EXPIRY: ${API_KEY_EXPIRY:-365d}
-    ports:
-      - "${HUB_PORT:-8080}:8080"  # Map host port to container's 8080
-      - "${METRICS_PORT:-9090}:9090"
+    # 不再对外暴露端口，只在内部网络访问
+    # ports:
+    #   - "${HUB_PORT:-8080}:8080"
+    #   - "${METRICS_PORT:-9090}:9090"
     volumes:
       - ./hub/config:/app/config:ro
       - hub_data:/data
