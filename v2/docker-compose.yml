@@ -53,7 +53,7 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Encryption key required}
       
       # Server Configuration
-      PORT: ${HUB_PORT:-8080}
+      PORT: 8080  # Container internal port should always be 8080
       GIN_MODE: ${GIN_MODE:-release}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       
@@ -65,7 +65,7 @@ services:
       SESSION_TIMEOUT: ${SESSION_TIMEOUT:-24h}
       API_KEY_EXPIRY: ${API_KEY_EXPIRY:-365d}
     ports:
-      - "${HUB_PORT:-8080}:${HUB_PORT:-8080}"
+      - "${HUB_PORT:-8080}:8080"  # Map host port to container's 8080
       - "${METRICS_PORT:-9090}:9090"
     volumes:
       - ./hub/config:/app/config:ro
@@ -76,7 +76,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget -q --spider http://localhost:${PORT:-8080}/health || exit 1"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3

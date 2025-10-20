@@ -520,40 +520,14 @@ deploy_hub() {
     set +e
     
     while [ $attempt -lt $max_attempts ]; do
-        # 从日志获取实际端口（每次循环都重新获取，以防服务刚启动）
-        LOG_PORT=$(docker logs v2-hub-api-1 2>&1 | grep "server started on port" | tail -1 | sed 's/.*port \([0-9]*\).*/\1/')
-        
-        # 构建要测试的端口列表
-        TEST_PORTS=""
-        if [ -n "$LOG_PORT" ]; then
-            TEST_PORTS="$LOG_PORT"
+        # 测试健康检查 - 使用配置的主机端口
+        if curl -sf -m 2 http://localhost:${HUB_PORT:-8080}/health &> /dev/null; then
+            print_success "Hub服务部署成功！"
+            show_access_info
+            # 恢复错误检查
+            set -e
+            return 0
         fi
-        # 添加其他可能的端口
-        TEST_PORTS="$TEST_PORTS ${HUB_PORT:-8080} 8080 38080 48080"
-        
-        # 去重并测试每个端口
-        TESTED=""
-        for test_port in $TEST_PORTS; do
-            # 避免重复测试同一个端口
-            if echo "$TESTED" | grep -q "$test_port"; then
-                continue
-            fi
-            TESTED="$TESTED $test_port"
-            
-            # 测试健康检查
-            if curl -sf -m 2 http://localhost:${test_port}/health &> /dev/null; then
-                print_success "Hub服务部署成功！"
-                print_info "服务运行在端口: ${test_port}"
-                
-                # 更新访问信息中的端口
-                export HUB_PORT=${test_port}
-                
-                show_access_info
-                # 恢复错误检查
-                set -e
-                return 0
-            fi
-        done
         
         echo -n "."
         sleep 2
