@@ -105,7 +105,7 @@ services:
     depends_on:
       - hub-api
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 3

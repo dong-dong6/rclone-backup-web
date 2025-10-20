@@ -29,8 +29,7 @@ FROM nginx:1.25-alpine
 # Install runtime dependencies
 RUN apk add --no-cache \
     tzdata \
-    curl \
-    wget
+    curl
 
 # Remove default nginx config
 RUN rm -rf /etc/nginx/conf.d/default.conf
