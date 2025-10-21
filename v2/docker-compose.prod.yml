@@ -72,13 +72,14 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT secret required}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Encryption key required}
       
-      # Server Configuration
-      PORT: ${HUB_PORT:-8080}
+      # Server Configuration - 强制使用 8080，忽略环境变量
+      PORT: 8080
       GIN_MODE: ${GIN_MODE:-release}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-    ports:
-      - "${HUB_PORT:-8080}:${HUB_PORT:-8080}"
-      - "${METRICS_PORT:-9090}:9090"
+    # 不再对外暴露端口，只在内部网络访问
+    # ports:
+    #   - "${HUB_PORT:-8080}:8080"
+    #   - "${METRICS_PORT:-9090}:9090"
     volumes:
       # 使用绑定挂载 - 配置和数据存储在 ./data/hub
       - ./data/hub/config:/app/config
@@ -92,10 +93,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:${HUB_PORT:-8080}/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
 
   # ============================================
   # Web UI (React)
@@ -118,66 +120,6 @@ services:
       - backend
     depends_on:
       - hub-api
-
-  # ============================================
-  # LOCAL AGENT SERVICES (OPTIONAL)
-  # Profile: local-agent
-  # ============================================
-  local-agent:
-    build:
-      context: ./agent
-      dockerfile: Dockerfile
-      args:
-        VERSION: ${VERSION:-latest}
-    image: rclone-backup-agent:${VERSION:-latest}
-    profiles:
-      - local-agent
-    restart: always
-    environment:
-      HUB_URL: http://hub-api:${HUB_PORT:-8080}
-      REGISTRATION_TOKEN: ${LOCAL_AGENT_REGISTRATION_TOKEN:-}
-      AGENT_ID: ${LOCAL_AGENT_ID:-}
-      API_KEY: ${LOCAL_AGENT_API_KEY:-}
-      AGENT_NAME: ${LOCAL_AGENT_NAME:-hub-local-agent}
-      HEARTBEAT_INTERVAL: ${HEARTBEAT_INTERVAL:-30s}
-      TASK_TIMEOUT: ${TASK_TIMEOUT:-2h}
-      ENABLE_LOCAL_FALLBACK: ${ENABLE_LOCAL_FALLBACK:-true}
-      LOCAL_FALLBACK_THRESHOLD: ${LOCAL_FALLBACK_THRESHOLD:-5m}
-    volumes:
-      # 使用绑定挂载 - Agent数据存储在 ./data/agent
-      - ./data/agent:/data
-      - ./data/agent/cache:/cache
-      - ./data/agent/rclone-config:/config
-      
-      # 挂载要备份的Hub数据 (只读)
-      - ./data/postgres:/backup/postgres:ro
-      - ./data/redis:/backup/redis:ro
-      - ./data/hub:/backup/hub:ro
-      - ./data/backups:/backup/db-backups:ro
-      - ./.env:/backup/config/.env:ro
-      - ./docker-compose.yml:/backup/config/docker-compose.yml:ro
-    networks:
-      - backend
-    depends_on:
-      hub-api:
-        condition: service_healthy
-
-  # Rclone Sidecar for Local Agent
-  local-rclone-sidecar:
-    image: rclone/rclone:${RCLONE_VERSION:-latest}
-    profiles:
-      - local-agent
-    restart: always
-    command: rcd --rc-addr 0.0.0.0:5572 --rc-no-auth
-    volumes:
-      # 共享Agent的配置和缓存
-      - ./data/agent/rclone-config:/config/rclone
-      - ./data/agent/cache:/cache
-      
-      # 共享备份源 (只读)
-      - ./data:/backup/all-data:ro
-    networks:
-      - backend
 
   # ============================================
   # Database Backup Service (OPTIONAL)
