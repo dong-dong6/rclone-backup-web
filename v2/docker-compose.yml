@@ -53,7 +53,7 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Encryption key required}
       
       # Server Configuration
-      PORT: 8080  # Container internal port should always be 8080
+      PORT: "8080"  # 强制容器内部使用 8080，不受环境变量影响
       GIN_MODE: ${GIN_MODE:-release}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       
