@@ -52,8 +52,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT secret required}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Encryption key required}
       
-      # Server Configuration
-      PORT: "8080"  # 强制容器内部使用 8080，不受环境变量影响
+      # Server Configuration - 强制使用 8080，忽略环境变量
+      PORT: 8080
       GIN_MODE: ${GIN_MODE:-release}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       

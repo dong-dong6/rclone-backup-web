@@ -1,6 +1,5 @@
 upstream hub_backend {
-    # 注意：如果 Hub API 运行在不同端口，请修改这里
-    server hub-api:8080;
+    server hub-api:${HUB_API_PORT};
 }
 
 server {
@@ -75,7 +74,7 @@ server {
     
     # Metrics endpoint proxy (metrics runs on hub-api:9090)
     location /metrics {
-        proxy_pass http://hub-api:9090/metrics;
+        proxy_pass http://hub-api:${HUB_METRICS_PORT}/metrics;
         proxy_http_version 1.1;
         
         # Headers
