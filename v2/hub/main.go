@@ -126,7 +126,7 @@ func main() {
 		}
 		
 		// 检查数据库连接
-		if err := db.Ping(); err != nil {
+		if err := db.Ping(c.Request.Context()); err != nil {
 			c.JSON(503, gin.H{
 				"status": "unhealthy",
 				"error":  "database connection failed",
