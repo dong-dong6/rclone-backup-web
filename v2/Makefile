@@ -9,8 +9,7 @@ help:
 	@echo "Rclone Backup Web V2.0 - 可用命令"
 	@echo ""
 	@echo "基础命令:"
-	@echo "  make up              - 启动Hub服务（不含Agent）"
-	@echo "  make up-with-agent   - 启动Hub服务（含本地Agent）"
+	@echo "  make up              - 启动Hub服务"
 	@echo "  make down            - 停止所有服务"
 	@echo "  make restart         - 重启所有服务"
 	@echo "  make logs            - 查看服务日志"
@@ -19,12 +18,6 @@ help:
 	@echo "构建命令:"
 	@echo "  make build           - 构建所有镜像"
 	@echo "  make rebuild         - 强制重新构建镜像"
-	@echo ""
-	@echo "Agent命令:"
-	@echo "  make agent-up        - 启动远程Agent"
-	@echo "  make agent-down      - 停止远程Agent"
-	@echo "  make agent-logs      - 查看远程Agent日志"
-	@echo "  make local-agent-logs - 查看本地Agent日志"
 	@echo ""
 	@echo "维护命令:"
 	@echo "  make backup          - 备份数据库"
@@ -50,7 +43,7 @@ ifeq ($(DOCKER_COMPOSE),)
     DOCKER_COMPOSE := docker compose
 endif
 
-# 启动Hub服务（不含Agent）
+# 启动Hub服务
 up:
 	@echo "🚀 启动Rclone Backup Hub服务..."
 	@$(DOCKER_COMPOSE) $(if $(COMPOSE_PROFILES),--profile $(COMPOSE_PROFILES)) up -d
@@ -60,28 +53,11 @@ up:
 	@echo "  Web UI: http://localhost:3000"
 	@echo "  API: http://localhost:8080"
 	@echo "  Metrics: http://localhost:9090/metrics"
-	@if [ "$(COMPOSE_PROFILES)" = "local-agent" ]; then \
-		echo "  本地Agent: 已启动"; \
-	fi
-
-# 启动Hub服务（含本地Agent）
-up-with-agent:
-	@echo "🚀 启动Rclone Backup服务（含本地Agent）..."
-	@if [ -z "$${LOCAL_AGENT_REGISTRATION_TOKEN}" ] && [ -z "$${LOCAL_AGENT_API_KEY}" ]; then \
-		echo "⚠️  警告: 未配置LOCAL_AGENT_REGISTRATION_TOKEN"; \
-		echo "请先:"; \
-		echo "  1. 运行 'make up' 启动Hub"; \
-		echo "  2. 在Web UI中生成注册令牌"; \
-		echo "  3. 将令牌添加到.env文件的LOCAL_AGENT_REGISTRATION_TOKEN"; \
-		echo "  4. 再次运行 'make up-with-agent'"; \
-		exit 1; \
-	fi
-	@$(MAKE) COMPOSE_PROFILES=local-agent up
 
 # 停止所有服务
 down:
 	@echo "🛑 停止Rclone Backup服务..."
-	@$(DOCKER_COMPOSE) --profile local-agent --profile db-backup down
+	@$(DOCKER_COMPOSE) --profile db-backup down
 
 # 重启所有服务
 restart: down up
@@ -109,21 +85,18 @@ status:
 # 构建所有镜像（本地构建）
 build:
 	@echo "🔨 本地构建Docker镜像..."
-	@$(DOCKER_COMPOSE) --profile local-agent build
+	@$(DOCKER_COMPOSE) build
 	@echo "✅ 镜像构建完成！"
 	@docker images | grep rclone-backup
 
 # 强制重新构建（清除缓存）
 rebuild:
 	@echo "🔨 强制重新构建镜像..."
-	@$(DOCKER_COMPOSE) --profile local-agent build --no-cache
+	@$(DOCKER_COMPOSE) build --no-cache
 	@echo "✅ 镜像重新构建完成！"
 
 # 构建并启动
 build-and-up: build up
-
-# 构建并启动（含本地Agent）
-build-and-up-with-agent: build up-with-agent
 
 # 更新服务（本地构建）
 update:
@@ -131,44 +104,10 @@ update:
 	@$(MAKE) build
 	@$(MAKE) COMPOSE_PROFILES=$(COMPOSE_PROFILES) up
 
-# 更新服务（含本地Agent）
-update-with-agent:
-	@$(MAKE) COMPOSE_PROFILES=local-agent update
-
 # 拉取最新镜像
 pull:
 	@echo "📥 拉取最新镜像..."
 	@$(DOCKER_COMPOSE) pull
-
-# ============================================
-# Agent命令
-# ============================================
-
-# 启动Agent
-agent-up:
-	@echo "🚀 启动Agent..."
-	@$(DOCKER_COMPOSE) -f docker-compose.agent.yml up -d
-
-# 停止Agent
-agent-down:
-	@echo "🛑 停止Agent..."
-	@$(DOCKER_COMPOSE) -f docker-compose.agent.yml down
-
-# 查看Agent日志
-agent-logs:
-	@$(DOCKER_COMPOSE) -f docker-compose.agent.yml logs -f --tail=100
-
-# Agent状态
-agent-status:
-	@$(DOCKER_COMPOSE) -f docker-compose.agent.yml ps
-
-# 查看本地Agent日志
-local-agent-logs:
-	@$(DOCKER_COMPOSE) logs -f --tail=100 local-agent local-rclone-sidecar
-
-# 本地Agent状态
-local-agent-status:
-	@$(DOCKER_COMPOSE) ps local-agent local-rclone-sidecar
 
 # ============================================
 # 维护命令
@@ -202,7 +141,7 @@ clean:
 	@echo "⚠️  警告: 这将删除所有数据！"
 	@echo "按 Ctrl+C 取消，或按 Enter 继续..."
 	@read confirm
-	@$(DOCKER_COMPOSE) --profile local-agent --profile db-backup down -v
+	@$(DOCKER_COMPOSE) --profile db-backup down -v
 	@rm -rf backups/*
 	@echo "🗑️  所有数据已清理"
 

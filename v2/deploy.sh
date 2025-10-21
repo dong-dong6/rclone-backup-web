@@ -71,9 +71,7 @@ Rclone Backup Web V2.0 - 部署脚本
     ./deploy.sh [命令] [选项]
 
 命令:
-    hub              部署Hub（不含Agent）
-    hub-with-agent   部署Hub（含本地Agent）
-    agent            部署独立Agent
+    hub              部署Hub
     build            构建所有镜像
     status           查看服务状态
     logs [service]   查看服务日志
@@ -93,12 +91,10 @@ Rclone Backup Web V2.0 - 部署脚本
     ./data/postgres  - 数据库
     ./data/redis     - 缓存
     ./data/hub       - Hub数据
-    ./data/agent     - Agent数据
     ./data/backups   - 自动备份
 
 示例:
     ./deploy.sh hub              # 部署Hub服务
-    ./deploy.sh hub-with-agent   # 部署Hub和本地Agent
     ./deploy.sh backup           # 备份数据
     ./deploy.sh logs hub-api     # 查看Hub日志
 
@@ -144,7 +140,6 @@ show_data_info() {
     echo "  │   ├── config/      # Hub配置文件"
     echo "  │   ├── data/        # Hub运行数据"
     echo "  │   └── logs/        # Hub日志"
-    echo "  ├── agent/           # Agent数据 (如果启用)"
     echo "  └── backups/         # 数据库备份"
     echo ""
 }
@@ -158,7 +153,7 @@ check_existing_data() {
         # 列出主要数据目录
         echo ""
         echo "现有数据内容："
-        for dir in postgres redis hub agent backups; do
+        for dir in postgres redis hub backups; do
             if [ -d "./data/$dir" ]; then
                 local dir_size=$(du -sh ./data/$dir 2>/dev/null | cut -f1)
                 echo "  - $dir: $dir_size"
@@ -274,10 +269,6 @@ generate_env_config() {
     fi
     
     # 端口配置
-    print_prompt "请输入Hub API端口 [默认: 8080]: "
-    read -r HUB_PORT
-    HUB_PORT=${HUB_PORT:-8080}
-    
     print_prompt "请输入Web UI端口 [默认: 3000]: "
     read -r WEB_PORT
     WEB_PORT=${WEB_PORT:-3000}
@@ -304,9 +295,7 @@ JWT_SECRET=$JWT_SECRET
 ENCRYPTION_KEY=$ENCRYPTION_KEY
 
 # 服务端口
-HUB_PORT=$HUB_PORT
 WEB_PORT=$WEB_PORT
-METRICS_PORT=9090
 
 # 应用设置
 GIN_MODE=release
@@ -324,14 +313,6 @@ REDIS_MAX_MEMORY=256mb
 
 # 数据库备份间隔（秒）
 DB_BACKUP_INTERVAL=86400
-
-# 本地Agent配置（可选）
-LOCAL_AGENT_REGISTRATION_TOKEN=
-LOCAL_AGENT_NAME=hub-local-agent
-HEARTBEAT_INTERVAL=30s
-TASK_TIMEOUT=2h
-ENABLE_LOCAL_FALLBACK=true
-LOCAL_FALLBACK_THRESHOLD=5m
 
 # Rclone配置
 RCLONE_VERSION=latest
@@ -403,7 +384,7 @@ setup_permissions() {
     print_info "设置目录权限..."
     
     # 创建必要的目录
-    mkdir -p ./data/{postgres,redis,hub/{config,data,logs},agent,backups}
+    mkdir -p ./data/{postgres,redis,hub/{config,data,logs},backups}
     
     # 设置权限（某些服务需要特定的权限）
     # PostgreSQL需要700权限
@@ -440,16 +421,10 @@ build_images() {
     # 构建Hub镜像
     print_info "构建Hub API镜像..."
     $DOCKER_COMPOSE -f $COMPOSE_FILE build hub-api
-    
+
     print_info "构建Web UI镜像..."
     $DOCKER_COMPOSE -f $COMPOSE_FILE build web-ui
-    
-    # 构建Agent镜像（如果需要）
-    if [[ "$1" == *"agent"* ]]; then
-        print_info "构建Agent镜像..."
-        $DOCKER_COMPOSE -f $COMPOSE_FILE --profile local-agent build local-agent 2>/dev/null || true
-    fi
-    
+
     print_success "所有镜像构建完成"
 }
 
@@ -523,10 +498,10 @@ deploy_hub() {
         # 使用 Docker 健康检查状态
         
         # 获取所有容器的健康状态
-        POSTGRES_HEALTH=$(docker inspect v2-postgres-1 --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
-        REDIS_HEALTH=$(docker inspect v2-redis-1 --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
-        HUB_API_HEALTH=$(docker inspect v2-hub-api-1 --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
-        WEB_UI_HEALTH=$(docker inspect v2-web-ui-1 --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
+        POSTGRES_HEALTH=$(docker inspect rclone-backup-db --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
+        REDIS_HEALTH=$(docker inspect rclone-backup-redis --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
+        HUB_API_HEALTH=$(docker inspect rclone-backup-hub --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
+        WEB_UI_HEALTH=$(docker inspect rclone-backup-web --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
         
         # 显示当前状态
         if [ $attempt -eq 0 ]; then
@@ -575,149 +550,7 @@ deploy_hub() {
     exit 1
 }
 
-# 部署Hub和本地Agent
-deploy_hub_with_agent() {
-    print_info "开始部署Hub服务（含本地Agent）..."
-    
-    check_requirements
-    setup_env
-    
-    # 询问是否清理数据
-    if [[ "$2" == "--clean" ]]; then
-        cleanup_data_interactive
-    fi
-    
-    # 设置权限
-    setup_permissions
-    
-    # 处理网络冲突
-    handle_network_conflicts
-    
-    # 先部署Hub
-    deploy_hub
-    
-    # 检查是否已配置Agent令牌
-    source .env
-    if [ -n "$LOCAL_AGENT_REGISTRATION_TOKEN" ] && [ "$LOCAL_AGENT_REGISTRATION_TOKEN" != "" ]; then
-        print_info "检测到已配置的Agent令牌，跳过令牌获取步骤"
-    else
-        # 提示获取令牌
-        echo ""
-        print_warning "需要配置本地Agent"
-        echo ""
-        echo "请按以下步骤操作："
-        echo "  1. 打开浏览器访问: http://localhost:${WEB_PORT:-3000}"
-        echo "  2. 使用 admin/admin 登录系统"
-        echo "  3. 进入 Agents 页面"
-        echo "  4. 点击 '生成注册令牌'"
-        echo "  5. 复制生成的令牌"
-        echo ""
-        print_prompt "请输入注册令牌: "
-        read -r token
-        
-        if [ -z "$token" ]; then
-            print_error "令牌不能为空"
-            exit 1
-        fi
-        
-        # 更新.env文件
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            sed -i '' "s/LOCAL_AGENT_REGISTRATION_TOKEN=.*/LOCAL_AGENT_REGISTRATION_TOKEN=$token/" .env
-        else
-            sed -i "s/LOCAL_AGENT_REGISTRATION_TOKEN=.*/LOCAL_AGENT_REGISTRATION_TOKEN=$token/" .env
-        fi
-    fi
-    
-    # 构建Agent镜像
-    build_images "agent"
-    
-    # 选择配置文件
-    if [ -f "docker-compose.prod.yml" ]; then
-        COMPOSE_FILE="docker-compose.prod.yml"
-    else
-        COMPOSE_FILE="docker-compose.yml"
-    fi
-    
-    # 启动本地Agent
-    print_info "启动本地Agent..."
-    $DOCKER_COMPOSE -f $COMPOSE_FILE --profile local-agent up -d local-agent local-rclone-sidecar
-    
-    # 检查Agent状态
-    sleep 5
-    if $DOCKER_COMPOSE -f $COMPOSE_FILE ps | grep -q "local-agent.*Up\|local-agent.*running"; then
-        print_success "Hub和本地Agent部署成功！"
-        echo ""
-        echo "本地Agent已启动，请在Web UI的Agents页面查看"
-    else
-        print_error "本地Agent启动失败，请检查日志"
-        $DOCKER_COMPOSE -f $COMPOSE_FILE logs local-agent
-    fi
-}
 
-# 部署独立Agent
-deploy_agent() {
-    print_info "开始配置独立Agent..."
-    
-    check_requirements
-    
-    # 创建Agent配置
-    if [ ! -f .env.agent ]; then
-        print_info "配置Agent连接信息..."
-        
-        print_prompt "请输入Hub服务器地址 (例如: http://hub.example.com:8080): "
-        read -r HUB_URL
-        
-        if [ -z "$HUB_URL" ]; then
-            print_error "Hub地址不能为空"
-            exit 1
-        fi
-        
-        print_prompt "请输入Agent注册令牌: "
-        read -r REGISTRATION_TOKEN
-        
-        if [ -z "$REGISTRATION_TOKEN" ]; then
-            print_error "注册令牌不能为空"
-            exit 1
-        fi
-        
-        print_prompt "请输入Agent名称 [默认: $(hostname)]: "
-        read -r AGENT_NAME
-        AGENT_NAME=${AGENT_NAME:-$(hostname)}
-        
-        # 创建配置文件
-        cat > .env.agent << EOF
-# Agent配置
-HUB_URL=$HUB_URL
-REGISTRATION_TOKEN=$REGISTRATION_TOKEN
-AGENT_NAME=$AGENT_NAME
-
-# 备份源路径
-BACKUP_SOURCE_1=/var/www
-BACKUP_SOURCE_2=/home
-BACKUP_SOURCE_3=/etc
-
-# Rclone配置
-RCLONE_VERSION=latest
-RCLONE_CPU_LIMIT=2.0
-RCLONE_MEMORY_LIMIT=1G
-EOF
-        
-        print_success "Agent配置文件已生成"
-    fi
-    
-    # 加载配置
-    source .env.agent
-    
-    # 构建Agent镜像
-    print_info "构建Agent镜像..."
-    $DOCKER_COMPOSE -f docker-compose.agent.yml build
-    
-    # 启动Agent
-    print_info "启动Agent服务..."
-    $DOCKER_COMPOSE -f docker-compose.agent.yml up -d
-    
-    print_success "Agent部署成功！"
-}
 
 # 显示访问信息
 show_access_info() {
@@ -807,17 +640,17 @@ show_status() {
     
     echo ""
     print_info "健康检查:"
-    
-    # 检查Hub健康状态
-    if curl -sf http://localhost:${HUB_PORT:-8080}/health &> /dev/null; then
-        print_success "Hub API: 健康"
-    else
-        print_warning "Hub API: 未响应"
-    fi
-    
-    # 检查Web UI
+
+    # 检查Web UI (所有流量的统一入口)
     if curl -sf http://localhost:${WEB_PORT:-3000}/ &> /dev/null; then
         print_success "Web UI: 健康"
+
+        # 通过nginx代理检查Hub API健康状态
+        if curl -sf http://localhost:${WEB_PORT:-3000}/api/health &> /dev/null; then
+            print_success "Hub API (via nginx): 健康"
+        else
+            print_warning "Hub API (via nginx): 未响应"
+        fi
     else
         print_warning "Web UI: 未响应"
     fi
@@ -857,13 +690,6 @@ main() {
             show_data_info
             deploy_hub "$@"
             ;;
-        hub-with-agent)
-            show_data_info
-            deploy_hub_with_agent "$@"
-            ;;
-        agent)
-            deploy_agent
-            ;;
         build)
             check_requirements
             setup_env
@@ -883,7 +709,7 @@ main() {
                 COMPOSE_FILE="docker-compose.yml"
             fi
             print_info "停止所有服务..."
-            $DOCKER_COMPOSE -f $COMPOSE_FILE --profile local-agent --profile db-backup down
+            $DOCKER_COMPOSE -f $COMPOSE_FILE --profile db-backup down
             print_success "服务已停止"
             ;;
         restart)
@@ -894,7 +720,7 @@ main() {
                 COMPOSE_FILE="docker-compose.yml"
             fi
             print_info "重启服务..."
-            $DOCKER_COMPOSE -f $COMPOSE_FILE --profile local-agent --profile db-backup restart
+            $DOCKER_COMPOSE -f $COMPOSE_FILE --profile db-backup restart
             print_success "服务已重启"
             ;;
         clean)
