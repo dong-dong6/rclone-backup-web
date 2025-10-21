@@ -443,11 +443,13 @@ create_initial_admin() {
 
     # 插入管理员用户
     $DOCKER_COMPOSE -f $COMPOSE_FILE exec -T postgres psql -U ${DB_USER:-rclone} -d ${DB_NAME:-rclone_backup} <<-EOSQL
-        INSERT INTO users (username, email, password_hash, is_active, is_admin)
+        INSERT INTO users (username, email, password_hash, full_name, role, is_active, is_admin)
         VALUES (
             'admin',
             'admin@rclone-backup.local',
             '$ADMIN_PASSWORD_HASH',
+            'System Administrator',
+            'admin',
             true,
             true
         ) ON CONFLICT (username) DO NOTHING;

@@ -113,6 +113,8 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(100) NOT NULL UNIQUE,
     email VARCHAR(255) UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255),
+    role VARCHAR(50) DEFAULT 'user',
     is_active BOOLEAN DEFAULT true,
     is_admin BOOLEAN DEFAULT false,
     last_login TIMESTAMP WITH TIME ZONE,
