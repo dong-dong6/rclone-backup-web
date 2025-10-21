@@ -215,11 +215,6 @@ lint:
 # 生产部署
 # ============================================
 
-# 生产环境启动
-prod:
-	@echo "🚀 启动生产环境..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml up -d
-
 # 生成密钥
 gen-keys:
 	@echo "🔐 生成安全密钥..."

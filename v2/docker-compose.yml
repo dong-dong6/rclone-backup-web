@@ -1,7 +1,8 @@
 version: '3.8'
 
 # ============================================
-# Rclone Backup Web V2.0 - Hub Deployment with Optional Local Agent
+# Rclone Backup Web V2.0 - Docker Compose 配置
+# 使用绑定挂载实现透明的数据持久化
 # ============================================
 
 services:
@@ -20,10 +21,9 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Database password required}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # 使用绑定挂载 - 数据存储在 ./data/postgres
+      - ./data/postgres:/var/lib/postgresql/data
       - ./hub/database/migrations:/docker-entrypoint-initdb.d:ro
-      # 数据库备份目录，供本地Agent备份
-      - db_backups:/backups
     networks:
       - backend
     healthcheck:
@@ -69,8 +69,10 @@ services:
     #   - "${HUB_PORT:-8080}:8080"
     #   - "${METRICS_PORT:-9090}:9090"
     volumes:
+      # 使用绑定挂载 - 配置和数据存储在 ./data/hub
       - ./hub/config:/app/config:ro
-      - hub_data:/data
+      - ./data/hub/data:/data
+      - ./data/hub/logs:/app/logs
     networks:
       - backend
     depends_on:
@@ -124,7 +126,8 @@ services:
       --maxmemory ${REDIS_MAX_MEMORY:-256mb}
       --maxmemory-policy allkeys-lru
     volumes:
-      - redis_data:/data
+      # 使用绑定挂载 - 数据存储在 ./data/redis
+      - ./data/redis:/data
     networks:
       - backend
     healthcheck:
@@ -146,7 +149,8 @@ services:
     environment:
       PGPASSWORD: ${DB_PASSWORD}
     volumes:
-      - db_backups:/backups
+      # 使用绑定挂载 - 备份存储在 ./data/backups
+      - ./data/backups:/backups
     networks:
       - backend
     command: >
@@ -169,17 +173,7 @@ services:
 networks:
   backend:
     driver: bridge
-
-# ============================================
-# Volumes
-# ============================================
-volumes:
-  # Hub相关卷
-  postgres_data:
-    driver: local
-  redis_data:
-    driver: local
-  hub_data:
-    driver: local
-  db_backups:
-    driver: local
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+          gateway: 172.30.0.1

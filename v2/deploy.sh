@@ -410,14 +410,9 @@ handle_network_conflicts() {
 # 构建镜像
 build_images() {
     print_info "开始构建Docker镜像..."
-    
-    # 检查使用哪个配置文件
-    if [ -f "docker-compose.prod.yml" ]; then
-        COMPOSE_FILE="docker-compose.prod.yml"
-    else
-        COMPOSE_FILE="docker-compose.yml"
-    fi
-    
+
+    COMPOSE_FILE="docker-compose.yml"
+
     # 构建Hub镜像
     print_info "构建Hub API镜像..."
     $DOCKER_COMPOSE -f $COMPOSE_FILE build hub-api
@@ -448,14 +443,9 @@ deploy_hub() {
     
     # 构建镜像
     build_images "hub"
-    
-    # 选择配置文件
-    if [ -f "docker-compose.prod.yml" ]; then
-        COMPOSE_FILE="docker-compose.prod.yml"
-    else
-        COMPOSE_FILE="docker-compose.yml"
-    fi
-    
+
+    COMPOSE_FILE="docker-compose.yml"
+
     # 启动服务（分步启动以确保依赖顺序）
     print_info "启动数据库服务..."
     $DOCKER_COMPOSE -f $COMPOSE_FILE up -d postgres
@@ -627,14 +617,9 @@ restore_data() {
 # 查看服务状态
 show_status() {
     check_requirements
-    
-    # 选择配置文件
-    if [ -f "docker-compose.prod.yml" ]; then
-        COMPOSE_FILE="docker-compose.prod.yml"
-    else
-        COMPOSE_FILE="docker-compose.yml"
-    fi
-    
+
+    COMPOSE_FILE="docker-compose.yml"
+
     print_info "服务状态:"
     $DOCKER_COMPOSE -f $COMPOSE_FILE ps
     
@@ -666,14 +651,9 @@ show_status() {
 # 查看日志
 show_logs() {
     check_requirements
-    
-    # 选择配置文件
-    if [ -f "docker-compose.prod.yml" ]; then
-        COMPOSE_FILE="docker-compose.prod.yml"
-    else
-        COMPOSE_FILE="docker-compose.yml"
-    fi
-    
+
+    COMPOSE_FILE="docker-compose.yml"
+
     if [ -n "$1" ]; then
         print_info "查看 $1 服务日志..."
         $DOCKER_COMPOSE -f $COMPOSE_FILE logs -f --tail=100 "$1"
@@ -703,22 +683,14 @@ main() {
             ;;
         stop)
             check_requirements
-            if [ -f "docker-compose.prod.yml" ]; then
-                COMPOSE_FILE="docker-compose.prod.yml"
-            else
-                COMPOSE_FILE="docker-compose.yml"
-            fi
+            COMPOSE_FILE="docker-compose.yml"
             print_info "停止所有服务..."
             $DOCKER_COMPOSE -f $COMPOSE_FILE --profile db-backup down
             print_success "服务已停止"
             ;;
         restart)
             check_requirements
-            if [ -f "docker-compose.prod.yml" ]; then
-                COMPOSE_FILE="docker-compose.prod.yml"
-            else
-                COMPOSE_FILE="docker-compose.yml"
-            fi
+            COMPOSE_FILE="docker-compose.yml"
             print_info "重启服务..."
             $DOCKER_COMPOSE -f $COMPOSE_FILE --profile db-backup restart
             print_success "服务已重启"
