@@ -62,7 +62,7 @@ func (m *RegistrationTokenModel) GetByToken(ctx context.Context, token string) (
 	query := `
 		SELECT id, token, used, used_by_agent_id, expires_at, created_at
 		FROM registration_tokens
-		WHERE token = $1
+		WHERE token = $1 AND used = false AND expires_at > NOW()
 	`
 
 	err := m.db.QueryRow(ctx, query, token).Scan(
@@ -85,7 +85,7 @@ func (m *RegistrationTokenModel) GetByToken(ctx context.Context, token string) (
 func (m *RegistrationTokenModel) MarkUsed(ctx context.Context, tokenID, agentID uuid.UUID) error {
 	query := `
 		UPDATE registration_tokens
-		SET used = true, used_by_agent_id = $2
+		SET used = true, used_by_agent_id = $2, used_at = NOW()
 		WHERE id = $1
 	`
 

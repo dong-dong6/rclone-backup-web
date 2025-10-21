@@ -94,6 +94,7 @@ CREATE INDEX idx_task_executions_created_at ON task_executions(created_at DESC);
 CREATE TABLE IF NOT EXISTS registration_tokens (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     token VARCHAR(255) NOT NULL UNIQUE,
+    used BOOLEAN DEFAULT FALSE NOT NULL,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
     used_at TIMESTAMP WITH TIME ZONE,
     used_by_agent_id UUID REFERENCES agents(id),
