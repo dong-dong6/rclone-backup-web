@@ -207,15 +207,8 @@ CREATE TRIGGER update_notification_settings_updated_at BEFORE UPDATE ON notifica
 -- Initial Data
 -- ============================================
 
--- Insert default admin user (password: admin)
-INSERT INTO users (username, email, password_hash, is_active, is_admin)
-VALUES (
-    'admin',
-    'admin@rclone-backup.local',
-    '$2a$10$YKqH9kZMZEqPVHZXqL6q5eFqgQkVGYbSAvAP3hJL9ivFWmCKUYgvG',
-    true,
-    true
-) ON CONFLICT (username) DO NOTHING;
+-- Note: Admin user will be created during deployment with a random password
+-- See deploy.sh for initial admin account setup
 
 -- Insert default system settings
 INSERT INTO system_settings (key, value, description) VALUES

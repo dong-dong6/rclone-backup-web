@@ -407,6 +407,76 @@ handle_network_conflicts() {
     print_success "网络准备就绪"
 }
 
+# 创建初始管理员账户
+create_initial_admin() {
+    # 检查是否已经存在admin用户
+    local admin_exists=$($DOCKER_COMPOSE -f $COMPOSE_FILE exec -T postgres psql -U ${DB_USER:-rclone} -d ${DB_NAME:-rclone_backup} -tAc "SELECT COUNT(*) FROM users WHERE username='admin';" 2>/dev/null || echo "0")
+
+    if [ "$admin_exists" -gt 0 ]; then
+        print_info "管理员账户已存在,跳过创建"
+        return 0
+    fi
+
+    print_info "创建初始管理员账户..."
+
+    # 生成随机密码(16字符)
+    local ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
+
+    # 使用htpasswd生成bcrypt哈希 (如果可用)
+    # 否则使用Python (在alpine镜像中通常可用)
+    local ADMIN_PASSWORD_HASH=""
+
+    if command -v htpasswd &> /dev/null; then
+        # 使用htpasswd生成bcrypt
+        ADMIN_PASSWORD_HASH=$(htpasswd -nbB -C 10 admin "$ADMIN_PASSWORD" 2>/dev/null | cut -d: -f2)
+    else
+        # 使用Docker运行一个临时容器生成bcrypt哈希
+        ADMIN_PASSWORD_HASH=$(docker run --rm alpine sh -c "apk add --no-cache py3-bcrypt > /dev/null 2>&1 && python3 -c \"import bcrypt; print(bcrypt.hashpw(b'$ADMIN_PASSWORD', bcrypt.gensalt(10)).decode())\"" 2>/dev/null)
+    fi
+
+    if [ -z "$ADMIN_PASSWORD_HASH" ]; then
+        print_warning "无法生成bcrypt哈希,使用默认密码 'changeme123'"
+        ADMIN_PASSWORD="changeme123"
+        # bcrypt hash for "changeme123" with cost 10
+        ADMIN_PASSWORD_HASH='$2a$10$rLJHvVQzMmKGvE5xF5xLN.XqYvHZYF7CdJxvCp7qP6vhqZWYxZKK6'
+    fi
+
+    # 插入管理员用户
+    $DOCKER_COMPOSE -f $COMPOSE_FILE exec -T postgres psql -U ${DB_USER:-rclone} -d ${DB_NAME:-rclone_backup} <<-EOSQL
+        INSERT INTO users (username, email, password_hash, is_active, is_admin)
+        VALUES (
+            'admin',
+            'admin@rclone-backup.local',
+            '$ADMIN_PASSWORD_HASH',
+            true,
+            true
+        ) ON CONFLICT (username) DO NOTHING;
+EOSQL
+
+    # 保存密码到文件
+    mkdir -p ./data/hub
+    echo "$ADMIN_PASSWORD" > ./data/hub/admin_password.txt
+    chmod 600 ./data/hub/admin_password.txt 2>/dev/null || true
+
+    # 导出密码供后续使用
+    export INITIAL_ADMIN_PASSWORD="$ADMIN_PASSWORD"
+
+    print_success "管理员账户已创建"
+    echo ""
+    echo "  初始管理员账户信息："
+    echo "  ┌────────────────────────────────────────┐"
+    echo "  │  用户名: admin                          │"
+    echo "  │  密码: $ADMIN_PASSWORD"
+    # 根据密码长度调整间距
+    local padding_length=$((38 - ${#ADMIN_PASSWORD}))
+    printf "  │%${padding_length}s│\n" ""
+    echo "  └────────────────────────────────────────┘"
+    echo ""
+    echo "  密码已保存到: ./data/hub/admin_password.txt"
+    echo "  ⚠️  请立即登录并修改密码！"
+    echo ""
+}
+
 # 构建镜像
 build_images() {
     print_info "开始构建Docker镜像..."
@@ -471,7 +541,10 @@ deploy_hub() {
     fi
     
     print_success "数据库已就绪"
-    
+
+    # 创建初始管理员账户
+    create_initial_admin
+
     # 启动其他服务
     print_info "启动Hub服务..."
     $DOCKER_COMPOSE -f $COMPOSE_FILE up -d redis hub-api web-ui
@@ -549,9 +622,9 @@ show_access_info() {
     echo -e "${GREEN}✨ 部署成功！${NC}"
     echo ""
     echo "📍 访问地址:"
-    
+
     WEB_PORT="${WEB_PORT:-3000}"
-    
+
     echo "  应用地址: http://localhost:${WEB_PORT}"
     echo ""
     echo "  具体端点:"
@@ -560,10 +633,36 @@ show_access_info() {
     echo "    SSE事件: http://localhost:${WEB_PORT}/events"
     echo "    监控指标: http://localhost:${WEB_PORT}/metrics"
     echo ""
-    echo "🔑 默认管理员账号:"
-    echo "  用户名: admin"
-    echo "  密码: admin"
-    echo "  (首次登录后请立即修改密码)"
+
+    # 检查是否有初始管理员密码
+    if [ -f "./data/hub/admin_password.txt" ]; then
+        local SAVED_PASSWORD=$(cat ./data/hub/admin_password.txt 2>/dev/null)
+        if [ -n "$SAVED_PASSWORD" ]; then
+            echo "🔑 初始管理员账号:"
+            echo "  ┌────────────────────────────────────────┐"
+            echo "  │  用户名: admin                          │"
+            echo "  │  密码: $SAVED_PASSWORD"
+            local padding_length=$((38 - ${#SAVED_PASSWORD}))
+            printf "  │%${padding_length}s│\n" ""
+            echo "  └────────────────────────────────────────┘"
+            echo "  ⚠️  请立即登录并修改密码！"
+        fi
+    elif [ -n "$INITIAL_ADMIN_PASSWORD" ]; then
+        echo "🔑 初始管理员账号:"
+        echo "  ┌────────────────────────────────────────┐"
+        echo "  │  用户名: admin                          │"
+        echo "  │  密码: $INITIAL_ADMIN_PASSWORD"
+        local padding_length=$((38 - ${#INITIAL_ADMIN_PASSWORD}))
+        printf "  │%${padding_length}s│\n" ""
+        echo "  └────────────────────────────────────────┘"
+        echo "  ⚠️  请立即登录并修改密码！"
+    else
+        echo "🔑 默认管理员账号:"
+        echo "  用户名: admin"
+        echo "  密码: 请查看 ./data/hub/admin_password.txt"
+        echo "  (首次登录后请立即修改密码)"
+    fi
+
     echo ""
     echo "📂 数据目录:"
     echo "  ./data/"
