@@ -1,0 +1,151 @@
+/* Dashboard Page - Matching templates/dashboard.html style */
+
+.dashboard-stats-card {
+  background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.dashboard-stats-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(135deg, #000000 0%, #434343 100%);
+}
+
+.dashboard-stats-card.success::before {
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+}
+
+.dashboard-stats-card.warning::before {
+  background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+}
+
+.dashboard-stats-card.danger::before {
+  background: linear-gradient(135deg, #dc3545 0%, #e83e8c 100%);
+}
+
+.dashboard-stats-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+/* Chart container */
+.chart-container {
+  background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* Override Ant Design Card for dashboard */
+.ant-card.dashboard-card {
+  background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* Statistic value colors */
+.ant-statistic-content-value {
+  color: #000000;
+  font-weight: 700;
+}
+
+.ant-statistic-content-value.success {
+  color: #28a745;
+}
+
+.ant-statistic-content-value.warning {
+  color: #ffc107;
+}
+
+.ant-statistic-content-value.danger {
+  color: #dc3545;
+}
+
+/* Status tags */
+.ant-tag {
+  border-radius: 50px;
+  padding: 4px 12px;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Progress bars */
+.ant-progress-line {
+  font-size: 14px;
+}
+
+.ant-progress-bg {
+  border-radius: 100px;
+}
+
+/* Table in dashboard */
+.dashboard-table .ant-table {
+  background: transparent;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.dashboard-table .ant-table-thead > tr > th {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border: none;
+  font-weight: 600;
+  color: #212529;
+  padding: 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-table .ant-table-tbody > tr > td {
+  border: none;
+  padding: 16px;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.dashboard-table .ant-table-tbody > tr:hover > td {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+/* Animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+/* Pulse animation for running status */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}

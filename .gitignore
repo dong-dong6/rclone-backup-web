@@ -149,3 +149,4 @@ logs/
 *.db
 *.sqlite
 instance/
+node_modules/

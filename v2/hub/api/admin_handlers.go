@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -29,41 +30,49 @@ type LoginResponse struct {
 func (h *Handler) AdminLogin(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("[Login] Failed to bind JSON: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	log.Printf("[Login] Login attempt for username: %s from IP: %s", req.Username, c.ClientIP())
 
 	// Authenticate user
 	userModel := models.NewUserModel(h.db)
 	user, err := userModel.Authenticate(c.Request.Context(), req.Username, req.Password)
 	if err != nil {
+		log.Printf("[Login] Authentication failed for username: %s, error: %v", req.Username, err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
+	log.Printf("[Login] User authenticated successfully: %s (ID: %s)", user.Username, user.ID)
+
 	// Generate JWT token
 	token, err := h.authService.GenerateJWT(user.ID.String(), user.Role)
 	if err != nil {
+		log.Printf("[Login] Failed to generate JWT token: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
+
+	log.Printf("[Login] JWT token generated for user: %s", user.Username)
 
 	// Get client info
 	ipAddress := c.ClientIP()
 	userAgent := c.Request.UserAgent()
 
-	// Create session
-	tokenHash, err := h.authService.HashAPIKey(token)
+	// Create session - hash the JWT token for storage
+	tokenHash := h.authService.HashToken(token)
+
+	_, err = userModel.CreateSession(c.Request.Context(), user.ID, tokenHash, ipAddress, userAgent, 24*time.Hour)
 	if err != nil {
+		log.Printf("[Login] Failed to create session: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
 		return
 	}
 
-	_, err = userModel.CreateSession(c.Request.Context(), user.ID, tokenHash, ipAddress, userAgent, 24*time.Hour)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
-		return
-	}
+	log.Printf("[Login] Session created for user: %s", user.Username)
 
 	// Log audit event
 	h.logAuditEvent(c, user.ID, "login", "user", user.ID, map[string]interface{}{
@@ -78,6 +87,7 @@ func (h *Handler) AdminLogin(c *gin.Context) {
 	response.User.Name = user.FullName
 	response.User.Role = user.Role
 
+	log.Printf("[Login] Login successful for user: %s", user.Username)
 	c.JSON(http.StatusOK, response)
 }
 

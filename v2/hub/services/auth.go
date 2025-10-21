@@ -2,6 +2,7 @@ package services
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"time"
@@ -65,13 +66,19 @@ func (s *AuthService) ValidateJWT(tokenString string) (*Claims, error) {
 	return claims, nil
 }
 
-// HashAPIKey hashes an API key using bcrypt
+// HashAPIKey hashes an API key using bcrypt (for Agent API keys)
 func (s *AuthService) HashAPIKey(apiKey string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(apiKey), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
 	}
 	return string(hash), nil
+}
+
+// HashToken hashes a JWT token using SHA256 (for session storage)
+func (s *AuthService) HashToken(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:])
 }
 
 // ValidateAPIKey validates an API key against a hash

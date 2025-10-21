@@ -11,6 +11,7 @@ import {
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useSSE } from '../contexts/SSEContext';
 import api from '../services/api';
+import './Dashboard.css';
 
 const { Title, Text } = Typography;
 
@@ -165,18 +166,20 @@ const Dashboard: React.FC = () => {
   ];
 
   return (
-    <div>
-      <Title level={2}>Dashboard</Title>
-      
+    <div className="fade-in-up">
+      <Title level={2} style={{ fontWeight: 700, color: '#212529', marginBottom: 24 }}>
+        Dashboard
+      </Title>
+
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card className="dashboard-card dashboard-stats-card">
             <Statistic
               title="Total Agents"
               value={stats.totalAgents}
               prefix={<CloudServerOutlined />}
               suffix={
-                <Text type="secondary">
+                <Text type="secondary" style={{ fontSize: 14 }}>
                   ({stats.onlineAgents} online)
                 </Text>
               }
@@ -184,21 +187,22 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card className="dashboard-card dashboard-stats-card success">
             <Statistic
               title="Active Tasks"
               value={stats.activeTasks}
               prefix={<ScheduleOutlined />}
               suffix={
-                <Text type="secondary">
+                <Text type="secondary" style={{ fontSize: 14 }}>
                   / {stats.totalTasks}
                 </Text>
               }
+              valueStyle={{ color: '#28a745' }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card className="dashboard-card dashboard-stats-card">
             <Statistic
               title="Recent Executions"
               value={stats.recentExecutions}
@@ -207,7 +211,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card className="dashboard-card dashboard-stats-card">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Statistic
                 title="Success Rate"
@@ -220,6 +224,13 @@ const Dashboard: React.FC = () => {
                 percent={Math.round(stats.successRate)}
                 width={60}
                 status={stats.successRate >= 90 ? 'success' : stats.successRate >= 70 ? 'normal' : 'exception'}
+                strokeColor={
+                  stats.successRate >= 90
+                    ? '#28a745'
+                    : stats.successRate >= 70
+                    ? '#ffc107'
+                    : '#dc3545'
+                }
               />
             </div>
           </Card>
@@ -228,44 +239,48 @@ const Dashboard: React.FC = () => {
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={16}>
-          <Card title="Backup Trend (24h)">
+          <Card title="Backup Trend (24h)" className="dashboard-card chart-container">
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={backupTrend}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="time" />
-                <YAxis />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.1)" />
+                <XAxis dataKey="time" stroke="#6c757d" />
+                <YAxis stroke="#6c757d" />
                 <Tooltip />
-                <Area type="monotone" dataKey="success" stackId="1" stroke="#52c41a" fill="#52c41a" />
-                <Area type="monotone" dataKey="failed" stackId="1" stroke="#ff4d4f" fill="#ff4d4f" />
+                <Area type="monotone" dataKey="success" stackId="1" stroke="#28a745" fill="#28a745" fillOpacity={0.6} />
+                <Area type="monotone" dataKey="failed" stackId="1" stroke="#dc3545" fill="#dc3545" fillOpacity={0.6} />
               </AreaChart>
             </ResponsiveContainer>
           </Card>
         </Col>
         <Col xs={24} lg={8}>
-          <Card title="Agent Status Distribution">
+          <Card title="Agent Status Distribution" className="dashboard-card">
             <div style={{ padding: '20px' }}>
-              <Space direction="vertical" style={{ width: '100%' }}>
+              <Space direction="vertical" style={{ width: '100%' }} size="large">
                 <div>
-                  <Text>Online Agents</Text>
+                  <Text style={{ fontWeight: 600, color: '#212529' }}>Online Agents</Text>
                   <Progress
-                    percent={(stats.onlineAgents / stats.totalAgents) * 100}
+                    percent={stats.totalAgents > 0 ? (stats.onlineAgents / stats.totalAgents) * 100 : 0}
                     status="active"
-                    strokeColor="#52c41a"
+                    strokeColor="#28a745"
+                    trailColor="rgba(0,0,0,0.06)"
                   />
                 </div>
                 <div>
-                  <Text>Running Tasks</Text>
+                  <Text style={{ fontWeight: 600, color: '#212529' }}>Running Tasks</Text>
                   <Progress
                     percent={30}
                     status="active"
-                    strokeColor="#1890ff"
+                    strokeColor="#000000"
+                    trailColor="rgba(0,0,0,0.06)"
                   />
                 </div>
                 <div>
-                  <Text>Failed Tasks (24h)</Text>
+                  <Text style={{ fontWeight: 600, color: '#212529' }}>Failed Tasks (24h)</Text>
                   <Progress
                     percent={5}
                     status="exception"
+                    strokeColor="#dc3545"
+                    trailColor="rgba(0,0,0,0.06)"
                   />
                 </div>
               </Space>
@@ -274,7 +289,7 @@ const Dashboard: React.FC = () => {
         </Col>
       </Row>
 
-      <Card title="Recent Executions">
+      <Card title="Recent Executions" className="dashboard-card dashboard-table">
         <Table
           columns={columns}
           dataSource={recentExecutions}

@@ -22,6 +22,13 @@ func main() {
 		log.Printf("Warning: .env file not found")
 	}
 
+	// Set Gin mode based on environment
+	ginMode := os.Getenv("GIN_MODE")
+	if ginMode == "" {
+		ginMode = "debug" // Enable debug mode by default
+	}
+	gin.SetMode(ginMode)
+
 	// Initialize database
 	db, err := models.InitDB()
 	if err != nil {
@@ -36,7 +43,7 @@ func main() {
 	sseService := services.NewSSEService()
 	executionMonitor := services.NewExecutionMonitor(db)
 
-	// Setup Gin router
+	// Setup Gin router with logger and recovery middleware
 	router := gin.Default()
 
 	// CORS middleware
@@ -63,7 +70,7 @@ func main() {
 		agent := v1.Group("/agent")
 		{
 			agent.POST("/register", apiHandler.RegisterAgent)
-			
+
 			// Agent authenticated routes
 			agentAuth := agent.Group("")
 			agentAuth.Use(api.AgentAuthMiddleware(authService, db))
@@ -77,40 +84,45 @@ func main() {
 
 		// Admin facing API
 		admin := v1.Group("/admin")
-		admin.Use(api.AdminAuthMiddleware(authService))
 		{
-			// Authentication
+			// Public endpoints (no auth required)
 			admin.POST("/login", apiHandler.AdminLogin)
-			admin.POST("/logout", apiHandler.AdminLogout)
-			
-			// Agents management
-			admin.GET("/agents", apiHandler.ListAgents)
-			admin.DELETE("/agents/:id", apiHandler.DeleteAgent)
-			admin.POST("/agents/registration-token", apiHandler.CreateRegistrationToken)
-			
-			// Tasks management
-			admin.GET("/tasks", apiHandler.ListTasks)
-			admin.GET("/tasks/:id", apiHandler.GetTask)
-			admin.POST("/tasks", apiHandler.CreateTask)
-			admin.PUT("/tasks/:id", apiHandler.UpdateTask)
-			admin.DELETE("/tasks/:id", apiHandler.DeleteTask)
-			
-			// Remotes management
-			admin.GET("/remotes", apiHandler.ListRemotes)
-			admin.GET("/remotes/:id", apiHandler.GetRemote)
-			admin.POST("/remotes", apiHandler.CreateRemote)
-			admin.PUT("/remotes/:id", apiHandler.UpdateRemote)
-			admin.DELETE("/remotes/:id", apiHandler.DeleteRemote)
-			admin.POST("/remotes/:id/test", apiHandler.TestRemote)
-			
-			// Executions
-			admin.GET("/executions", apiHandler.ListExecutions)
-			admin.GET("/executions/:id", apiHandler.GetExecutionDetail)
-			admin.POST("/executions/trigger", apiHandler.TriggerExecution)
-			admin.POST("/executions/:id/cancel", apiHandler.CancelExecution)
-			
-			// Dashboard & Statistics
-			admin.GET("/dashboard/stats", apiHandler.GetDashboardStats)
+
+			// Authenticated endpoints
+			adminAuth := admin.Group("")
+			adminAuth.Use(api.AdminAuthMiddleware(authService))
+			{
+				adminAuth.POST("/logout", apiHandler.AdminLogout)
+
+				// Agents management
+				adminAuth.GET("/agents", apiHandler.ListAgents)
+				adminAuth.DELETE("/agents/:id", apiHandler.DeleteAgent)
+				adminAuth.POST("/agents/registration-token", apiHandler.CreateRegistrationToken)
+
+				// Tasks management
+				adminAuth.GET("/tasks", apiHandler.ListTasks)
+				adminAuth.GET("/tasks/:id", apiHandler.GetTask)
+				adminAuth.POST("/tasks", apiHandler.CreateTask)
+				adminAuth.PUT("/tasks/:id", apiHandler.UpdateTask)
+				adminAuth.DELETE("/tasks/:id", apiHandler.DeleteTask)
+
+				// Remotes management
+				adminAuth.GET("/remotes", apiHandler.ListRemotes)
+				adminAuth.GET("/remotes/:id", apiHandler.GetRemote)
+				adminAuth.POST("/remotes", apiHandler.CreateRemote)
+				adminAuth.PUT("/remotes/:id", apiHandler.UpdateRemote)
+				adminAuth.DELETE("/remotes/:id", apiHandler.DeleteRemote)
+				adminAuth.POST("/remotes/:id/test", apiHandler.TestRemote)
+
+				// Executions
+				adminAuth.GET("/executions", apiHandler.ListExecutions)
+				adminAuth.GET("/executions/:id", apiHandler.GetExecutionDetail)
+				adminAuth.POST("/executions/trigger", apiHandler.TriggerExecution)
+				adminAuth.POST("/executions/:id/cancel", apiHandler.CancelExecution)
+
+				// Dashboard & Statistics
+				adminAuth.GET("/dashboard/stats", apiHandler.GetDashboardStats)
+			}
 		}
 	}
 

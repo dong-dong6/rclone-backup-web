@@ -3,17 +3,112 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 50%, #ffffff 100%);
+  padding: 20px;
 }
 
 .login-card {
-  width: 400px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  width: 100%;
+  max-width: 450px;
+  background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.login-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(145deg, transparent 0%, rgba(0, 0, 0, 0.02) 100%);
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.login-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.login-card .ant-card-head {
+  background: linear-gradient(135deg, #000000 0%, #434343 100%);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  padding: 24px 24px 20px;
+}
+
+.login-card .ant-card-head-title {
+  color: white;
+  font-size: 24px;
+  font-weight: 700;
+  font-family: 'Inter', sans-serif;
+  text-align: center;
+}
+
+.login-card .ant-card-body {
+  padding: 32px;
 }
 
 .login-footer {
   text-align: center;
-  color: #999;
-  font-size: 12px;
-  margin-top: 16px;
+  color: #6c757d;
+  font-size: 13px;
+  margin-top: 20px;
+  padding: 16px;
+  background: rgba(248, 249, 250, 0.5);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* Custom styles for login form inputs */
+.login-card .ant-input-affix-wrapper,
+.login-card .ant-input {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  padding: 12px 15px;
+  font-size: 15px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.login-card .ant-input-affix-wrapper:focus,
+.login-card .ant-input-affix-wrapper-focused,
+.login-card .ant-input:focus {
+  background: #ffffff;
+  border-color: #000000;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+}
+
+.login-card .ant-btn-primary {
+  background: linear-gradient(135deg, #000000 0%, #434343 100%);
+  border: none;
+  height: 45px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.login-card .ant-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #000000 0%, #2c2c2c 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.login-card .ant-form-item {
+  margin-bottom: 20px;
+}
+
+.login-card .ant-form-item-label > label {
+  font-weight: 600;
+  color: #212529;
+  font-size: 14px;
 }

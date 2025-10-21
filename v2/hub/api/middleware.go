@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strings"
 
@@ -14,8 +15,11 @@ import (
 // AdminAuthMiddleware validates JWT tokens for admin endpoints
 func AdminAuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		log.Printf("[AdminAuth] Checking auth for path: %s", c.Request.URL.Path)
+
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
+			log.Printf("[AdminAuth] No Authorization header found")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header missing"})
 			c.Abort()
 			return
@@ -24,6 +28,7 @@ func AdminAuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
 		// Extract token from "Bearer <token>" format
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
+			log.Printf("[AdminAuth] Invalid Authorization header format")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
 			c.Abort()
 			return
@@ -32,10 +37,13 @@ func AdminAuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
 		token := parts[1]
 		claims, err := authService.ValidateJWT(token)
 		if err != nil {
+			log.Printf("[AdminAuth] JWT validation failed: %v", err)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			c.Abort()
 			return
 		}
+
+		log.Printf("[AdminAuth] JWT validated for user: %s, role: %s", claims.UserID, claims.Role)
 
 		// Store claims in context
 		c.Set("user_id", claims.UserID)
