@@ -82,10 +82,16 @@ func (h *Handler) AdminLogin(c *gin.Context) {
 
 	response := LoginResponse{
 		Token: token,
+		User: struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+			Role string `json:"role"`
+		}{
+			ID:   user.ID.String(),
+			Name: user.FullName,
+			Role: user.Role,
+		},
 	}
-	response.User.ID = user.ID.String()
-	response.User.Name = user.FullName
-	response.User.Role = user.Role
 
 	log.Printf("[Login] Login successful for user: %s", user.Username)
 	c.JSON(http.StatusOK, response)

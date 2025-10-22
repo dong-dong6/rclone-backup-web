@@ -18,6 +18,7 @@ type BackupTask struct {
 	Schedule        string          `json:"schedule"`
 	RcloneArgs      json.RawMessage `json:"rclone_args"`
 	IsActive        bool            `json:"is_active"`
+	RetentionDays   *int            `json:"retention_days,omitempty"`
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
 	
@@ -47,8 +48,8 @@ func (m *TaskModel) Create(ctx context.Context, task *BackupTask) error {
 	query := `
 		INSERT INTO backup_tasks (
 			id, name, rclone_remote_id, source_path, destination_path,
-			schedule, rclone_args, is_active, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			schedule, rclone_args, is_active, retention_days, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id, created_at, updated_at
 	`
 
@@ -61,6 +62,7 @@ func (m *TaskModel) Create(ctx context.Context, task *BackupTask) error {
 		task.Schedule,
 		task.RcloneArgs,
 		task.IsActive,
+		task.RetentionDays,
 		task.CreatedAt,
 		task.UpdatedAt,
 	).Scan(&task.ID, &task.CreatedAt, &task.UpdatedAt)
@@ -74,7 +76,7 @@ func (m *TaskModel) GetByID(ctx context.Context, id uuid.UUID) (*BackupTask, err
 	query := `
 		SELECT 
 			t.id, t.name, t.rclone_remote_id, t.source_path, t.destination_path,
-			t.schedule, t.rclone_args, t.is_active, t.created_at, t.updated_at,
+			t.schedule, t.rclone_args, t.is_active, t.retention_days, t.created_at, t.updated_at,
 			r.name as remote_name
 		FROM backup_tasks t
 		LEFT JOIN rclone_remotes r ON t.rclone_remote_id = r.id
@@ -90,6 +92,7 @@ func (m *TaskModel) GetByID(ctx context.Context, id uuid.UUID) (*BackupTask, err
 		&task.Schedule,
 		&task.RcloneArgs,
 		&task.IsActive,
+		&task.RetentionDays,
 		&task.CreatedAt,
 		&task.UpdatedAt,
 		&task.RemoteName,
@@ -110,7 +113,7 @@ func (m *TaskModel) List(ctx context.Context) ([]*BackupTask, error) {
 	query := `
 		SELECT 
 			t.id, t.name, t.rclone_remote_id, t.source_path, t.destination_path,
-			t.schedule, t.rclone_args, t.is_active, t.created_at, t.updated_at,
+			t.schedule, t.rclone_args, t.is_active, t.retention_days, t.created_at, t.updated_at,
 			r.name as remote_name
 		FROM backup_tasks t
 		LEFT JOIN rclone_remotes r ON t.rclone_remote_id = r.id
@@ -135,6 +138,7 @@ func (m *TaskModel) List(ctx context.Context) ([]*BackupTask, error) {
 			&task.Schedule,
 			&task.RcloneArgs,
 			&task.IsActive,
+			&task.RetentionDays,
 			&task.CreatedAt,
 			&task.UpdatedAt,
 			&task.RemoteName,
@@ -165,7 +169,8 @@ func (m *TaskModel) Update(ctx context.Context, task *BackupTask) error {
 			schedule = $6,
 			rclone_args = $7,
 			is_active = $8,
-			updated_at = $9
+			retention_days = $9,
+			updated_at = $10
 		WHERE id = $1
 	`
 
@@ -178,6 +183,7 @@ func (m *TaskModel) Update(ctx context.Context, task *BackupTask) error {
 		task.Schedule,
 		task.RcloneArgs,
 		task.IsActive,
+		task.RetentionDays,
 		task.UpdatedAt,
 	)
 

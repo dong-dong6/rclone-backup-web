@@ -15,6 +15,10 @@ type Agent struct {
 	APIKeyHash    string         `json:"-"`
 	Status        string         `json:"status"`
 	LastHeartbeat *time.Time     `json:"last_heartbeat"`
+	CurrentTask   *uuid.UUID     `json:"current_task,omitempty"`
+	CPUUsage      *float64       `json:"cpu_usage,omitempty"`
+	MemoryUsage   *float64       `json:"memory_usage,omitempty"`
+	Version       *string        `json:"version,omitempty"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
 }
@@ -41,7 +45,7 @@ func (m *AgentModel) Create(ctx context.Context, name, apiKeyHash string) (*Agen
 	query := `
 		INSERT INTO agents (id, name, api_key_hash, status, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, created_at, updated_at
+		RETURNING id, current_task, cpu_usage, memory_usage, version, created_at, updated_at
 	`
 
 	err := m.db.QueryRow(ctx, query,
@@ -51,7 +55,7 @@ func (m *AgentModel) Create(ctx context.Context, name, apiKeyHash string) (*Agen
 		agent.Status,
 		agent.CreatedAt,
 		agent.UpdatedAt,
-	).Scan(&agent.ID, &agent.CreatedAt, &agent.UpdatedAt)
+	).Scan(&agent.ID, &agent.CurrentTask, &agent.CPUUsage, &agent.MemoryUsage, &agent.Version, &agent.CreatedAt, &agent.UpdatedAt)
 
 	if err != nil {
 		return nil, err
@@ -64,7 +68,7 @@ func (m *AgentModel) Create(ctx context.Context, name, apiKeyHash string) (*Agen
 func (m *AgentModel) GetByID(ctx context.Context, id uuid.UUID) (*Agent, error) {
 	agent := &Agent{}
 	query := `
-		SELECT id, name, api_key_hash, status, last_heartbeat, created_at, updated_at
+		SELECT id, name, api_key_hash, status, last_heartbeat, current_task, cpu_usage, memory_usage, version, created_at, updated_at
 		FROM agents
 		WHERE id = $1
 	`
@@ -75,6 +79,10 @@ func (m *AgentModel) GetByID(ctx context.Context, id uuid.UUID) (*Agent, error) 
 		&agent.APIKeyHash,
 		&agent.Status,
 		&agent.LastHeartbeat,
+		&agent.CurrentTask,
+		&agent.CPUUsage,
+		&agent.MemoryUsage,
+		&agent.Version,
 		&agent.CreatedAt,
 		&agent.UpdatedAt,
 	)
@@ -90,7 +98,7 @@ func (m *AgentModel) GetByID(ctx context.Context, id uuid.UUID) (*Agent, error) 
 func (m *AgentModel) GetByAPIKeyHash(ctx context.Context, apiKeyHash string) (*Agent, error) {
 	agent := &Agent{}
 	query := `
-		SELECT id, name, api_key_hash, status, last_heartbeat, created_at, updated_at
+		SELECT id, name, api_key_hash, status, last_heartbeat, current_task, cpu_usage, memory_usage, version, created_at, updated_at
 		FROM agents
 		WHERE api_key_hash = $1
 	`
@@ -101,6 +109,10 @@ func (m *AgentModel) GetByAPIKeyHash(ctx context.Context, apiKeyHash string) (*A
 		&agent.APIKeyHash,
 		&agent.Status,
 		&agent.LastHeartbeat,
+		&agent.CurrentTask,
+		&agent.CPUUsage,
+		&agent.MemoryUsage,
+		&agent.Version,
 		&agent.CreatedAt,
 		&agent.UpdatedAt,
 	)
@@ -115,7 +127,7 @@ func (m *AgentModel) GetByAPIKeyHash(ctx context.Context, apiKeyHash string) (*A
 // List retrieves all agents
 func (m *AgentModel) List(ctx context.Context) ([]*Agent, error) {
 	query := `
-		SELECT id, name, status, last_heartbeat, created_at, updated_at
+		SELECT id, name, status, last_heartbeat, current_task, cpu_usage, memory_usage, version, created_at, updated_at
 		FROM agents
 		ORDER BY created_at DESC
 	`
@@ -134,6 +146,10 @@ func (m *AgentModel) List(ctx context.Context) ([]*Agent, error) {
 			&agent.Name,
 			&agent.Status,
 			&agent.LastHeartbeat,
+			&agent.CurrentTask,
+			&agent.CPUUsage,
+			&agent.MemoryUsage,
+			&agent.Version,
 			&agent.CreatedAt,
 			&agent.UpdatedAt,
 		)
