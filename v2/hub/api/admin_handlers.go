@@ -123,15 +123,20 @@ func (h *Handler) DeleteAgent(c *gin.Context) {
 
 // CreateRegistrationToken creates a new registration token
 func (h *Handler) CreateRegistrationToken(c *gin.Context) {
+	log.Printf("[CreateRegistrationToken] Generating new registration token")
+	
 	token := services.GenerateRegistrationToken()
+	log.Printf("[CreateRegistrationToken] Generated token: %s", token)
 	
 	tokenModel := models.NewRegistrationTokenModel(h.db)
 	regToken, err := tokenModel.Create(c.Request.Context(), token, 24*time.Hour)
 	if err != nil {
+		log.Printf("[CreateRegistrationToken] Failed to create token: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create registration token"})
 		return
 	}
 
+	log.Printf("[CreateRegistrationToken] Token created successfully: %v", regToken)
 	c.JSON(http.StatusCreated, regToken)
 }
 
