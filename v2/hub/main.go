@@ -122,6 +122,13 @@ func main() {
 
 				// Dashboard & Statistics
 				adminAuth.GET("/dashboard/stats", apiHandler.GetDashboardStats)
+				adminAuth.GET("/dashboard/recent", apiHandler.GetRecentActivity)
+				adminAuth.GET("/dashboard/charts", apiHandler.GetChartData)
+				
+				// Statistics
+				adminAuth.GET("/statistics/overview", apiHandler.GetStatisticsOverview)
+				adminAuth.GET("/statistics/agents/:id", apiHandler.GetAgentStatistics)
+				adminAuth.GET("/statistics/tasks/:id", apiHandler.GetTaskStatistics)
 			}
 		}
 	}

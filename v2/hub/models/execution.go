@@ -11,21 +11,23 @@ import (
 )
 
 type TaskExecution struct {
-	ID           uuid.UUID  `json:"id"`
-	TaskID       uuid.UUID  `json:"task_id"`
-	AgentID      uuid.UUID  `json:"agent_id"`
-	Status       string     `json:"status"`
-	TriggerMode  string     `json:"trigger_mode"`
-	LogOutput    string     `json:"log_output,omitempty"`
-	ErrorMessage string     `json:"error_message,omitempty"`
-	StartedAt    *time.Time `json:"started_at"`
-	EndedAt      *time.Time `json:"ended_at"`
-	CreatedAt    time.Time  `json:"created_at"`
+	ID               uuid.UUID  `json:"id"`
+	TaskID           uuid.UUID  `json:"task_id"`
+	AgentID          uuid.UUID  `json:"agent_id"`
+	Status           string     `json:"status"`
+	TriggerMode      string     `json:"trigger_mode"`
+	LogOutput        string     `json:"log_output,omitempty"`
+	ErrorMessage     string     `json:"error_message,omitempty"`
+	BytesTransferred *int64     `json:"bytes_transferred,omitempty"`
+	FilesTransferred *int       `json:"files_transferred,omitempty"`
+	DurationSeconds  *int       `json:"duration_seconds,omitempty"`
+	StartedAt        *time.Time `json:"started_at"`
+	EndedAt          *time.Time `json:"ended_at"`
+	CreatedAt        time.Time  `json:"created_at"`
 	
 	// Additional fields from joins
-	TaskName     string     `json:"task_name,omitempty"`
-	AgentName    string     `json:"agent_name,omitempty"`
-	Duration     float64    `json:"duration_seconds,omitempty"`
+	TaskName         string     `json:"task_name,omitempty"`
+	AgentName        string     `json:"agent_name,omitempty"`
 }
 
 type ExecutionModel struct {
@@ -75,9 +77,9 @@ func (m *ExecutionModel) GetByID(ctx context.Context, id uuid.UUID) (*TaskExecut
 	query := `
 		SELECT 
 			e.id, e.task_id, e.agent_id, e.status, e.trigger_mode,
-			e.log_output, e.error_message, e.started_at, e.ended_at, e.created_at,
-			t.name as task_name, a.name as agent_name,
-			EXTRACT(EPOCH FROM (e.ended_at - e.started_at)) as duration
+			e.log_output, e.error_message, e.bytes_transferred, e.files_transferred,
+			e.duration_seconds, e.started_at, e.ended_at, e.created_at,
+			t.name as task_name, a.name as agent_name
 		FROM task_executions e
 		LEFT JOIN backup_tasks t ON e.task_id = t.id
 		LEFT JOIN agents a ON e.agent_id = a.id
@@ -92,12 +94,14 @@ func (m *ExecutionModel) GetByID(ctx context.Context, id uuid.UUID) (*TaskExecut
 		&execution.TriggerMode,
 		&execution.LogOutput,
 		&execution.ErrorMessage,
+		&execution.BytesTransferred,
+		&execution.FilesTransferred,
+		&execution.DurationSeconds,
 		&execution.StartedAt,
 		&execution.EndedAt,
 		&execution.CreatedAt,
 		&execution.TaskName,
 		&execution.AgentName,
-		&execution.Duration,
 	)
 
 	if err != nil {
@@ -112,9 +116,9 @@ func (m *ExecutionModel) List(ctx context.Context, limit int, offset int) ([]*Ta
 	query := `
 		SELECT 
 			e.id, e.task_id, e.agent_id, e.status, e.trigger_mode,
+			e.bytes_transferred, e.files_transferred, e.duration_seconds,
 			e.started_at, e.ended_at, e.created_at,
-			t.name as task_name, a.name as agent_name,
-			EXTRACT(EPOCH FROM (e.ended_at - e.started_at)) as duration
+			t.name as task_name, a.name as agent_name
 		FROM task_executions e
 		LEFT JOIN backup_tasks t ON e.task_id = t.id
 		LEFT JOIN agents a ON e.agent_id = a.id
@@ -137,12 +141,14 @@ func (m *ExecutionModel) List(ctx context.Context, limit int, offset int) ([]*Ta
 			&execution.AgentID,
 			&execution.Status,
 			&execution.TriggerMode,
+			&execution.BytesTransferred,
+			&execution.FilesTransferred,
+			&execution.DurationSeconds,
 			&execution.StartedAt,
 			&execution.EndedAt,
 			&execution.CreatedAt,
 			&execution.TaskName,
 			&execution.AgentName,
-			&execution.Duration,
 		)
 		if err != nil {
 			return nil, err
@@ -287,6 +293,86 @@ func (m *ExecutionModel) GetStatsByAgent(ctx context.Context, agentID uuid.UUID,
 	}
 
 	return stats, nil
+}
+
+// GetStatsByTask gets execution statistics for a task
+func (m *ExecutionModel) GetStatsByTask(ctx context.Context, taskID uuid.UUID, days int) (map[string]interface{}, error) {
+	query := `
+		SELECT 
+			COUNT(*) as total,
+			COUNT(CASE WHEN status = 'success' THEN 1 END) as success,
+			COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed,
+			AVG(duration_seconds) as avg_duration
+		FROM task_executions
+		WHERE task_id = $1 
+		AND created_at > NOW() - INTERVAL '%d days'
+	`
+
+	var total, success, failed int
+	var avgDuration *float64
+
+	err := m.db.QueryRow(ctx, fmt.Sprintf(query, days), taskID).Scan(
+		&total,
+		&success,
+		&failed,
+		&avgDuration,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	stats := map[string]interface{}{
+		"total":       total,
+		"success":     success,
+		"failed":      failed,
+		"avg_duration": avgDuration,
+	}
+
+	return stats, nil
+}
+
+// GetByTimeRange gets executions within a time range
+func (m *ExecutionModel) GetByTimeRange(ctx context.Context, days int) ([]*TaskExecution, error) {
+	query := `
+		SELECT 
+			e.id, e.task_id, e.agent_id, e.status, e.trigger_mode,
+			e.bytes_transferred, e.files_transferred, e.duration_seconds,
+			e.started_at, e.ended_at, e.created_at
+		FROM task_executions e
+		WHERE e.created_at > NOW() - INTERVAL '%d days'
+		ORDER BY e.created_at DESC
+	`
+
+	rows, err := m.db.Query(ctx, fmt.Sprintf(query, days))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	executions := []*TaskExecution{}
+	for rows.Next() {
+		execution := &TaskExecution{}
+		err := rows.Scan(
+			&execution.ID,
+			&execution.TaskID,
+			&execution.AgentID,
+			&execution.Status,
+			&execution.TriggerMode,
+			&execution.BytesTransferred,
+			&execution.FilesTransferred,
+			&execution.DurationSeconds,
+			&execution.StartedAt,
+			&execution.EndedAt,
+			&execution.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		executions = append(executions, execution)
+	}
+
+	return executions, nil
 }
 
 // GetLastExecutionForTask gets the most recent execution for a specific task

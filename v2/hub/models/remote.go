@@ -11,6 +11,7 @@ import (
 type RcloneRemote struct {
 	ID         uuid.UUID `json:"id"`
 	Name       string    `json:"name"`
+	Type       *string   `json:"type,omitempty"`
 	ConfigData string    `json:"-"` // Encrypted, not exposed in JSON
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
@@ -35,8 +36,8 @@ func (m *RemoteModel) Create(ctx context.Context, name, encryptedConfig string) 
 	}
 
 	query := `
-		INSERT INTO rclone_remotes (id, name, config_data, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO rclone_remotes (id, name, config_data, type, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, created_at, updated_at
 	`
 
@@ -44,6 +45,7 @@ func (m *RemoteModel) Create(ctx context.Context, name, encryptedConfig string) 
 		remote.ID,
 		remote.Name,
 		remote.ConfigData,
+		remote.Type,
 		remote.CreatedAt,
 		remote.UpdatedAt,
 	).Scan(&remote.ID, &remote.CreatedAt, &remote.UpdatedAt)
@@ -59,7 +61,7 @@ func (m *RemoteModel) Create(ctx context.Context, name, encryptedConfig string) 
 func (m *RemoteModel) GetByID(ctx context.Context, id uuid.UUID) (*RcloneRemote, error) {
 	remote := &RcloneRemote{}
 	query := `
-		SELECT id, name, config_data, created_at, updated_at
+		SELECT id, name, config_data, type, created_at, updated_at
 		FROM rclone_remotes
 		WHERE id = $1
 	`
@@ -68,6 +70,7 @@ func (m *RemoteModel) GetByID(ctx context.Context, id uuid.UUID) (*RcloneRemote,
 		&remote.ID,
 		&remote.Name,
 		&remote.ConfigData,
+		&remote.Type,
 		&remote.CreatedAt,
 		&remote.UpdatedAt,
 	)
@@ -82,7 +85,7 @@ func (m *RemoteModel) GetByID(ctx context.Context, id uuid.UUID) (*RcloneRemote,
 // List retrieves all remotes
 func (m *RemoteModel) List(ctx context.Context) ([]*RcloneRemote, error) {
 	query := `
-		SELECT id, name, created_at, updated_at
+		SELECT id, name, type, created_at, updated_at
 		FROM rclone_remotes
 		ORDER BY name ASC
 	`
@@ -99,6 +102,7 @@ func (m *RemoteModel) List(ctx context.Context) ([]*RcloneRemote, error) {
 		err := rows.Scan(
 			&remote.ID,
 			&remote.Name,
+			&remote.Type,
 			&remote.CreatedAt,
 			&remote.UpdatedAt,
 		)

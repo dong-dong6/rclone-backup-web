@@ -18,6 +18,7 @@ type User struct {
 	FullName     string     `json:"full_name"`
 	Role         string     `json:"role"`
 	IsActive     bool       `json:"is_active"`
+	IsAdmin      bool       `json:"is_admin"`
 	LastLogin    *time.Time `json:"last_login"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
@@ -57,13 +58,14 @@ func (m *UserModel) Create(ctx context.Context, username, email, password, fullN
 		FullName:     fullName,
 		Role:         role,
 		IsActive:     true,
+		IsAdmin:      role == "admin",
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
 
 	query := `
-		INSERT INTO users (id, username, email, password_hash, full_name, role, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO users (id, username, email, password_hash, full_name, role, is_active, is_admin, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at
 	`
 
@@ -75,6 +77,7 @@ func (m *UserModel) Create(ctx context.Context, username, email, password, fullN
 		user.FullName,
 		user.Role,
 		user.IsActive,
+		user.IsAdmin,
 		user.CreatedAt,
 		user.UpdatedAt,
 	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
@@ -92,7 +95,7 @@ func (m *UserModel) Create(ctx context.Context, username, email, password, fullN
 func (m *UserModel) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	user := &User{}
 	query := `
-		SELECT id, username, email, password_hash, full_name, role, is_active, last_login, created_at, updated_at
+		SELECT id, username, email, password_hash, full_name, role, is_active, is_admin, last_login, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -105,6 +108,7 @@ func (m *UserModel) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
 		&user.FullName,
 		&user.Role,
 		&user.IsActive,
+		&user.IsAdmin,
 		&user.LastLogin,
 		&user.CreatedAt,
 		&user.UpdatedAt,
@@ -121,7 +125,7 @@ func (m *UserModel) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
 func (m *UserModel) GetByUsername(ctx context.Context, username string) (*User, error) {
 	user := &User{}
 	query := `
-		SELECT id, username, email, password_hash, full_name, role, is_active, last_login, created_at, updated_at
+		SELECT id, username, email, password_hash, full_name, role, is_active, is_admin, last_login, created_at, updated_at
 		FROM users
 		WHERE username = $1
 	`
@@ -134,6 +138,7 @@ func (m *UserModel) GetByUsername(ctx context.Context, username string) (*User, 
 		&user.FullName,
 		&user.Role,
 		&user.IsActive,
+		&user.IsAdmin,
 		&user.LastLogin,
 		&user.CreatedAt,
 		&user.UpdatedAt,

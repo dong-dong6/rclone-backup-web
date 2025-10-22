@@ -613,3 +613,87 @@ func (h *Handler) AdminLogout(c *gin.Context) {
 	
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }
+
+// GetStatisticsOverview returns overall system statistics
+func (h *Handler) GetStatisticsOverview(c *gin.Context) {
+	// This is similar to GetDashboardStats but with more detail
+	h.GetDashboardStats(c)
+}
+
+// GetAgentStatistics returns statistics for a specific agent
+func (h *Handler) GetAgentStatistics(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid agent ID"})
+		return
+	}
+
+	executionModel := NewExecutionModel(h.db)
+	stats, err := executionModel.GetStatsByAgent(c.Request.Context(), id, 30)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get agent statistics"})
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
+}
+
+// GetTaskStatistics returns statistics for a specific task
+func (h *Handler) GetTaskStatistics(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		return
+	}
+
+	executionModel := NewExecutionModel(h.db)
+	stats, err := executionModel.GetStatsByTask(c.Request.Context(), id, 30)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get task statistics"})
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
+}
+
+// GetRecentActivity returns recent system activity
+func (h *Handler) GetRecentActivity(c *gin.Context) {
+	executionModel := NewExecutionModel(h.db)
+	executions, err := executionModel.List(c.Request.Context(), 10, 0)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get recent activity"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"executions": executions,
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+}
+
+// GetChartData returns data for dashboard charts
+func (h *Handler) GetChartData(c *gin.Context) {
+	timeRange := c.DefaultQuery("range", "7d")
+	
+	// Parse time range
+	var days int
+	switch timeRange {
+	case "24h":
+		days = 1
+	case "7d":
+		days = 7
+	case "30d":
+		days = 30
+	default:
+		days = 7
+	}
+
+	// Simple mock data for now
+	c.JSON(http.StatusOK, gin.H{
+		"data": []map[string]interface{}{},
+		"range": timeRange,
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+}
