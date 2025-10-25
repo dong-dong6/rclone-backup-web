@@ -629,7 +629,7 @@ func (h *Handler) GetAgentStatistics(c *gin.Context) {
 		return
 	}
 
-	executionModel := NewExecutionModel(h.db)
+	executionModel := models.NewExecutionModel(h.db)
 	stats, err := executionModel.GetStatsByAgent(c.Request.Context(), id, 30)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get agent statistics"})
@@ -648,7 +648,7 @@ func (h *Handler) GetTaskStatistics(c *gin.Context) {
 		return
 	}
 
-	executionModel := NewExecutionModel(h.db)
+	executionModel := models.NewExecutionModel(h.db)
 	stats, err := executionModel.GetStatsByTask(c.Request.Context(), id, 30)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get task statistics"})
@@ -660,7 +660,7 @@ func (h *Handler) GetTaskStatistics(c *gin.Context) {
 
 // GetRecentActivity returns recent system activity
 func (h *Handler) GetRecentActivity(c *gin.Context) {
-	executionModel := NewExecutionModel(h.db)
+	executionModel := models.NewExecutionModel(h.db)
 	executions, err := executionModel.List(c.Request.Context(), 10, 0)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get recent activity"})
@@ -694,6 +694,7 @@ func (h *Handler) GetChartData(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"data": []map[string]interface{}{},
 		"range": timeRange,
+		"days": days,
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
 }
