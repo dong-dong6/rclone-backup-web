@@ -698,3 +698,14 @@ func (h *Handler) GetChartData(c *gin.Context) {
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
 }
+
+// DownloadAgent provides agent binary download
+func (h *Handler) DownloadAgent(c *gin.Context) {
+	// For now, return a placeholder response
+	// In a real implementation, this would serve the actual agent binary
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Agent binary download endpoint",
+		"instructions": "This endpoint will serve the agent binary file for download",
+		"note": "Binary files are not yet built and distributed",
+	})
+}

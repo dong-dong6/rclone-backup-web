@@ -70,6 +70,7 @@ func main() {
 		agent := v1.Group("/agent")
 		{
 			agent.POST("/register", apiHandler.RegisterAgent)
+			agent.GET("/download", apiHandler.DownloadAgent)
 
 			// Agent authenticated routes
 			agentAuth := agent.Group("")
