@@ -157,6 +157,13 @@ tail -f /opt/rclone-agent/agent.log
 
 ```bash
 cd /workspace/v2
+docker compose build hub-api
+```
+
+或者直接构建：
+
+```bash
+cd /workspace/v2
 docker build -t rclone-backup-hub:latest -f hub/Dockerfile .
 ```
 

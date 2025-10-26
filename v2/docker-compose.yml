@@ -36,8 +36,8 @@ services:
   # Hub API Server (Go)
   hub-api:
     build:
-      context: ./hub
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./hub/Dockerfile
       args:
         - GO_VERSION=1.21
     image: rclone-backup-hub:${VERSION:-latest}

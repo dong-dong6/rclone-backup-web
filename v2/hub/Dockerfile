@@ -12,13 +12,13 @@ RUN apk add --no-cache git make gcc musl-dev
 WORKDIR /build
 
 # Copy go mod files
-COPY go.mod go.sum ./
+COPY hub/go.mod hub/go.sum ./
 
 # Download dependencies
 RUN go mod download
 
 # Copy source code
-COPY . .
+COPY hub/ ./
 
 # Build the Hub binary
 RUN CGO_ENABLED=1 GOOS=linux go build \
@@ -38,10 +38,10 @@ RUN apk add --no-cache git make gcc musl-dev
 WORKDIR /agent-build
 
 # Copy agent source code
-COPY ../agent/go.mod ../agent/go.sum ./
+COPY agent/go.mod agent/go.sum ./
 RUN go mod download
 
-COPY ../agent/ ./
+COPY agent/ ./
 
 # Build agent binary for multiple platforms
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
@@ -107,7 +107,7 @@ COPY --from=builder /build/hub-api /app/hub-api
 COPY --from=agent-builder /agent-binaries /app/static/binaries
 
 # Copy database migrations
-COPY database/migrations /app/database/migrations
+COPY hub/database/migrations /app/database/migrations
 
 # Create necessary directories
 RUN mkdir -p /app/config /app/data /app/logs && \
