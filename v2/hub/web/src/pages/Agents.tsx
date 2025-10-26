@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, Button, Badge, Modal, Input, Space, Typography, Row, Col, Statistic, Tag, Tooltip, message } from 'antd';
-import { CloudServerOutlined, PlusOutlined, DeleteOutlined, EyeOutlined, CopyOutlined, DownloadOutlined, TerminalOutlined } from '@ant-design/icons';
+import { CloudServerOutlined, PlusOutlined, DeleteOutlined, EyeOutlined, CopyOutlined, DownloadOutlined, CodeOutlined } from '@ant-design/icons';
 import { apiService } from '../services/api';
 import { useSSE } from '../contexts/SSEContext';
 
@@ -285,7 +285,7 @@ chmod +x rclone-backup-agent
             </Button>
             <Button 
               type={registrationMethod === 'binary' ? 'primary' : 'default'}
-              icon={<TerminalOutlined />}
+              icon={<CodeOutlined />}
               onClick={() => setRegistrationMethod('binary')}
             >
               二进制方式
