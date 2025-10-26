@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, Button, Badge, Modal, Input, Space, Typography, Row, Col, Statistic, Tag, Tooltip, message } from 'antd';
-import { CloudServerOutlined, PlusOutlined, DeleteOutlined, EyeOutlined, CopyOutlined, DownloadOutlined, CodeOutlined } from '@ant-design/icons';
+import { CloudServerOutlined, PlusOutlined, DeleteOutlined, EyeOutlined, CopyOutlined, CodeOutlined } from '@ant-design/icons';
 import { apiService } from '../services/api';
 import { useSSE } from '../contexts/SSEContext';
 
@@ -24,7 +24,6 @@ const Agents: React.FC = () => {
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registrationToken, setRegistrationToken] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
-  const [registrationMethod, setRegistrationMethod] = useState<'docker' | 'binary'>('docker');
 
   useEffect(() => {
     loadAgents();
@@ -124,18 +123,11 @@ const Agents: React.FC = () => {
     message.success('已复制到剪贴板');
   };
 
-  const generateRegistrationCommand = (method: 'docker' | 'binary') => {
+  const generateRegistrationCommand = () => {
     const baseUrl = window.location.origin;
     const token = registrationToken;
     
-    if (method === 'docker') {
-      return `docker run -d --name rclone-backup-agent \\
-  -e HUB_URL="${baseUrl}" \\
-  -e REGISTRATION_TOKEN="${token}" \\
-  -e AGENT_NAME="my-agent" \\
-  rclone-backup-web/agent:latest`;
-    } else {
-      return `# 下载并运行二进制文件
+    return `# 下载并运行二进制文件
 curl -L "${baseUrl}/api/v1/agent/download" -o rclone-backup-agent
 chmod +x rclone-backup-agent
 
@@ -145,7 +137,6 @@ chmod +x rclone-backup-agent
   --token="${token}" \\
   --name="my-agent" \\
   --daemon`;
-    }
   };
 
   return (
@@ -275,22 +266,18 @@ chmod +x rclone-backup-agent
 
         <div style={{ marginBottom: '24px' }}>
           <Title level={4}>注册方式</Title>
-          <Space>
-            <Button 
-              type={registrationMethod === 'docker' ? 'primary' : 'default'}
-              icon={<DownloadOutlined />}
-              onClick={() => setRegistrationMethod('docker')}
-            >
-              Docker 方式
-            </Button>
-            <Button 
-              type={registrationMethod === 'binary' ? 'primary' : 'default'}
-              icon={<CodeOutlined />}
-              onClick={() => setRegistrationMethod('binary')}
-            >
-              二进制方式
-            </Button>
-          </Space>
+          <div style={{ 
+            padding: '12px 16px', 
+            background: '#f0f9ff', 
+            border: '1px solid #0ea5e9', 
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <CodeOutlined style={{ color: '#0ea5e9' }} />
+            <Text strong style={{ color: '#0ea5e9' }}>二进制文件部署</Text>
+          </div>
         </div>
 
         <div>
@@ -303,13 +290,13 @@ chmod +x rclone-backup-agent
               overflow: 'auto',
               whiteSpace: 'pre-wrap'
             }}>
-              {generateRegistrationCommand(registrationMethod)}
+              {generateRegistrationCommand()}
             </pre>
             <div style={{ marginTop: '12px' }}>
               <Button 
                 type="primary" 
                 icon={<CopyOutlined />}
-                onClick={() => copyToClipboard(generateRegistrationCommand(registrationMethod))}
+                onClick={() => copyToClipboard(generateRegistrationCommand())}
               >
                 复制命令
               </Button>
@@ -320,11 +307,7 @@ chmod +x rclone-backup-agent
         <div style={{ marginTop: '24px', padding: '16px', background: '#f6ffed', borderRadius: '6px' }}>
           <Text type="secondary">
             <strong>说明：</strong>
-            {registrationMethod === 'docker' 
-              ? ' 使用Docker方式注册，需要确保目标机器已安装Docker。'
-              : ' 使用二进制方式注册，需要手动下载并运行二进制文件。'
-            }
-            注册成功后，节点将自动连接到Hub并开始接收任务。
+            使用二进制文件方式注册节点。请确保目标机器有网络连接，下载并运行二进制文件后，节点将自动连接到Hub并开始接收任务。
           </Text>
         </div>
       </Modal>

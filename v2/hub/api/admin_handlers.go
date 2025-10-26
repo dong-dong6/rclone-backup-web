@@ -701,11 +701,28 @@ func (h *Handler) GetChartData(c *gin.Context) {
 
 // DownloadAgent provides agent binary download
 func (h *Handler) DownloadAgent(c *gin.Context) {
-	// For now, return a placeholder response
+	// Set headers for binary file download
+	c.Header("Content-Type", "application/octet-stream")
+	c.Header("Content-Disposition", "attachment; filename=rclone-backup-agent")
+	c.Header("Content-Transfer-Encoding", "binary")
+	
+	// For now, return a placeholder response with instructions
 	// In a real implementation, this would serve the actual agent binary
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Agent binary download endpoint",
-		"instructions": "This endpoint will serve the agent binary file for download",
-		"note": "Binary files are not yet built and distributed",
-	})
+	instructions := `#!/bin/bash
+# Rclone Backup Agent - Binary Download Placeholder
+# This is a placeholder script. In production, this would be the actual agent binary.
+
+echo "Rclone Backup Agent"
+echo "==================="
+echo ""
+echo "This is a placeholder for the agent binary."
+echo "In production, this endpoint would serve the actual compiled agent binary."
+echo ""
+echo "To register with Hub, use:"
+echo "  ./rclone-backup-agent register --hub-url=HUB_URL --token=TOKEN --name=AGENT_NAME --daemon"
+echo ""
+echo "For more information, visit: https://github.com/rclone-backup-web/agent"
+`
+	
+	c.String(http.StatusOK, instructions)
 }
