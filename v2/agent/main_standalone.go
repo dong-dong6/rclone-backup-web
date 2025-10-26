@@ -74,6 +74,7 @@ func main() {
 		workDir      = flag.String("work-dir", "", "Override work directory")
 		hubURL       = flag.String("hub-url", "", "Override hub URL")
 		token        = flag.String("token", "", "Registration token for first run")
+		agentName    = flag.String("name", "", "Agent name (defaults to hostname)")
 	)
 	flag.Parse()
 	
@@ -105,18 +106,13 @@ func main() {
 	if *token != "" {
 		config.RegistrationToken = *token
 	}
+	if *agentName != "" {
+		config.AgentName = *agentName
+	}
 	
 	// Setup logging
 	if err := setupLogging(config); err != nil {
 		log.Fatalf("Failed to setup logging: %v", err)
-	}
-	
-	// Write PID file
-	if config.PidFile != "" {
-		if err := writePidFile(config.PidFile); err != nil {
-			log.Fatalf("Failed to write PID file: %v", err)
-		}
-		defer os.Remove(config.PidFile)
 	}
 	
 	log.Printf("Starting Rclone Backup Agent %s (standalone mode)", Version)
@@ -128,6 +124,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)
 	}
+	
+	// Write PID file
+	if err := writePIDFile(config.PidFile); err != nil {
+		log.Fatalf("Failed to write PID file: %v", err)
+	}
+	defer removePIDFile(config.PidFile)
 	
 	// Setup signal handling
 	sigChan := make(chan os.Signal, 1)
@@ -162,10 +164,11 @@ func NewAgent(config *Config) (*Agent, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	
 	agent := &Agent{
-		config:   config,
-		executor: taskExecutor,
-		ctx:      ctx,
-		cancel:   cancel,
+		config:    config,
+		executor:  taskExecutor,
+		ctx:       ctx,
+		cancel:    cancel,
+		hubClient: services.NewHubClient(config.HubURL, "", ""),
 	}
 	
 	// Register with hub if not already registered
@@ -173,9 +176,6 @@ func NewAgent(config *Config) (*Agent, error) {
 		cancel()
 		return nil, fmt.Errorf("failed to register: %w", err)
 	}
-	
-	// Create hub client
-	agent.hubClient = services.NewHubClient(config.HubURL, config.AgentID, config.APIKey)
 	
 	// Create scheduler for local tasks
 	if config.EnableLocalFallback {
@@ -349,37 +349,39 @@ func (a *Agent) updateConfig(newConfig json.RawMessage) {
 
 // ensureRegistered ensures the agent is registered with hub
 func (a *Agent) ensureRegistered() error {
-	// Check if already registered
+	// Check if already registered from config
 	if a.config.AgentID != "" && a.config.APIKey != "" {
 		log.Printf("Agent already registered: %s", a.config.AgentID)
+		// Update the client with credentials from config
+		a.hubClient.SetCredentials(a.config.AgentID, a.config.APIKey)
 		return nil
 	}
-	
+
 	// Need registration token
 	if a.config.RegistrationToken == "" {
 		return fmt.Errorf("not registered and no registration token provided")
 	}
-	
+
 	log.Println("Registering with hub...")
-	
-	// Create temporary client for registration
-	client := services.NewHubClient(a.config.HubURL, "", "")
-	
-	// Register
-	agentID, apiKey, err := client.Register(context.Background(), a.config.RegistrationToken, a.config.AgentName)
+
+	// Use the main hubClient (which has no credentials yet) to register
+	agentID, apiKey, err := a.hubClient.Register(context.Background(), a.config.RegistrationToken, a.config.AgentName)
 	if err != nil {
 		return fmt.Errorf("registration failed: %w", err)
 	}
-	
-	// Save credentials
+
+	// Save credentials to config
 	a.config.AgentID = agentID
 	a.config.APIKey = apiKey
-	
+
+	// Update the main client with the new credentials
+	a.hubClient.SetCredentials(agentID, apiKey)
+
 	// Save to config file
 	if err := a.saveConfig(); err != nil {
 		log.Printf("Warning: failed to save config: %v", err)
 	}
-	
+
 	log.Printf("Successfully registered as: %s", agentID)
 	return nil
 }
@@ -420,6 +422,20 @@ func (a *Agent) Shutdown() {
 	
 	// Final heartbeat to notify hub
 	a.hubClient.SendHeartbeat(context.Background(), "offline", nil)
+}
+
+func writePIDFile(pidFile string) error {
+	if pidFile == "" {
+		return nil
+	}
+	pid := os.Getpid()
+	return os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", pid)), 0644)
+}
+
+func removePIDFile(pidFile string) {
+	if pidFile != "" {
+		os.Remove(pidFile)
+	}
 }
 
 // Helper functions
@@ -482,11 +498,6 @@ func setupLogging(config *Config) error {
 	
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	return nil
-}
-
-func writePidFile(path string) error {
-	pid := os.Getpid()
-	return os.WriteFile(path, []byte(fmt.Sprintf("%d\n", pid)), 0644)
 }
 
 func handleServiceCommand(install, uninstall, start, stop bool) {

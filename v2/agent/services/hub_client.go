@@ -77,6 +77,12 @@ func NewHubClient(baseURL, agentID, apiKey string) *HubClient {
 	}
 }
 
+// SetCredentials updates the agent ID and API key for the client
+func (c *HubClient) SetCredentials(agentID, apiKey string) {
+	c.agentID = agentID
+	c.apiKey = apiKey
+}
+
 // Register registers the agent with the hub
 func (c *HubClient) Register(ctx context.Context, token, name string) (string, string, error) {
 	req := map[string]string{
@@ -169,7 +175,7 @@ func (c *HubClient) doRequest(ctx context.Context, method, path string, body int
 	
 	req.Header.Set("Content-Type", "application/json")
 	if c.apiKey != "" {
-		req.Header.Set("X-API-Key", c.apiKey)
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 	
 	resp, err := c.httpClient.Do(req)

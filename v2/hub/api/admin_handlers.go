@@ -702,6 +702,19 @@ func (h *Handler) GetChartData(c *gin.Context) {
 	})
 }
 
+// DownloadAgentScript provides the agent installation script
+func (h *Handler) DownloadAgentScript(c *gin.Context) {
+	scriptPath := "./static/scripts/install_agent.sh"
+	scriptData, err := os.ReadFile(scriptPath)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Installation script not found"})
+		return
+	}
+
+	c.Header("Content-Type", "text/plain; charset=utf-8")
+	c.Data(http.StatusOK, "text/plain", scriptData)
+}
+
 // DownloadAgent provides agent binary download
 func (h *Handler) DownloadAgent(c *gin.Context) {
 	// 获取平台参数

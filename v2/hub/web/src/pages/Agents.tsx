@@ -127,16 +127,10 @@ const Agents: React.FC = () => {
     const baseUrl = window.location.origin;
     const token = registrationToken;
     
-    return `# 下载并运行二进制文件
-curl -L "${baseUrl}/api/v1/agent/download" -o rclone-backup-agent
-chmod +x rclone-backup-agent
-
-# 注册到Hub
-./rclone-backup-agent register \\
-  --hub-url="${baseUrl}" \\
-  --token="${token}" \\
-  --name="my-agent" \\
-  --daemon`;
+    return `curl -sSL "${baseUrl}/api/v1/agent/install.sh" | sudo bash -s -- \\
+  --hub-url "${baseUrl}" \\
+  --token "${token}" \\
+  --name "my-new-agent"`;
   };
 
   return (
@@ -248,7 +242,7 @@ chmod +x rclone-backup-agent
         ]}
       >
         <div style={{ marginBottom: '24px' }}>
-          <Title level={4}>注册令牌</Title>
+          <Title level={4}>1. 注册令牌</Title>
           <Input.Group compact>
             <Input
               value={registrationToken}
@@ -264,24 +258,8 @@ chmod +x rclone-backup-agent
           </Input.Group>
         </div>
 
-        <div style={{ marginBottom: '24px' }}>
-          <Title level={4}>注册方式</Title>
-          <div style={{ 
-            padding: '12px 16px', 
-            background: '#f0f9ff', 
-            border: '1px solid #0ea5e9', 
-            borderRadius: '6px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
-            <CodeOutlined style={{ color: '#0ea5e9' }} />
-            <Text strong style={{ color: '#0ea5e9' }}>二进制文件部署</Text>
-          </div>
-        </div>
-
         <div>
-          <Title level={4}>注册命令</Title>
+          <Title level={4}>2. 在目标机器上执行安装命令</Title>
           <Card>
             <pre style={{ 
               background: '#f5f5f5', 
@@ -307,7 +285,7 @@ chmod +x rclone-backup-agent
         <div style={{ marginTop: '24px', padding: '16px', background: '#f6ffed', borderRadius: '6px' }}>
           <Text type="secondary">
             <strong>说明：</strong>
-            使用二进制文件方式注册节点。请确保目标机器有网络连接，下载并运行二进制文件后，节点将自动连接到Hub并开始接收任务。
+            复制上面的命令到您想安装代理的机器上，并以 root 权限执行。脚本将自动下载、配置并启动代理服务。
           </Text>
         </div>
       </Modal>

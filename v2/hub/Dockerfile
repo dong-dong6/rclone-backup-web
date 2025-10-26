@@ -106,6 +106,9 @@ COPY --from=builder /build/hub-api /app/hub-api
 # Copy agent binaries from agent-builder
 COPY --from=agent-builder /agent-binaries /app/static/binaries
 
+# Copy installation script
+COPY hub/static/scripts /app/static/scripts
+
 # Copy database migrations
 COPY hub/database/migrations /app/database/migrations
 

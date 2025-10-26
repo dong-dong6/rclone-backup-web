@@ -71,6 +71,7 @@ func main() {
 		{
 			agent.POST("/register", apiHandler.RegisterAgent)
 			agent.GET("/download", apiHandler.DownloadAgent)
+			agent.GET("/install.sh", apiHandler.DownloadAgentScript)
 
 			// Agent authenticated routes
 			agentAuth := agent.Group("")
