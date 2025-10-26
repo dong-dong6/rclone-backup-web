@@ -3,6 +3,7 @@ package api
 import (
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -701,28 +702,22 @@ func (h *Handler) GetChartData(c *gin.Context) {
 
 // DownloadAgent provides agent binary download
 func (h *Handler) DownloadAgent(c *gin.Context) {
-	// Set headers for binary file download
+	// 设置二进制文件下载的HTTP头
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Disposition", "attachment; filename=rclone-backup-agent")
 	c.Header("Content-Transfer-Encoding", "binary")
 	
-	// For now, return a placeholder response with instructions
-	// In a real implementation, this would serve the actual agent binary
-	instructions := `#!/bin/bash
-# Rclone Backup Agent - Binary Download Placeholder
-# This is a placeholder script. In production, this would be the actual agent binary.
-
-echo "Rclone Backup Agent"
-echo "==================="
-echo ""
-echo "This is a placeholder for the agent binary."
-echo "In production, this endpoint would serve the actual compiled agent binary."
-echo ""
-echo "To register with Hub, use:"
-echo "  ./rclone-backup-agent register --hub-url=HUB_URL --token=TOKEN --name=AGENT_NAME --daemon"
-echo ""
-echo "For more information, visit: https://github.com/rclone-backup-web/agent"
-`
+	// 读取实际的二进制文件
+	binaryPath := "./static/binaries/rclone-backup-agent"
+	fileData, err := os.ReadFile(binaryPath)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Agent binary not found",
+			"message": "Binary file not available. Please run deploy-agent.sh first.",
+		})
+		return
+	}
 	
-	c.String(http.StatusOK, instructions)
+	// 返回二进制文件
+	c.Data(http.StatusOK, "application/octet-stream", fileData)
 }
