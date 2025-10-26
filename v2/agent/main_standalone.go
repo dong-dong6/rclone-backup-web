@@ -217,7 +217,7 @@ func (a *Agent) Run() {
 func (a *Agent) sendHeartbeat() {
 	// Get current status
 	activeTasks := a.executor.GetActiveTasks()
-	status := "idle"
+	status := "online"
 	if len(activeTasks) > 0 {
 		status = "running_task"
 	}

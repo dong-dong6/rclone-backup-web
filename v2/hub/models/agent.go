@@ -166,7 +166,7 @@ func (m *AgentModel) List(ctx context.Context) ([]*Agent, error) {
 func (m *AgentModel) UpdateHeartbeat(ctx context.Context, id uuid.UUID, status string) error {
 	query := `
 		UPDATE agents
-		SET last_heartbeat = NOW(), status = $2, updated_at = NOW()
+		SET last_heartbeat = NOW() - INTERVAL '0 seconds', status = $2, updated_at = NOW()
 		WHERE id = $1
 	`
 
