@@ -28,12 +28,34 @@ v2/
 
 ### 1. 部署 Agent 二进制文件
 
+我们提供了三种部署方式：
+
+#### 方式一：基础部署（无参数）
 ```bash
 cd /workspace/v2
 ./deploy-agent.sh
 ```
 
+#### 方式二：交互式部署（推荐）
+```bash
+cd /workspace/v2
+./deploy-agent-interactive.sh
+```
 这个脚本会：
+- 交互式输入 Hub URL、Agent 名称、注册令牌等配置
+- 构建 agent 二进制文件
+- 创建配置文件和环境变量文件
+- 将二进制文件复制到 hub 的静态文件目录
+- 更新 DownloadAgent API 以提供实际文件
+- 生成运行命令
+
+#### 方式三：命令行参数部署
+```bash
+cd /workspace/v2
+./deploy-agent-with-params.sh --token YOUR_TOKEN --hub-url http://hub.example.com --agent-name my-agent
+```
+
+所有脚本都会：
 - 构建 agent 二进制文件
 - 将二进制文件复制到 hub 的静态文件目录
 - 更新 DownloadAgent API 以提供实际文件
@@ -45,6 +67,66 @@ cd /workspace/v2
 cd /workspace/v2
 ./test-agent-deployment.sh
 ```
+
+## 部署脚本详细说明
+
+### 交互式部署脚本 (`deploy-agent-interactive.sh`)
+
+这是最用户友好的部署方式，会引导您输入所有必要的配置：
+
+**支持的配置项：**
+- **Hub URL**: Hub 服务的地址（默认: http://localhost:8080）
+- **Agent 名称**: Agent 的显示名称（默认: agent-主机名）
+- **注册令牌**: 从 Hub Web 界面生成的注册令牌（必需）
+- **工作目录**: Agent 的工作目录（默认: /opt/rclone-agent）
+- **最大并发数**: 同时执行的最大任务数（默认: 3）
+- **心跳间隔**: 向 Hub 发送心跳的间隔秒数（默认: 30）
+
+**生成的文件：**
+- `agent/rclone-backup-agent.json`: Agent 配置文件
+- `agent/.env`: 环境变量文件
+- `hub/static/binaries/rclone-backup-agent`: 二进制文件
+- `hub/static/binaries/agent-config.json`: 配置文件副本
+
+### 命令行参数部署脚本 (`deploy-agent-with-params.sh`)
+
+适合自动化部署和脚本调用：
+
+**参数说明：**
+```bash
+./deploy-agent-with-params.sh [选项]
+
+选项:
+  -u, --hub-url URL         Hub服务URL (默认: http://localhost:8080)
+  -n, --agent-name NAME     Agent名称 (默认: agent-主机名)
+  -t, --token TOKEN         注册令牌 (必需)
+  -w, --work-dir DIR        工作目录 (默认: /opt/rclone-agent)
+  -c, --max-concurrent NUM  最大并发数 (默认: 3)
+  -i, --heartbeat-interval NUM  心跳间隔秒数 (默认: 30)
+  -h, --help               显示帮助信息
+```
+
+**使用示例：**
+```bash
+# 基本使用
+./deploy-agent-with-params.sh --token abc123
+
+# 完整配置
+./deploy-agent-with-params.sh \
+  --token abc123 \
+  --hub-url http://hub.example.com \
+  --agent-name my-agent \
+  --work-dir /opt/my-agent \
+  --max-concurrent 5 \
+  --heartbeat-interval 60
+
+# 查看帮助
+./deploy-agent-with-params.sh --help
+```
+
+### 基础部署脚本 (`deploy-agent.sh`)
+
+最简单的部署方式，使用默认配置，适合快速测试。
 
 ### 3. 启动 Hub 服务
 
