@@ -1,10 +1,12 @@
 package api
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -702,20 +704,61 @@ func (h *Handler) GetChartData(c *gin.Context) {
 
 // DownloadAgent provides agent binary download
 func (h *Handler) DownloadAgent(c *gin.Context) {
+	// 获取平台参数
+	platform := c.Query("platform")
+	arch := c.Query("arch")
+	
+	// 如果没有指定平台，尝试从User-Agent检测
+	if platform == "" || arch == "" {
+		userAgent := c.GetHeader("User-Agent")
+		if strings.Contains(userAgent, "Windows") {
+			platform = "windows"
+			arch = "amd64"
+		} else if strings.Contains(userAgent, "Darwin") {
+			platform = "darwin"
+			if strings.Contains(userAgent, "arm64") || strings.Contains(userAgent, "Apple") {
+				arch = "arm64"
+			} else {
+				arch = "amd64"
+			}
+		} else {
+			// 默认Linux
+			platform = "linux"
+			arch = "amd64"
+		}
+	}
+	
+	// 构建文件名
+	var fileName string
+	if platform == "windows" {
+		fileName = fmt.Sprintf("rclone-backup-agent-%s-%s.exe", platform, arch)
+	} else {
+		fileName = fmt.Sprintf("rclone-backup-agent-%s-%s", platform, arch)
+	}
+	
 	// 设置二进制文件下载的HTTP头
 	c.Header("Content-Type", "application/octet-stream")
-	c.Header("Content-Disposition", "attachment; filename=rclone-backup-agent")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
 	c.Header("Content-Transfer-Encoding", "binary")
 	
 	// 读取实际的二进制文件
-	binaryPath := "./static/binaries/rclone-backup-agent"
+	binaryPath := fmt.Sprintf("./static/binaries/%s", fileName)
 	fileData, err := os.ReadFile(binaryPath)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Agent binary not found",
-			"message": "Binary file not available. Please run deploy-agent.sh first.",
-		})
-		return
+		// 如果指定平台的文件不存在，尝试默认文件
+		defaultPath := "./static/binaries/rclone-backup-agent"
+		fileData, err = os.ReadFile(defaultPath)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "Agent binary not found",
+				"message": fmt.Sprintf("Binary file for %s/%s not available", platform, arch),
+				"available_platforms": []string{"linux/amd64", "linux/arm64", "linux/arm", "darwin/amd64", "darwin/arm64", "windows/amd64"},
+			})
+			return
+		}
+		// 使用默认文件名
+		fileName = "rclone-backup-agent"
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
 	}
 	
 	// 返回二进制文件
