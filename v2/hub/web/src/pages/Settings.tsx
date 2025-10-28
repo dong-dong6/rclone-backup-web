@@ -20,9 +20,9 @@ const Settings: React.FC = () => {
       console.log('Saving settings:', settings);
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1000));
-      alert('Settings saved successfully');
+      alert(t('app.success'));
     } catch (error) {
-      alert('Failed to save settings');
+      alert(t('errors.server'));
     } finally {
       setLoading(false);
     }
@@ -134,7 +134,7 @@ const Settings: React.FC = () => {
                     onClick={handleSave}
                     disabled={loading}
                   >
-                    {loading ? 'Saving...' : 'Save Settings'}
+                    {loading ? t('common.saving') : t('common.save')}
                   </button>
                 </div>
               </div>

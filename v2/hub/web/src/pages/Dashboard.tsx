@@ -128,29 +128,29 @@ const Dashboard: React.FC = () => {
 
   const columns = [
     {
-      title: 'Task',
+      title: t('executions.list.columns.task'),
       dataIndex: 'taskName',
       key: 'taskName',
     },
     {
-      title: 'Agent',
+      title: t('executions.list.columns.agent'),
       dataIndex: 'agentName',
       key: 'agentName',
     },
     {
-      title: 'Status',
+      title: t('executions.list.columns.status'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => getStatusTag(status),
     },
     {
-      title: 'Started',
+      title: t('executions.list.columns.startedAt'),
       dataIndex: 'startedAt',
       key: 'startedAt',
       render: (time: string) => new Date(time).toLocaleString(),
     },
     {
-      title: 'Duration',
+      title: t('executions.list.columns.duration'),
       dataIndex: 'duration',
       key: 'duration',
       render: (duration: number) => `${Math.round(duration)}s`,
