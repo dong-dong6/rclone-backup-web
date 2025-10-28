@@ -4,6 +4,7 @@ import { ConfigProvider, theme } from 'antd';
 import App from './App'; // 使用标准版本
 import './i18n'; // 导入 i18n 配置
 import './index.css';
+import './styles/neumorphism.css'; // 导入 neumorphism 样式
 import './App.css';
 
 // 配置Ant Design主题以匹配templates/base.html风格

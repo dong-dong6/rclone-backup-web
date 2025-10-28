@@ -176,12 +176,8 @@ func (h *Handler) CreateTask(c *gin.Context) {
 	}
 
 	// Assign to agents if provided
-	if assignedAgents := c.PostFormArray("assigned_agent_ids"); len(assignedAgents) > 0 {
-		for _, agentIDStr := range assignedAgents {
-			agentID, err := uuid.Parse(agentIDStr)
-			if err != nil {
-				continue
-			}
+	if len(task.AssignedAgents) > 0 {
+		for _, agentID := range task.AssignedAgents {
 			taskModel.AssignAgent(c.Request.Context(), task.ID, agentID)
 			
 			// Mark agent for config sync

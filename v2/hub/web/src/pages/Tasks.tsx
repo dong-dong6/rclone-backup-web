@@ -254,13 +254,13 @@ const Tasks: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="page-container">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">{t('tasks.title')}</h1>
+      <div className="page-header">
+        <h1 className="page-title">{t('tasks.title')}</h1>
         <button
           onClick={handleCreateTask}
-          className="neu-button-primary flex items-center space-x-2"
+          className="neu-button-primary"
         >
           <Plus size={20} />
           <span>{t('tasks.create_new')}</span>
@@ -268,10 +268,10 @@ const Tasks: React.FC = () => {
       </div>
 
       {/* Tasks Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="tasks-grid">
         {tasks.map((task) => (
-          <div key={task.id} className="neu-card p-6 space-y-4">
-            <div className="flex justify-between items-start">
+          <div key={task.id} className="neu-card task-card">
+            <div className="task-card-header">
               <div className="flex-1">
                 <h3 className="text-xl font-semibold mb-1">{task.name}</h3>
                 <span className={classNames(
@@ -309,62 +309,62 @@ const Tasks: React.FC = () => {
               </div>
             </div>
 
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
-                <span className="font-medium">{t('tasks.remote')}:</span>
-                <span>{task.remote_name || task.rclone_remote_id}</span>
+            <div className="task-card-content">
+              <div className="task-card-row">
+                <span className="task-card-label">{t('tasks.remote')}:</span>
+                <span className="task-card-value">{task.remote_name || task.rclone_remote_id}</span>
               </div>
               
-              <div className="text-gray-600 dark:text-gray-400">
-                <div className="font-medium">{t('tasks.source')}:</div>
-                <div className="text-xs font-mono bg-gray-100 dark:bg-gray-800 p-1 rounded mt-1">
+              <div className="task-card-row">
+                <div className="task-card-label">{t('tasks.source')}:</div>
+                <div className="code-block">
                   {task.source_path}
                 </div>
               </div>
               
-              <div className="text-gray-600 dark:text-gray-400">
-                <div className="font-medium">{t('tasks.destination')}:</div>
-                <div className="text-xs font-mono bg-gray-100 dark:bg-gray-800 p-1 rounded mt-1">
+              <div className="task-card-row">
+                <div className="task-card-label">{t('tasks.destination')}:</div>
+                <div className="code-block">
                   {task.destination_path}
                 </div>
               </div>
               
-              <div className="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+              <div className="task-card-row">
                 <Calendar size={14} />
-                <span className="font-medium">{t('tasks.schedule')}:</span>
-                <span className="font-mono text-xs">{task.schedule}</span>
+                <span className="task-card-label">{t('tasks.schedule')}:</span>
+                <span className="task-card-value">{task.schedule}</span>
               </div>
               
-              <div className="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+              <div className="task-card-row">
                 <Clock size={14} />
-                <span className="font-medium">{t('tasks.next_run')}:</span>
-                <span>{task.next_run || formatNextRun(task.schedule)}</span>
+                <span className="task-card-label">{t('tasks.next_run')}:</span>
+                <span className="task-card-value">{task.next_run || formatNextRun(task.schedule)}</span>
               </div>
             </div>
 
             {/* Assigned Agents */}
             <div>
-              <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
+              <div className="section-title">
                 {t('tasks.assigned_agents')}:
               </div>
               {task.assigned_agents.length > 0 ? (
-                <div className="space-y-1">
+                <div className="agent-list">
                   {task.assigned_agents.map(agentId => {
                     const status = getAgentStatus(agentId);
                     return (
-                      <div key={agentId} className="flex justify-between items-center">
-                        <span className="text-sm">{getAgentName(agentId)}</span>
+                      <div key={agentId} className="agent-list-item">
+                        <span className="agent-name">{getAgentName(agentId)}</span>
                         <div className="flex items-center space-x-2">
                           <span className={classNames(
-                            'w-2 h-2 rounded-full',
-                            status === 'online' ? 'bg-green-500' :
-                            status === 'running_task' ? 'bg-blue-500' :
-                            'bg-gray-400'
+                            'status-dot',
+                            status === 'online' ? 'online' :
+                            status === 'running_task' ? 'running' :
+                            'offline'
                           )} />
                           {status === 'online' && (
                             <button
                               onClick={() => handleTriggerTask(task.id, agentId)}
-                              className="text-xs neu-button px-2 py-1"
+                              className="run-button"
                               title={t('tasks.run_now')}
                             >
                               <Play size={12} />
@@ -376,7 +376,7 @@ const Tasks: React.FC = () => {
                   })}
                 </div>
               ) : (
-                <div className="text-sm text-gray-500 italic">
+                <div className="no-agents">
                   {t('tasks.no_agents_assigned')}
                 </div>
               )}
@@ -385,12 +385,12 @@ const Tasks: React.FC = () => {
             {/* Rclone Args */}
             {task.rclone_args.length > 0 && (
               <div>
-                <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                <div className="args-title">
                   {t('tasks.arguments')}:
                 </div>
-                <div className="flex flex-wrap gap-1">
+                <div className="args-list">
                   {task.rclone_args.map((arg, idx) => (
-                    <span key={idx} className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
+                    <span key={idx} className="arg-tag">
                       {arg}
                     </span>
                   ))}

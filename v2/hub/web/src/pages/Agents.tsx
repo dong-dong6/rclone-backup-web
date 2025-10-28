@@ -1,9 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, Button, Badge, Modal, Input, Space, Typography, Row, Col, Statistic, Tag, Tooltip, message } from 'antd';
-import { CloudServerOutlined, PlusOutlined, DeleteOutlined, EyeOutlined, CopyOutlined, CodeOutlined } from '@ant-design/icons';
-import { apiService } from '../services/api';
+import { 
+  Wifi, WifiOff, Activity, Plus, Copy, Check, 
+  RefreshCw, Trash2, Server, Clock, Calendar,
+  ChevronRight, AlertCircle, CheckCircle
+} from 'lucide-react';
+import { apiClient } from '../services/api';
 import { useSSE } from '../contexts/SSEContext';
+import classNames from 'classnames';
+import '../styles/neumorphism.css';
 
 interface Agent {
   id: string;
@@ -12,9 +17,21 @@ interface Agent {
   last_heartbeat: string | null;
   created_at: string;
   task_count?: number;
+  current_task?: string;
+  system_info?: {
+    platform: string;
+    hostname: string;
+    cpu_usage: number;
+    memory_usage: number;
+  };
 }
 
-const { Title, Text, Paragraph } = Typography;
+interface HeartbeatEvent {
+  agent_id: string;
+  status: string;
+  timestamp: string;
+  actions?: number;
+}
 
 const Agents: React.FC = () => {
   const { t } = useTranslation();
@@ -23,326 +40,528 @@ const Agents: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registrationToken, setRegistrationToken] = useState('');
+  const [tokenExpiry, setTokenExpiry] = useState<Date | null>(null);
+  const [copied, setCopied] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [realtimeStats, setRealtimeStats] = useState({
+    totalAgents: 0,
+    onlineAgents: 0,
+    runningTasks: 0
+  });
 
+  // Load agents and setup SSE listeners
   useEffect(() => {
     loadAgents();
     
-    // Subscribe to agent status updates
-    const unsubscribe = subscribe('agent.status.update', (event) => {
-      const { agent_id, status } = event.data;
-      setAgents(prev => prev.map(agent => 
-        agent.id === agent_id ? { ...agent, status } : agent
-      ));
-    });
+    // Subscribe to multiple SSE events
+    const unsubscribers = [
+      // Agent status updates
+      subscribe('agent.status.update', (event) => {
+        handleAgentStatusUpdate(event.data);
+      }),
+      
+      // Agent heartbeat events
+      subscribe('agent.heartbeat', (event: { data: HeartbeatEvent }) => {
+        handleHeartbeat(event.data);
+      }),
+      
+      // Task dispatch events
+      subscribe('task.dispatched', (event) => {
+        handleTaskDispatched(event.data);
+      }),
+      
+      // Agent registration events
+      subscribe('agent.registered', (event) => {
+        handleNewAgentRegistered(event.data);
+      })
+    ];
     
+    // Cleanup subscriptions
     return () => {
-      unsubscribe();
+      unsubscribers.forEach(unsubscribe => unsubscribe());
     };
   }, []);
+
+  // Update real-time statistics whenever agents change
+  useEffect(() => {
+    const stats = {
+      totalAgents: agents.length,
+      onlineAgents: agents.filter(a => a.status === 'online').length,
+      runningTasks: agents.filter(a => a.status === 'running_task').length
+    };
+    setRealtimeStats(stats);
+  }, [agents]);
 
   const loadAgents = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getAgents();
+      const response = await apiClient.get('/admin/agents');
       setAgents(response.data);
     } catch (error) {
       console.error('Failed to load agents:', error);
+      // Show notification
+      showNotification('error', t('agents.load_failed'));
     } finally {
       setLoading(false);
     }
   };
 
-  const generateToken = async () => {
-    try {
-      const response = await apiService.createRegistrationToken();
-      setRegistrationToken(response.data.token);
-      setShowRegisterModal(true);
-    } catch (error) {
-      console.error('Failed to generate token:', error);
-      message.error('生成注册令牌失败');
+  // SSE Event Handlers
+  const handleAgentStatusUpdate = (data: any) => {
+    const { agent_id, status } = data;
+    
+    setAgents(prev => prev.map(agent => {
+      if (agent.id === agent_id) {
+        // Animate status change
+        animateStatusChange(agent_id);
+        
+        return { 
+          ...agent, 
+          status,
+          last_heartbeat: new Date().toISOString()
+        };
+      }
+      return agent;
+    }));
+
+    // Show notification for important status changes
+    const agent = agents.find(a => a.id === agent_id);
+    if (agent) {
+      if (status === 'offline') {
+        showNotification('warning', `${agent.name} ${t('agents.went_offline')}`);
+      } else if (status === 'online') {
+        showNotification('success', `${agent.name} ${t('agents.came_online')}`);
+      }
     }
   };
 
-  const deleteAgent = async (id: string, name: string) => {
-    Modal.confirm({
-      title: '确认删除',
-      content: `确定要删除节点 "${name}" 吗？此操作不可撤销。`,
-      okText: '删除',
-      okType: 'danger',
-      cancelText: '取消',
-      onOk: async () => {
-        try {
-          await apiService.deleteAgent(id);
-          await loadAgents();
-          message.success('节点删除成功');
-        } catch (error) {
-          console.error('Failed to delete agent:', error);
-          message.error('删除节点失败');
+  const handleHeartbeat = (data: HeartbeatEvent) => {
+    const { agent_id, timestamp } = data;
+    
+    setAgents(prev => prev.map(agent => {
+      if (agent.id === agent_id) {
+        return { 
+          ...agent, 
+          last_heartbeat: timestamp,
+          // Pulse animation for heartbeat
+          className: 'heartbeat-pulse'
+        };
+      }
+      return agent;
+    }));
+
+    // Remove pulse animation after 500ms
+    setTimeout(() => {
+      setAgents(prev => prev.map(agent => {
+        if (agent.id === agent_id) {
+          const { className, ...rest } = agent as any;
+          return rest;
         }
-      },
-    });
+        return agent;
+      }));
+    }, 500);
   };
 
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      online: { color: 'success', text: '在线' },
-      offline: { color: 'error', text: '离线' },
-      running_task: { color: 'processing', text: '运行中' },
-    };
+  const handleTaskDispatched = (data: any) => {
+    const { agent_id, task_name } = data;
     
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.offline;
+    setAgents(prev => prev.map(agent => {
+      if (agent.id === agent_id) {
+        return { 
+          ...agent, 
+          status: 'running_task',
+          current_task: task_name
+        };
+      }
+      return agent;
+    }));
+
+    showNotification('info', `${t('agents.task_dispatched')}: ${task_name}`);
+  };
+
+  const handleNewAgentRegistered = (data: any) => {
+    // Reload agents list to include new agent
+    loadAgents();
+    showNotification('success', `${t('agents.new_agent_registered')}: ${data.name}`);
+  };
+
+  // UI Helper Functions
+  const generateToken = async () => {
+    try {
+      const response = await apiClient.post('/admin/agents/registration-token');
+      setRegistrationToken(response.data.token);
+      
+      // Set token expiry (24 hours from now)
+      const expiry = new Date();
+      expiry.setHours(expiry.getHours() + 24);
+      setTokenExpiry(expiry);
+      
+      setShowRegisterModal(true);
+    } catch (error) {
+      console.error('Failed to generate token:', error);
+      showNotification('error', t('agents.token_generation_failed'));
+    }
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(registrationToken);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const deleteAgent = async (id: string, name: string) => {
+    if (!confirm(t('agents.actions.deleteConfirm', { name }))) {
+      return;
+    }
     
-    return (
-      <Tag color={config.color}>
-        {config.text}
-      </Tag>
-    );
+    try {
+      await apiClient.delete(`/admin/agents/${id}`);
+      
+      // Optimistic UI update with animation
+      setAgents(prev => prev.filter(agent => agent.id !== id));
+      
+      showNotification('success', t('agents.deleted_successfully'));
+    } catch (error) {
+      console.error('Failed to delete agent:', error);
+      showNotification('error', t('agents.delete_failed'));
+      // Reload to restore correct state
+      loadAgents();
+    }
+  };
+
+  const syncConfig = async (agentId: string) => {
+    try {
+      await apiClient.post(`/admin/agents/${agentId}/sync`);
+      showNotification('success', t('agents.config_sync_triggered'));
+    } catch (error) {
+      console.error('Failed to sync config:', error);
+      showNotification('error', t('agents.config_sync_failed'));
+    }
+  };
+
+  // Animation helpers
+  const animateStatusChange = (agentId: string) => {
+    const element = document.getElementById(`agent-card-${agentId}`);
+    if (element) {
+      element.classList.add('status-change-animation');
+      setTimeout(() => {
+        element.classList.remove('status-change-animation');
+      }, 1000);
+    }
+  };
+
+  const showNotification = (type: 'success' | 'error' | 'warning' | 'info', message: string) => {
+    // This would integrate with a notification system
+    console.log(`[${type.toUpperCase()}] ${message}`);
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'online':
+        return <Wifi className="text-green-500 animate-pulse" size={20} />;
+      case 'offline':
+        return <WifiOff className="text-gray-400" size={20} />;
+      case 'running_task':
+        return <Activity className="text-blue-500 animate-spin" size={20} />;
+      default:
+        return <AlertCircle className="text-yellow-500" size={20} />;
+    }
   };
 
   const formatLastHeartbeat = (heartbeat: string | null) => {
-    if (!heartbeat) return '从未';
+    if (!heartbeat) return t('common.never');
     
     const date = new Date(heartbeat);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
     const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
     
-    if (diffMins < 1) return '刚刚';
-    if (diffMins < 60) return `${diffMins}分钟前`;
+    if (diffSecs < 10) return <span className="text-green-500">{t('time.just_now')}</span>;
+    if (diffMins < 1) return t('time.seconds_ago', { count: diffSecs });
+    if (diffMins < 60) return t('time.minutes_ago', { count: diffMins });
+    if (diffHours < 24) return t('time.hours_ago', { count: diffHours });
     
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}小时前`;
-    
-    const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays}天前`;
+    return date.toLocaleString();
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    message.success('已复制到剪贴板');
-  };
-
-  const generateRegistrationCommand = () => {
-    const baseUrl = window.location.origin;
-    const token = registrationToken;
-    
-    return `curl -sSL "${baseUrl}/api/v1/agent/install.sh" | sudo bash -s -- \\
-  --hub-url "${baseUrl}" \\
-  --token "${token}" \\
-  --name "my-new-agent"`;
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="neu-card p-8">
+          <RefreshCw className="animate-spin text-primary" size={48} />
+          <p className="mt-4 text-gray-600">{t('common.loading')}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: '24px' 
-      }}>
-        <Title level={2} style={{ margin: 0 }}>
-          <CloudServerOutlined style={{ marginRight: '8px' }} />
-          节点管理
-        </Title>
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />} 
-          onClick={generateToken}
-          size="large"
-        >
-          注册新节点
-        </Button>
+    <div className="page-container">
+      {/* Header with Real-time Stats */}
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">{t('agents.title')}</h1>
+          <p className="subtitle">{t('agents.subtitle')}</p>
+        </div>
+        <div className="header-actions">
+          {/* Real-time Statistics */}
+          <div className="realtime-stats">
+            <div className="stat-item">
+              <div className="stat-value">{realtimeStats.totalAgents}</div>
+              <div className="stat-label">{t('agents.stats.total')}</div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-value online">{realtimeStats.onlineAgents}</div>
+              <div className="stat-label">{t('agents.stats.online')}</div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-value running">{realtimeStats.runningTasks}</div>
+              <div className="stat-label">{t('agents.stats.running')}</div>
+            </div>
+          </div>
+          
+          <button 
+            onClick={loadAgents}
+            className="neu-button"
+          >
+            <RefreshCw size={16} />
+            <span>{t('common.refresh')}</span>
+          </button>
+          
+          <button 
+            onClick={generateToken}
+            className="neu-button-primary"
+          >
+            <Plus size={16} />
+            <span>{t('agents.register.new')}</span>
+          </button>
+        </div>
       </div>
 
-      {loading ? (
-        <Card loading>
-          <div style={{ height: '200px' }} />
-        </Card>
-      ) : agents.length === 0 ? (
-        <Card>
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '48px 24px',
-            color: '#8c8c8c'
-          }}>
-            <CloudServerOutlined style={{ fontSize: '48px', marginBottom: '16px' }} />
-            <Title level={4} type="secondary">暂无注册节点</Title>
-            <Paragraph type="secondary">
-              点击上方按钮生成注册令牌，然后按照说明注册新节点
-            </Paragraph>
-            <Button type="primary" onClick={generateToken}>
-              立即注册
-            </Button>
-          </div>
-        </Card>
-      ) : (
-        <Row gutter={[16, 16]}>
-          {agents.map(agent => (
-            <Col xs={24} sm={12} lg={8} xl={6} key={agent.id}>
-              <Card
-                hoverable
-                actions={[
-                  <Tooltip title="查看详情">
-                    <EyeOutlined onClick={() => setSelectedAgent(agent)} />
-                  </Tooltip>,
-                  <Tooltip title="删除节点">
-                    <DeleteOutlined 
-                      onClick={() => deleteAgent(agent.id, agent.name)}
-                      style={{ color: '#ff4d4f' }}
+      {/* Agents Grid */}
+      <div className="agents-grid">
+        {agents.map((agent) => (
+          <div
+            key={agent.id}
+            id={`agent-card-${agent.id}`}
+            className={classNames(
+              'agent-card',
+              (agent as any).className
+            )}
+          >
+            {/* Agent Header */}
+            <div className="agent-card-header">
+              <div className="agent-card-title">
+                <Server className="text-primary" size={24} />
+                <div>
+                  <h3 className="agent-name">{agent.name}</h3>
+                  <p className="agent-id">{agent.id.substring(0, 8)}...</p>
+                </div>
+              </div>
+              {getStatusIcon(agent.status)}
+            </div>
+
+            {/* Status Badge */}
+            <div className="agent-card-status">
+              <span className={classNames(
+                'status-badge',
+                agent.status === 'online' 
+                  ? 'online'
+                  : agent.status === 'running_task'
+                  ? 'running'
+                  : 'offline'
+              )}>
+                {t(`agents.status.${agent.status}`)}
+              </span>
+              
+              {agent.current_task && (
+                <span className="current-task">
+                  {agent.current_task}
+                </span>
+              )}
+            </div>
+
+            {/* Agent Details */}
+            <div className="agent-card-details">
+              <div className="detail-row">
+                <span className="detail-label">
+                  <Clock size={14} />
+                  <span>{t('agents.last_heartbeat')}:</span>
+                </span>
+                <span className="detail-value">{formatLastHeartbeat(agent.last_heartbeat)}</span>
+              </div>
+              
+              <div className="detail-row">
+                <span className="detail-label">
+                  <Calendar size={14} />
+                  <span>{t('agents.registered')}:</span>
+                </span>
+                <span className="detail-value">{new Date(agent.created_at).toLocaleDateString()}</span>
+              </div>
+              
+              <div className="detail-row">
+                <span className="detail-label">{t('agents.assigned_tasks')}:</span>
+                <span className="detail-value">{agent.task_count || 0}</span>
+              </div>
+            </div>
+
+            {/* System Info (if available) */}
+            {agent.system_info && (
+              <div className="system-info">
+                <div className="progress-bar">
+                  <span className="progress-bar-label">CPU:</span>
+                  <div className="progress-bar-track">
+                    <div 
+                      className="progress-bar-inner cpu"
+                      style={{ width: `${agent.system_info.cpu_usage}%` }}
                     />
-                  </Tooltip>
-                ]}
-              >
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ marginBottom: '16px' }}>
-                    <CloudServerOutlined style={{ fontSize: '32px', color: '#1890ff' }} />
                   </div>
-                  <Title level={4} style={{ margin: '0 0 8px 0' }}>
-                    {agent.name}
-                  </Title>
-                  {getStatusBadge(agent.status)}
                 </div>
-                
-                <div style={{ marginTop: '16px' }}>
-                  <Row gutter={8}>
-                    <Col span={12}>
-                      <Statistic 
-                        title="任务数量" 
-                        value={agent.task_count || 0} 
-                        valueStyle={{ fontSize: '16px' }}
-                      />
-                    </Col>
-                    <Col span={12}>
-                      <div>
-                        <Text type="secondary" style={{ fontSize: '12px' }}>最后心跳</Text>
-                        <div style={{ fontSize: '12px', marginTop: '2px' }}>
-                          {formatLastHeartbeat(agent.last_heartbeat)}
-                        </div>
-                      </div>
-                    </Col>
-                  </Row>
+                <div className="progress-bar">
+                  <span className="progress-bar-label">Memory:</span>
+                  <div className="progress-bar-track">
+                    <div 
+                      className="progress-bar-inner memory"
+                      style={{ width: `${agent.system_info.memory_usage}%` }}
+                    />
+                  </div>
                 </div>
-              </Card>
-            </Col>
-          ))}
-        </Row>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="agent-card-actions">
+              <button
+                onClick={() => syncConfig(agent.id)}
+                className="neu-button-icon"
+                title={t('agents.actions.sync_config')}
+                disabled={agent.status === 'offline'}
+              >
+                <RefreshCw size={16} />
+              </button>
+              
+              <button
+                onClick={() => setSelectedAgent(agent)}
+                className="neu-button-icon"
+                title={t('agents.actions.view_details')}
+              >
+                <ChevronRight size={16} />
+              </button>
+              
+              <button
+                onClick={() => deleteAgent(agent.id, agent.name)}
+                className="neu-button-icon text-red-500"
+                title={t('agents.actions.delete')}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Empty State */}
+      {agents.length === 0 && (
+        <div className="neu-card p-12 text-center">
+          <Server className="mx-auto text-gray-400 mb-4" size={64} />
+          <h3 className="text-xl font-semibold mb-2">{t('agents.no_agents')}</h3>
+          <p className="text-gray-600 mb-6">{t('agents.no_agents_description')}</p>
+          <button 
+            onClick={generateToken}
+            className="neu-button-primary mx-auto"
+          >
+            {t('agents.register.first_agent')}
+          </button>
+        </div>
       )}
 
       {/* Registration Modal */}
-      <Modal
-        title="注册新节点"
-        open={showRegisterModal}
-        onCancel={() => setShowRegisterModal(false)}
-        width={800}
-        footer={[
-          <Button key="close" onClick={() => setShowRegisterModal(false)}>
-            关闭
-          </Button>
-        ]}
-      >
-        <div style={{ marginBottom: '24px' }}>
-          <Title level={4}>1. 注册令牌</Title>
-          <Input.Group compact>
-            <Input
-              value={registrationToken}
-              readOnly
-              style={{ width: 'calc(100% - 100px)' }}
-            />
-            <Button 
-              icon={<CopyOutlined />}
-              onClick={() => copyToClipboard(registrationToken)}
-            >
-              复制令牌
-            </Button>
-          </Input.Group>
-        </div>
+      {showRegisterModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="neu-card p-8 max-w-lg w-full animate-slideUp">
+            <h2 className="text-2xl font-bold mb-6">{t('agents.register.title')}</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  {t('agents.register.token_label')}
+                </label>
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={registrationToken}
+                    readOnly
+                    className="neu-input flex-1 font-mono text-sm"
+                  />
+                  <button
+                    onClick={copyToClipboard}
+                    className="neu-button flex items-center space-x-1"
+                  >
+                    {copied ? <Check size={16} /> : <Copy size={16} />}
+                    <span>{copied ? t('common.copied') : t('common.copy')}</span>
+                  </button>
+                </div>
+              </div>
 
-        <div>
-          <Title level={4}>2. 在目标机器上执行安装命令</Title>
-          <Card>
-            <pre style={{ 
-              background: '#f5f5f5', 
-              padding: '12px', 
-              borderRadius: '4px',
-              overflow: 'auto',
-              whiteSpace: 'pre-wrap'
-            }}>
-              {generateRegistrationCommand()}
-            </pre>
-            <div style={{ marginTop: '12px' }}>
-              <Button 
-                type="primary" 
-                icon={<CopyOutlined />}
-                onClick={() => copyToClipboard(generateRegistrationCommand())}
-              >
-                复制命令
-              </Button>
+              {tokenExpiry && (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg">
+                  <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                    <AlertCircle className="inline mr-1" size={14} />
+                    {t('agents.register.token_expires', { 
+                      time: tokenExpiry.toLocaleString() 
+                    })}
+                  </p>
+                </div>
+              )}
+
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                <h3 className="font-semibold mb-2">{t('agents.register.instructions')}</h3>
+                <ol className="text-sm space-y-2">
+                  <li>1. {t('agents.register.step1')}</li>
+                  <li>2. {t('agents.register.step2')}</li>
+                  <li className="font-mono bg-black text-green-400 p-2 rounded">
+                    docker run -e REGISTRATION_TOKEN={registrationToken} \
+                    -e HUB_URL=http://hub:8080 \
+                    rclone-backup-agent
+                  </li>
+                  <li>3. {t('agents.register.step3')}</li>
+                </ol>
+              </div>
             </div>
-          </Card>
-        </div>
 
-        <div style={{ marginTop: '24px', padding: '16px', background: '#f6ffed', borderRadius: '6px' }}>
-          <Text type="secondary">
-            <strong>说明：</strong>
-            复制上面的命令到您想安装代理的机器上，并以 root 权限执行。脚本将自动下载、配置并启动代理服务。
-          </Text>
-        </div>
-      </Modal>
-
-      {/* Agent Details Modal */}
-      <Modal
-        title={`节点详情: ${selectedAgent?.name}`}
-        open={!!selectedAgent}
-        onCancel={() => setSelectedAgent(null)}
-        width={800}
-        footer={[
-          <Button key="close" onClick={() => setSelectedAgent(null)}>
-            关闭
-          </Button>
-        ]}
-      >
-        {selectedAgent && (
-          <div>
-            <Card title="基本信息" style={{ marginBottom: '16px' }}>
-              <Row gutter={[16, 16]}>
-                <Col span={12}>
-                  <Text strong>节点ID:</Text>
-                  <br />
-                  <Text code>{selectedAgent.id}</Text>
-                </Col>
-                <Col span={12}>
-                  <Text strong>状态:</Text>
-                  <br />
-                  {getStatusBadge(selectedAgent.status)}
-                </Col>
-                <Col span={12}>
-                  <Text strong>最后心跳:</Text>
-                  <br />
-                  <Text>{formatLastHeartbeat(selectedAgent.last_heartbeat)}</Text>
-                </Col>
-                <Col span={12}>
-                  <Text strong>创建时间:</Text>
-                  <br />
-                  <Text>{new Date(selectedAgent.created_at).toLocaleString()}</Text>
-                </Col>
-              </Row>
-            </Card>
-            
-            <Card title="分配的任务" style={{ marginBottom: '16px' }}>
-              <div style={{ textAlign: 'center', padding: '24px', color: '#8c8c8c' }}>
-                <Text type="secondary">暂无分配的任务</Text>
-              </div>
-            </Card>
-            
-            <Card title="执行历史">
-              <div style={{ textAlign: 'center', padding: '24px', color: '#8c8c8c' }}>
-                <Text type="secondary">暂无执行记录</Text>
-              </div>
-            </Card>
+            <div className="flex justify-end mt-6 space-x-3">
+              <button
+                onClick={() => {
+                  setShowRegisterModal(false);
+                  setRegistrationToken('');
+                  setTokenExpiry(null);
+                }}
+                className="neu-button"
+              >
+                {t('common.close')}
+              </button>
+            </div>
           </div>
-        )}
-      </Modal>
+        </div>
+      )}
+
+      {/* Agent Detail Modal */}
+      {selectedAgent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="neu-card p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <h2 className="text-2xl font-bold mb-6">{selectedAgent.name}</h2>
+            {/* Add detailed agent information here */}
+            <button
+              onClick={() => setSelectedAgent(null)}
+              className="neu-button mt-6"
+            >
+              {t('common.close')}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

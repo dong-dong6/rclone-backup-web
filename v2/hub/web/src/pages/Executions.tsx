@@ -141,16 +141,16 @@ const ExecutionList: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="page-container">
       {/* Header with Stats */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">{t('executions.title')}</h1>
+      <div className="page-header">
+        <h1 className="page-title">{t('executions.title')}</h1>
         <button
           onClick={() => {
             fetchExecutions();
             fetchStats();
           }}
-          className="neu-button flex items-center space-x-2"
+          className="neu-button"
         >
           <RefreshCw size={16} />
           <span>{t('common.refresh')}</span>
@@ -159,30 +159,30 @@ const ExecutionList: React.FC = () => {
 
       {/* Statistics Cards */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          <div className="neu-card p-4">
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <div className="text-sm text-gray-500">{t('executions.stats.total')}</div>
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-value">{stats.total}</div>
+            <div className="stat-label">{t('executions.stats.total')}</div>
           </div>
-          <div className="neu-card p-4">
-            <div className="text-2xl font-bold text-green-500">{stats.success}</div>
-            <div className="text-sm text-gray-500">{t('executions.stats.success')}</div>
+          <div className="stat-card">
+            <div className="stat-value online">{stats.success}</div>
+            <div className="stat-label">{t('executions.stats.success')}</div>
           </div>
-          <div className="neu-card p-4">
-            <div className="text-2xl font-bold text-red-500">{stats.failed}</div>
-            <div className="text-sm text-gray-500">{t('executions.stats.failed')}</div>
+          <div className="stat-card">
+            <div className="stat-value failed">{stats.failed}</div>
+            <div className="stat-label">{t('executions.stats.failed')}</div>
           </div>
-          <div className="neu-card p-4">
-            <div className="text-2xl font-bold text-blue-500">{stats.running}</div>
-            <div className="text-sm text-gray-500">{t('executions.stats.running')}</div>
+          <div className="stat-card">
+            <div className="stat-value running">{stats.running}</div>
+            <div className="stat-label">{t('executions.stats.running')}</div>
           </div>
-          <div className="neu-card p-4">
-            <div className="text-2xl font-bold">{stats.success_rate_24h.toFixed(1)}%</div>
-            <div className="text-sm text-gray-500">{t('executions.stats.success_rate')}</div>
+          <div className="stat-card">
+            <div className="stat-value">{stats.success_rate_24h.toFixed(1)}%</div>
+            <div className="stat-label">{t('executions.stats.success_rate')}</div>
           </div>
-          <div className="neu-card p-4">
-            <div className="text-2xl font-bold">{formatDuration(stats.avg_duration_seconds)}</div>
-            <div className="text-sm text-gray-500">{t('executions.stats.avg_duration')}</div>
+          <div className="stat-card">
+            <div className="stat-value">{formatDuration(stats.avg_duration_seconds)}</div>
+            <div className="stat-label">{t('executions.stats.avg_duration')}</div>
           </div>
         </div>
       )}
