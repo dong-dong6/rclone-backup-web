@@ -9,8 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ant-design/icons": "^5.2.6",
-    "antd": "^5.12.2",
+    "@tabler/icons-react": "^2.47.0",
+    "@tabler/core": "^1.0.0-beta.20",
     "axios": "^1.6.2",
     "classnames": "^2.5.1",
     "dayjs": "^1.11.10",

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Edit, Trash2, Play, Pause, Calendar, Clock } from 'lucide-react';
+import { IconPlus, IconEdit, IconTrash, IconPlayerPlay, IconPlayerPause, IconCalendar, IconClock } from '@tabler/icons-react';
 import { apiClient } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../contexts/SSEContext';

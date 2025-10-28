@@ -1,8 +1,10 @@
 /* ============================================
-   Rclone Backup Web V2.0 - Global Styles
+   Rclone Backup Web V2.0 - Tabler Theme
    ============================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import '@tabler/core/dist/css/tabler.min.css';
+@import '@tabler/core/dist/css/tabler-vendors.min.css';
 
 /* CSS Variables - Matching templates/base.html style */
 :root {

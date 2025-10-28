@@ -1,122 +1,146 @@
-import React from 'react';
-import { Card, Form, Input, Button, Switch, Tabs, message } from 'antd';
+import React, { useState } from 'react';
+import { IconSettings, IconDatabase, IconShield, IconBell } from '@tabler/icons-react';
 
 const Settings: React.FC = () => {
-  const [form] = Form.useForm();
+  const [activeTab, setActiveTab] = useState('general');
+  const [loading, setLoading] = useState(false);
+  const [settings, setSettings] = useState({
+    hub_name: 'Rclone Backup Hub',
+    session_timeout: 24,
+    log_level: 'info',
+    enable_metrics: true,
+  });
 
-  const handleSave = async (values: any) => {
+  const handleSave = async () => {
+    setLoading(true);
     try {
       // TODO: Implement settings save
-      console.log('Saving settings:', values);
-      message.success('Settings saved successfully');
+      console.log('Saving settings:', settings);
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      alert('Settings saved successfully');
     } catch (error) {
-      message.error('Failed to save settings');
+      alert('Failed to save settings');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const generalSettings = (
-    <Form
-      form={form}
-      layout="vertical"
-      initialValues={{
-        hub_name: 'Rclone Backup Hub',
-        session_timeout: 24,
-        log_level: 'info',
-        enable_metrics: true,
-      }}
-      onFinish={handleSave}
-    >
-      <Form.Item
-        label="Hub Name"
-        name="hub_name"
-      >
-        <Input />
-      </Form.Item>
-      
-      <Form.Item
-        label="Session Timeout (hours)"
-        name="session_timeout"
-      >
-        <Input type="number" />
-      </Form.Item>
-      
-      <Form.Item
-        label="Log Level"
-        name="log_level"
-      >
-        <Input />
-      </Form.Item>
-      
-      <Form.Item
-        label="Enable Metrics"
-        name="enable_metrics"
-        valuePropName="checked"
-      >
-        <Switch />
-      </Form.Item>
-      
-      <Form.Item>
-        <Button type="primary" htmlType="submit">
-          Save Settings
-        </Button>
-      </Form.Item>
-    </Form>
-  );
-
-  const securitySettings = (
-    <Form
-      layout="vertical"
-      onFinish={handleSave}
-    >
-      <Form.Item
-        label="Current Password"
-        name="current_password"
-        rules={[{ required: true, message: 'Please enter current password' }]}
-      >
-        <Input.Password />
-      </Form.Item>
-      
-      <Form.Item
-        label="New Password"
-        name="new_password"
-        rules={[{ required: true, message: 'Please enter new password' }]}
-      >
-        <Input.Password />
-      </Form.Item>
-      
-      <Form.Item
-        label="Confirm Password"
-        name="confirm_password"
-        rules={[{ required: true, message: 'Please confirm password' }]}
-      >
-        <Input.Password />
-      </Form.Item>
-      
-      <Form.Item>
-        <Button type="primary" htmlType="submit">
-          Change Password
-        </Button>
-      </Form.Item>
-    </Form>
-  );
-
-  const items = [
-    {
-      key: 'general',
-      label: 'General',
-      children: generalSettings,
-    },
-    {
-      key: 'security',
-      label: 'Security',
-      children: securitySettings,
-    },
+  const tabs = [
+    { key: 'general', label: 'General', icon: IconSettings },
+    { key: 'security', label: 'Security', icon: IconShield },
+    { key: 'database', label: 'Database', icon: IconDatabase },
+    { key: 'notifications', label: 'Notifications', icon: IconBell },
   ];
 
   return (
-    <Card title="Settings">
-      <Tabs items={items} />
-    </Card>
+    <div className="row row-deck row-cards">
+      <div className="col-12">
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">Settings</h3>
+          </div>
+          <div className="card-body">
+            <div className="row">
+              <div className="col-md-3">
+                <div className="nav nav-pills flex-column">
+                  {tabs.map(tab => (
+                    <button
+                      key={tab.key}
+                      className={`nav-link ${activeTab === tab.key ? 'active' : ''}`}
+                      onClick={() => setActiveTab(tab.key)}
+                    >
+                      <tab.icon size={16} className="me-2" />
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="col-md-9">
+                {activeTab === 'general' && (
+                  <div>
+                    <h4>General Settings</h4>
+                    <div className="mb-3">
+                      <label className="form-label">Hub Name</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={settings.hub_name}
+                        onChange={(e) => setSettings({...settings, hub_name: e.target.value})}
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label">Session Timeout (hours)</label>
+                      <input
+                        type="number"
+                        className="form-control"
+                        value={settings.session_timeout}
+                        onChange={(e) => setSettings({...settings, session_timeout: parseInt(e.target.value)})}
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label">Log Level</label>
+                      <select
+                        className="form-select"
+                        value={settings.log_level}
+                        onChange={(e) => setSettings({...settings, log_level: e.target.value})}
+                      >
+                        <option value="debug">Debug</option>
+                        <option value="info">Info</option>
+                        <option value="warn">Warning</option>
+                        <option value="error">Error</option>
+                      </select>
+                    </div>
+                    <div className="mb-3">
+                      <div className="form-check">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={settings.enable_metrics}
+                          onChange={(e) => setSettings({...settings, enable_metrics: e.target.checked})}
+                        />
+                        <label className="form-check-label">Enable Metrics</label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {activeTab === 'security' && (
+                  <div>
+                    <h4>Security Settings</h4>
+                    <p className="text-muted">Security configuration options will be displayed here.</p>
+                  </div>
+                )}
+                
+                {activeTab === 'database' && (
+                  <div>
+                    <h4>Database Settings</h4>
+                    <p className="text-muted">Database configuration options will be displayed here.</p>
+                  </div>
+                )}
+                
+                {activeTab === 'notifications' && (
+                  <div>
+                    <h4>Notification Settings</h4>
+                    <p className="text-muted">Notification configuration options will be displayed here.</p>
+                  </div>
+                )}
+                
+                <div className="mt-4">
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleSave}
+                    disabled={loading}
+                  >
+                    {loading ? 'Saving...' : 'Save Settings'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
 

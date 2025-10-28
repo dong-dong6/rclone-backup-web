@@ -1,19 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  Cloud,
-  ListChecks,
-  Database,
-  History,
-  Settings,
-  User,
-  LogOut,
-  Bell,
-  Globe,
-  Menu as MenuIcon,
-  ChevronLeft,
-} from 'lucide-react';
+  IconDashboard,
+  IconCloud,
+  IconListCheck,
+  IconDatabase,
+  IconHistory,
+  IconSettings,
+  IconUser,
+  IconLogout,
+  IconBell,
+  IconMenu2,
+  IconChevronLeft,
+} from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
 import Dashboard from './pages/Dashboard';
 import Agents from './pages/Agents';
@@ -40,74 +39,98 @@ const AppLayout: React.FC = () => {
   }, []);
 
   const menuItems = [
-    { key: 'dashboard', icon: <LayoutDashboard size={20} />, label: t('menu.dashboard'), path: '/dashboard' },
-    { key: 'agents', icon: <Cloud size={20} />, label: t('menu.agents'), path: '/agents' },
-    { key: 'tasks', icon: <ListChecks size={20} />, label: t('menu.tasks'), path: '/tasks' },
-    { key: 'remotes', icon: <Database size={20} />, label: t('menu.remotes'), path: '/remotes' },
-    { key: 'executions', icon: <History size={20} />, label: t('menu.executions'), path: '/executions' },
-    { key: 'settings', icon: <Settings size={20} />, label: t('menu.settings'), path: '/settings' },
+    { key: 'dashboard', icon: <IconDashboard size={20} />, label: t('menu.dashboard'), path: '/dashboard' },
+    { key: 'agents', icon: <IconCloud size={20} />, label: t('menu.agents'), path: '/agents' },
+    { key: 'tasks', icon: <IconListCheck size={20} />, label: t('menu.tasks'), path: '/tasks' },
+    { key: 'remotes', icon: <IconDatabase size={20} />, label: t('menu.remotes'), path: '/remotes' },
+    { key: 'executions', icon: <IconHistory size={20} />, label: t('menu.executions'), path: '/executions' },
+    { key: 'settings', icon: <IconSettings size={20} />, label: t('menu.settings'), path: '/settings' },
   ];
 
   return (
-    <div className={`app-layout ${collapsed ? 'collapsed' : ''}`}>
-      <aside className="sidebar neu-card">
-        <div className="sidebar-header">
-          <div className="logo">
-            {collapsed ? 'RB' : t('app.title')}
-          </div>
-          <button className="neu-button-icon toggle-button" onClick={() => setCollapsed(!collapsed)}>
-            {collapsed ? <MenuIcon size={20} /> : <ChevronLeft size={20} />}
-          </button>
-        </div>
-        <nav className="menu">
-          {menuItems.map(item => (
-            <Link
-              key={item.key}
-              to={item.path}
-              className={`menu-item neu-button ${selectedKey === item.key ? 'active' : ''}`}
-              onClick={() => setSelectedKey(item.key)}
-            >
-              {item.icon}
-              {!collapsed && <span className="menu-label">{item.label}</span>}
-            </Link>
-          ))}
-        </nav>
-      </aside>
-      <main className="main-content">
-        <header className="header neu-card">
-          <h1 className="page-title">
-            {menuItems.find(item => item.key === selectedKey)?.label || t('app.title')}
-          </h1>
-          <div className="header-actions">
-            <div className="neu-badge-group">
-              <button className="neu-button-icon">
-                <Bell size={20} />
-                <span className="neu-badge-dot"></span>
-              </button>
-            </div>
-            <div className="user-menu">
-              <button className="neu-button user-button">
-                <User size={20} />
-                <span>{user?.name || 'Admin'}</span>
-              </button>
-            </div>
-            <button className="neu-button-icon" onClick={logout}>
-              <LogOut size={20} />
+    <div className="page">
+      <div className="page-wrapper">
+        {/* Navbar */}
+        <header className="navbar navbar-expand-md navbar-light d-print-none">
+          <div className="container-xl">
+            <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar-menu">
+              <span className="navbar-toggler-icon"></span>
             </button>
+            <h1 className="navbar-brand navbar-brand-autodark d-none-navbar-horizontal pe-0 pe-md-3">
+              <a href=".">
+                {t('app.title')}
+              </a>
+            </h1>
+            <div className="navbar-nav flex-row order-md-last">
+              <div className="nav-item dropdown">
+                <a href="#" className="nav-link d-flex lh-1 text-reset p-0" data-bs-toggle="dropdown">
+                  <span className="avatar avatar-sm" style={{backgroundImage: 'url(./static/avatars/000m.jpg)'}}></span>
+                  <div className="d-none d-xl-block ps-2">
+                    <div>{user?.name || 'Admin'}</div>
+                    <div className="mt-1 small text-muted">Administrator</div>
+                  </div>
+                </a>
+                <div className="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                  <a href="#" className="dropdown-item">Profile</a>
+                  <a href="#" className="dropdown-item">Settings</a>
+                  <div className="dropdown-divider"></div>
+                  <a href="#" className="dropdown-item" onClick={logout}>Logout</a>
+                </div>
+              </div>
+            </div>
+            <div className="collapse navbar-collapse" id="navbar-menu">
+              <div className="d-flex flex-column flex-md-row flex-fill align-items-stretch align-items-md-center">
+                <ul className="navbar-nav">
+                  {menuItems.map(item => (
+                    <li key={item.key} className="nav-item">
+                      <Link
+                        to={item.path}
+                        className={`nav-link ${selectedKey === item.key ? 'active' : ''}`}
+                        onClick={() => setSelectedKey(item.key)}
+                      >
+                        <span className="nav-link-icon d-md-none d-lg-inline-block">
+                          {item.icon}
+                        </span>
+                        <span className="nav-link-title">
+                          {item.label}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           </div>
         </header>
-        <div className="content-wrapper">
-          <Routes>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/agents" element={<Agents />} />
-            <Route path="/tasks" element={<Tasks />} />
-            <Route path="/remotes" element={<Remotes />} />
-            <Route path="/executions" element={<Executions />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/" element={<Navigate to="/dashboard" />} />
-          </Routes>
+
+        {/* Page header */}
+        <div className="page-header d-print-none">
+          <div className="container-xl">
+            <div className="row g-2 align-items-center">
+              <div className="col">
+                <h2 className="page-title">
+                  {menuItems.find(item => item.key === selectedKey)?.label || t('app.title')}
+                </h2>
+              </div>
+            </div>
+          </div>
         </div>
-      </main>
+
+        {/* Page body */}
+        <div className="page-body">
+          <div className="container-xl">
+            <Routes>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/agents" element={<Agents />} />
+              <Route path="/tasks" element={<Tasks />} />
+              <Route path="/remotes" element={<Remotes />} />
+              <Route path="/executions" element={<Executions />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/" element={<Navigate to="/dashboard" />} />
+            </Routes>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
