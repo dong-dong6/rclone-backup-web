@@ -1,12 +1,14 @@
 import React from 'react';
 import { IconUser, IconLock } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import './Login.css';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { t } = useTranslation();
   const [loading, setLoading] = React.useState(false);
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -21,7 +23,7 @@ const Login: React.FC = () => {
       await login(username, password);
       navigate('/');
     } catch (error) {
-      setError('Invalid username or password');
+      setError(t('auth.login.error'));
     } finally {
       setLoading(false);
     }
@@ -31,15 +33,15 @@ const Login: React.FC = () => {
     <div className="page page-center">
       <div className="container-tight py-4">
         <div className="text-center mb-4">
-          <h2 className="h2 mb-2">Rclone Backup Web</h2>
-          <p className="text-muted">Sign in to your account</p>
+          <h2 className="h2 mb-2">{t('app.title')}</h2>
+          <p className="text-muted">{t('auth.login.title')}</p>
         </div>
         
         <div className="card card-md">
           <div className="card-body">
             <form onSubmit={handleSubmit}>
               <div className="mb-3">
-                <label className="form-label">Username</label>
+                <label className="form-label">{t('auth.login.username')}</label>
                 <div className="input-group input-group-flat">
                   <span className="input-group-text">
                     <IconUser size={16} />
@@ -47,7 +49,7 @@ const Login: React.FC = () => {
                   <input
                     type="text"
                     className="form-control"
-                    placeholder="Enter username"
+                    placeholder={t('login.username_placeholder')}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     required
@@ -57,7 +59,7 @@ const Login: React.FC = () => {
               </div>
 
               <div className="mb-3">
-                <label className="form-label">Password</label>
+                <label className="form-label">{t('auth.login.password')}</label>
                 <div className="input-group input-group-flat">
                   <span className="input-group-text">
                     <IconLock size={16} />
@@ -65,7 +67,7 @@ const Login: React.FC = () => {
                   <input
                     type="password"
                     className="form-control"
-                    placeholder="Enter password"
+                    placeholder={t('login.password_placeholder')}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -86,7 +88,7 @@ const Login: React.FC = () => {
                   className="btn btn-primary w-100"
                   disabled={loading}
                 >
-                  {loading ? 'Signing in...' : 'Sign in'}
+                  {loading ? t('login.logging_in') : t('auth.login.submit')}
                 </button>
               </div>
             </form>
@@ -94,7 +96,7 @@ const Login: React.FC = () => {
         </div>
         
         <div className="text-center text-muted mt-3">
-          Default: admin / admin
+          {t('login.default_hint')}
         </div>
       </div>
     </div>

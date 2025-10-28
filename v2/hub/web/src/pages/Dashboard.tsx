@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   IconServer,
   IconClock,
@@ -33,6 +34,7 @@ interface RecentExecution {
 }
 
 const Dashboard: React.FC = () => {
+  const { t } = useTranslation();
   const [stats, setStats] = useState<DashboardStats>({
     totalAgents: 0,
     onlineAgents: 0,
@@ -172,11 +174,11 @@ const Dashboard: React.FC = () => {
         <div className="card">
           <div className="card-body">
             <div className="d-flex align-items-center">
-              <div className="subheader">Total Agents</div>
+              <div className="subheader">{t('dashboard.stats.totalAgents')}</div>
             </div>
             <div className="h1 mb-3">{stats.totalAgents}</div>
             <div className="d-flex mb-2">
-              <div>Online: {stats.onlineAgents}</div>
+              <div>{t('dashboard.agents.online')}: {stats.onlineAgents}</div>
             </div>
             <div className="progress progress-sm">
               <div 
@@ -192,11 +194,11 @@ const Dashboard: React.FC = () => {
         <div className="card">
           <div className="card-body">
             <div className="d-flex align-items-center">
-              <div className="subheader">Active Tasks</div>
+              <div className="subheader">{t('dashboard.stats.activeTasks')}</div>
             </div>
             <div className="h1 mb-3 text-success">{stats.activeTasks}</div>
             <div className="d-flex mb-2">
-              <div>Total: {stats.totalTasks}</div>
+              <div>{t('dashboard.stats.totalTasks')}: {stats.totalTasks}</div>
             </div>
             <div className="progress progress-sm">
               <div 

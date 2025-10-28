@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { IconSettings, IconDatabase, IconShield, IconBell } from '@tabler/icons-react';
 
 const Settings: React.FC = () => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('general');
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState({
@@ -27,10 +29,10 @@ const Settings: React.FC = () => {
   };
 
   const tabs = [
-    { key: 'general', label: 'General', icon: IconSettings },
-    { key: 'security', label: 'Security', icon: IconShield },
-    { key: 'database', label: 'Database', icon: IconDatabase },
-    { key: 'notifications', label: 'Notifications', icon: IconBell },
+    { key: 'general', label: t('settings.tabs.general'), icon: IconSettings },
+    { key: 'security', label: t('settings.tabs.security'), icon: IconShield },
+    { key: 'database', label: t('settings.tabs.database'), icon: IconDatabase },
+    { key: 'notifications', label: t('settings.tabs.notifications'), icon: IconBell },
   ];
 
   return (
@@ -38,7 +40,7 @@ const Settings: React.FC = () => {
       <div className="col-12">
         <div className="card">
           <div className="card-header">
-            <h3 className="card-title">Settings</h3>
+            <h3 className="card-title">{t('settings.title')}</h3>
           </div>
           <div className="card-body">
             <div className="row">

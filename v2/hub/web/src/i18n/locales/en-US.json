@@ -250,6 +250,7 @@
     "tabs": {
       "general": "General",
       "security": "Security",
+      "database": "Database",
       "notifications": "Notifications",
       "backup": "Backup & Restore",
       "about": "About"
