@@ -161,6 +161,13 @@
   },
   "agents": {
     "title": "节点管理",
+    "stats": {
+      "total": "总节点数",
+      "online": "在线节点",
+      "running": "运行中"
+    },
+    "no_agents": "暂无节点",
+    "no_agents_description": "还没有注册任何节点，请先注册节点",
     "list": {
       "title": "节点列表",
       "empty": "暂无节点",
@@ -180,12 +187,20 @@
     },
     "register": {
       "title": "注册新节点",
+      "new": "注册新节点",
+      "first_agent": "注册第一个节点",
       "generateToken": "生成注册令牌",
       "tokenGenerated": "令牌已生成",
       "copyToken": "复制令牌",
       "tokenHint": "请在24小时内使用此令牌注册节点",
       "name": "节点名称",
-      "namePlaceholder": "例如：web-server-01"
+      "namePlaceholder": "例如：web-server-01",
+      "token_label": "注册令牌",
+      "token_expires": "令牌将在 {{time}} 过期",
+      "instructions": "注册说明",
+      "step1": "确保Docker已安装并运行",
+      "step2": "运行以下命令启动节点",
+      "step3": "节点将自动注册到系统中"
     },
     "detail": {
       "title": "节点详情",
@@ -198,8 +213,22 @@
       "delete": "删除节点",
       "deleteConfirm": "确定要删除节点 {{name}} 吗？",
       "restart": "重启节点",
-      "syncConfig": "同步配置"
-    }
+      "syncConfig": "同步配置",
+      "sync_config": "同步配置",
+      "view_details": "查看详情"
+    },
+    "load_failed": "加载节点失败",
+    "went_offline": "已离线",
+    "came_online": "已上线",
+    "task_dispatched": "任务已分发",
+    "new_agent_registered": "新节点已注册",
+    "token_generation_failed": "令牌生成失败",
+    "deleted_successfully": "删除成功",
+    "delete_failed": "删除失败",
+    "config_sync_triggered": "配置同步已触发",
+    "config_sync_failed": "配置同步失败",
+    "last_heartbeat": "最后心跳",
+    "assigned_tasks": "分配任务"
   },
   "tasks": {
     "title": "任务管理",

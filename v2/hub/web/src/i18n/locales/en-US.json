@@ -83,6 +83,13 @@
   },
   "agents": {
     "title": "Agent Management",
+    "stats": {
+      "total": "Total Agents",
+      "online": "Online Agents",
+      "running": "Running"
+    },
+    "no_agents": "No Agents",
+    "no_agents_description": "No agents have been registered yet, please register an agent first",
     "list": {
       "title": "Agent List",
       "empty": "No agents found",
@@ -102,12 +109,20 @@
     },
     "register": {
       "title": "Register New Agent",
+      "new": "Register New Agent",
+      "first_agent": "Register First Agent",
       "generateToken": "Generate Token",
       "tokenGenerated": "Token Generated",
       "copyToken": "Copy Token",
       "tokenHint": "Please use this token within 24 hours",
       "name": "Agent Name",
-      "namePlaceholder": "e.g., web-server-01"
+      "namePlaceholder": "e.g., web-server-01",
+      "token_label": "Registration Token",
+      "token_expires": "Token expires at {{time}}",
+      "instructions": "Registration Instructions",
+      "step1": "Make sure Docker is installed and running",
+      "step2": "Run the following command to start the agent",
+      "step3": "The agent will automatically register to the system"
     },
     "detail": {
       "title": "Agent Details",
@@ -120,8 +135,22 @@
       "delete": "Delete Agent",
       "deleteConfirm": "Are you sure you want to delete agent {{name}}?",
       "restart": "Restart Agent",
-      "syncConfig": "Sync Config"
-    }
+      "syncConfig": "Sync Config",
+      "sync_config": "Sync Config",
+      "view_details": "View Details"
+    },
+    "load_failed": "Failed to load agents",
+    "went_offline": "went offline",
+    "came_online": "came online",
+    "task_dispatched": "Task dispatched",
+    "new_agent_registered": "New agent registered",
+    "token_generation_failed": "Token generation failed",
+    "deleted_successfully": "Deleted successfully",
+    "delete_failed": "Delete failed",
+    "config_sync_triggered": "Config sync triggered",
+    "config_sync_failed": "Config sync failed",
+    "last_heartbeat": "Last Heartbeat",
+    "assigned_tasks": "Assigned Tasks"
   },
   "tasks": {
     "title": "Task Management",

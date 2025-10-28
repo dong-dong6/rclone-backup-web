@@ -340,7 +340,7 @@ const Agents: React.FC = () => {
         <div className="card">
           <div className="card-body">
             <div className="d-flex align-items-center">
-              <div className="subheader">Actions</div>
+              <div className="subheader">{t('common.actions')}</div>
             </div>
             <div className="d-flex gap-2">
               <button 
