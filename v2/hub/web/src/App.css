@@ -162,116 +162,27 @@
   color: var(--tblr-warning);
 }
 
-/* Modal Enhancements */
+/* Modal Styles - Using Tabler Standard */
 .modal {
-  background-color: rgba(0, 0, 0, 0.7) !important;
-  backdrop-filter: blur(6px);
-  z-index: 1050 !important;
+  z-index: 1050;
 }
 
 .modal-dialog {
-  z-index: 1051 !important;
+  z-index: 1051;
 }
 
+/* Use Tabler's default modal styling - minimal overrides */
 .modal-content {
-  background: var(--tblr-bg-surface) !important;
-  border: 2px solid rgba(0, 0, 0, 0.15) !important;
-  box-shadow: 
-    0 25px 50px rgba(0, 0, 0, 0.25), 
-    0 10px 20px rgba(0, 0, 0, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
-  border-radius: 1rem !important;
-  position: relative;
-  overflow: hidden;
-}
-
-.modal-content::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
-  pointer-events: none;
-  border-radius: 1rem;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 0.5rem;
 }
 
 .modal-header {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
-  border-bottom: 2px solid rgba(0, 0, 0, 0.1) !important;
-  border-radius: 1rem 1rem 0 0 !important;
-  padding: 1.5rem !important;
-  position: relative;
-  z-index: 1;
-}
-
-.modal-title {
-  color: var(--tblr-text) !important;
-  font-weight: 700 !important;
-  font-size: 1.25rem !important;
-  margin: 0 !important;
-}
-
-.modal-body {
-  background: var(--tblr-bg-surface) !important;
-  color: var(--tblr-text) !important;
-  padding: 2rem !important;
-  position: relative;
-  z-index: 1;
+  border-bottom: 1px solid var(--tblr-border-color);
 }
 
 .modal-footer {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
-  border-top: 2px solid rgba(0, 0, 0, 0.1) !important;
-  border-radius: 0 0 1rem 1rem !important;
-  padding: 1.5rem !important;
-  position: relative;
-  z-index: 1;
-}
-
-.btn-close {
-  background: none !important;
-  border: none !important;
-  font-size: 1.75rem !important;
-  color: var(--tblr-text-muted) !important;
-  opacity: 0.8 !important;
-  padding: 0.5rem !important;
-  line-height: 1 !important;
-  transition: all 0.2s ease !important;
-}
-
-.btn-close:hover {
-  opacity: 1 !important;
-  color: var(--tblr-text) !important;
-  transform: scale(1.1) !important;
-}
-
-/* Enhanced backdrop for better visibility */
-.modal-backdrop {
-  background-color: rgba(0, 0, 0, 0.75) !important;
-  backdrop-filter: blur(4px);
-  z-index: 1049 !important;
-}
-
-/* Animation for modal appearance */
-.modal.fade .modal-dialog {
-  transform: scale(0.8) translateY(-50px);
-  transition: transform 0.3s ease-out;
-}
-
-.modal.show .modal-dialog {
-  transform: scale(1) translateY(0);
-}
-
-/* Focus styles for accessibility */
-.modal:focus {
-  outline: none;
-}
-
-.modal-content:focus {
-  outline: 2px solid var(--tblr-primary);
-  outline-offset: 2px;
+  border-top: 1px solid var(--tblr-border-color);
 }
 
 .app-logo {

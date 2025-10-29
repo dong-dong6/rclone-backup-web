@@ -510,7 +510,6 @@ const Agents: React.FC = () => {
       {/* Registration Modal */}
       {showRegisterModal && (
         <div className="modal modal-blur fade show" style={{display: 'block'}} tabIndex={-1}>
-          <div className="modal-backdrop"></div>
           <div className="modal-dialog modal-lg modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
@@ -595,7 +594,6 @@ const Agents: React.FC = () => {
       {/* Agent Detail Modal */}
       {selectedAgent && (
         <div className="modal modal-blur fade show" style={{display: 'block'}} tabIndex={-1}>
-          <div className="modal-backdrop"></div>
           <div className="modal-dialog modal-lg modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
