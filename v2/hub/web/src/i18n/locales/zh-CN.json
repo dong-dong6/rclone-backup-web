@@ -198,8 +198,8 @@
       "token_label": "注册令牌",
       "token_expires": "令牌将在 {{time}} 过期",
       "instructions": "注册说明",
-      "step1": "下载并运行Agent启动脚本",
-      "step2": "运行以下命令启动节点",
+      "step1": "下载Agent二进制文件",
+      "step2": "运行以下命令注册节点",
       "step3": "节点将自动注册到系统中"
     },
     "detail": {

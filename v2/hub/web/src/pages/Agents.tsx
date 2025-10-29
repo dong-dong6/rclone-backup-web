@@ -565,8 +565,13 @@ const Agents: React.FC = () => {
                       <li className="mb-2">2. {t('agents.register.step2')}</li>
                       <li className="mb-2">
                         <code className="d-block bg-dark text-light p-2 rounded">
-                          ./start-agent.sh --token {registrationToken} \<br/>
-                          &nbsp;&nbsp;--hub-url http://hub:8080
+                          curl -L http://hub:8080/api/v1/agent/download -o rclone-backup-agent<br/>
+                          chmod +x rclone-backup-agent<br/>
+                          ./rclone-backup-agent register \\<br/>
+                          &nbsp;&nbsp;--hub-url http://hub:8080 \\<br/>
+                          &nbsp;&nbsp;--token {registrationToken} \\<br/>
+                          &nbsp;&nbsp;--name my-agent \\<br/>
+                          &nbsp;&nbsp;--daemon
                         </code>
                       </li>
                       <li>3. {t('agents.register.step3')}</li>
