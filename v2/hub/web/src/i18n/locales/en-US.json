@@ -120,7 +120,7 @@
       "token_label": "Registration Token",
       "token_expires": "Token expires at {{time}}",
       "instructions": "Registration Instructions",
-      "step1": "Make sure Docker is installed and running",
+      "step1": "Download and run the Agent startup script",
       "step2": "Run the following command to start the agent",
       "step3": "The agent will automatically register to the system"
     },

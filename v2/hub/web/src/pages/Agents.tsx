@@ -566,9 +566,8 @@ const Agents: React.FC = () => {
                       <li className="mb-2">2. {t('agents.register.step2')}</li>
                       <li className="mb-2">
                         <code className="d-block bg-dark text-light p-2 rounded">
-                          docker run -e REGISTRATION_TOKEN={registrationToken} \<br/>
-                          &nbsp;&nbsp;-e HUB_URL=http://hub:8080 \<br/>
-                          &nbsp;&nbsp;rclone-backup-agent
+                          ./start-agent.sh --token {registrationToken} \<br/>
+                          &nbsp;&nbsp;--hub-url http://hub:8080
                         </code>
                       </li>
                       <li>3. {t('agents.register.step3')}</li>
