@@ -101,6 +101,7 @@ setup_env() {
         JWT_SECRET=$(openssl rand -hex 32)
         ENCRYPTION_KEY=$(openssl rand -hex 16)
         DB_PASSWORD=$(openssl rand -base64 20 | tr -d "=+/" | cut -c1-20)
+        AGENT_API_TOKEN=$(openssl rand -hex 24)
         
         cat > .env << EOF
 # Rclone Backup Web - 环境配置
@@ -110,6 +111,8 @@ setup_env() {
 DB_NAME=rclone_backup
 DB_USER=rclone
 DB_PASSWORD=$DB_PASSWORD
+DB_PORT=5432
+ALLOW_INSECURE_DB_SSL=true
 
 # 安全密钥
 JWT_SECRET=$JWT_SECRET
@@ -125,6 +128,8 @@ VERSION=latest
 
 # 本地Agent配置
 LOCAL_AGENT_URL=http://host.docker.internal:9092
+AGENT_API_TOKEN=$AGENT_API_TOKEN
+LOCAL_AGENT_TOKEN=$AGENT_API_TOKEN
 EOF
         
         print_success "配置文件已生成"
