@@ -281,7 +281,7 @@ func (m *UserModel) CreateSession(ctx context.Context, userID uuid.UUID, tokenHa
 func (m *UserModel) GetSessionByToken(ctx context.Context, tokenHash string) (*Session, error) {
 	session := &Session{}
 	query := `
-		SELECT id, user_id, token_hash, ip_address, user_agent, expires_at, created_at
+		SELECT id, user_id, token_hash, ip_address::TEXT, user_agent, expires_at, created_at
 		FROM sessions
 		WHERE token_hash = $1 AND expires_at > NOW()
 	`
