@@ -63,7 +63,6 @@ services:
       
       # Features
       ENABLE_METRICS: ${ENABLE_METRICS:-true}
-      ALLOW_JWT_WITHOUT_SESSION: ${ALLOW_JWT_WITHOUT_SESSION:-true}
       
       # Session Configuration
       SESSION_TIMEOUT: ${SESSION_TIMEOUT:-24h}

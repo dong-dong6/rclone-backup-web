@@ -132,7 +132,7 @@ AGENT_API_TOKEN=$AGENT_API_TOKEN
 LOCAL_AGENT_TOKEN=$AGENT_API_TOKEN
 
 # 安全配置（可按需调整）
-ALLOW_JWT_WITHOUT_SESSION=true
+ALLOW_JWT_WITHOUT_SESSION=false
 EOF
         
         print_success "配置文件已生成"

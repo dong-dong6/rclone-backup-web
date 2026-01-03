@@ -18,7 +18,6 @@ import (
 func AdminAuthMiddleware(authService *services.AuthService, db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log.Printf("[AdminAuth] Checking auth for path: %s", c.Request.URL.Path)
-		allowJWTOnly := strings.EqualFold(os.Getenv("ALLOW_JWT_WITHOUT_SESSION"), "true")
 
 		token, err := extractBearerToken(c)
 		if err != nil {
@@ -49,14 +48,10 @@ func AdminAuthMiddleware(authService *services.AuthService, db *pgxpool.Pool) gi
 		// Validate active session by token hash
 		session, err := userModel.GetSessionByToken(c.Request.Context(), authService.HashToken(token))
 		if err != nil || session.UserID != userID {
-			if allowJWTOnly {
-				log.Printf("[AdminAuth] Session not found or mismatched, but ALLOW_JWT_WITHOUT_SESSION=true, allowing JWT-only")
-			} else {
-				log.Printf("[AdminAuth] Session not found or mismatched user for token hash")
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "Session expired or invalid"})
-				c.Abort()
-				return
-			}
+			log.Printf("[AdminAuth] Session not found or mismatched user for token hash")
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Session expired or invalid"})
+			c.Abort()
+			return
 		}
 
 		user, err := userModel.GetByID(c.Request.Context(), userID)
