@@ -336,6 +336,11 @@ func (te *TaskExecutor) cleanupTaskWorkDir(dir string) {
 	}
 }
 
+// GetRclonePath returns the path to the rclone executable
+func (te *TaskExecutor) GetRclonePath() string {
+	return te.rcloneManager.GetExecutablePath()
+}
+
 // formatSpeed formats bytes per second as human readable
 func formatSpeed(bps int64) string {
 	const unit = 1024

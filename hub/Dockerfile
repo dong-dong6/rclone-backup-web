@@ -1,49 +1,65 @@
 # ============================================
-# Hub API Server - Multi-stage Build
+# Hub Server - Multi-stage Build
+# 包含: Go API + React 前端 + Agent 二进制
 # ============================================
 
-# Build stage
-FROM golang:1.23-alpine AS builder
+# ============================================
+# Stage 1: Build React Frontend
+# ============================================
+FROM node:20-alpine AS frontend-builder
 
-# Install build dependencies
-RUN apk add --no-cache git make gcc musl-dev
+WORKDIR /frontend
 
-# Set working directory
-WORKDIR /build
+# Copy package files
+COPY hub/web/package*.json ./
 
-# Copy go mod files
-COPY hub/go.mod hub/go.sum ./
-
-# Download dependencies
-RUN go mod download
+# Install dependencies
+RUN npm ci --prefer-offline --no-audit
 
 # Copy source code
+COPY hub/web/ ./
+
+# Build production bundle
+RUN npm run build
+
+# ============================================
+# Stage 2: Build Go Backend
+# ============================================
+FROM golang:1.23-alpine AS backend-builder
+
+RUN apk add --no-cache git make gcc musl-dev
+
+WORKDIR /build
+
+# Copy and download dependencies
+COPY hub/go.mod hub/go.sum ./
+RUN go mod download
+
+# Copy source
 COPY hub/ ./
 
-# Build the Hub binary
+# Build Hub binary
 RUN CGO_ENABLED=1 GOOS=linux go build \
     -ldflags="-w -s -X main.Version=${VERSION:-dev}" \
     -o hub-api \
     ./main.go
 
 # ============================================
-# Agent build stage
+# Stage 3: Build Agent Binaries
 # ============================================
 FROM golang:1.23-alpine AS agent-builder
 
-# Install build dependencies
 RUN apk add --no-cache git make gcc musl-dev
 
-# Set working directory
 WORKDIR /agent-build
 
-# Copy agent source code
+# Copy and download dependencies
 COPY agent/go.mod agent/go.sum ./
 RUN go mod download
 
 COPY agent/ ./
 
-# Build agent binary for multiple platforms
+# Build for multiple platforms
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s -X main.Version=${VERSION:-dev}" \
     -o rclone-backup-agent-linux-amd64 \
@@ -52,11 +68,6 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
     -ldflags="-w -s -X main.Version=${VERSION:-dev}" \
     -o rclone-backup-agent-linux-arm64 \
-    ./main_standalone.go
-
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm go build \
-    -ldflags="-w -s -X main.Version=${VERSION:-dev}" \
-    -o rclone-backup-agent-linux-arm \
     ./main_standalone.go
 
 RUN CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build \
@@ -74,15 +85,14 @@ RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
     -o rclone-backup-agent-windows-amd64.exe \
     ./main_standalone.go
 
-# Create agent binaries directory
+# Organize binaries
 RUN mkdir -p /agent-binaries && \
     cp rclone-backup-agent-* /agent-binaries/ && \
-    # Create symlink for default download
     cd /agent-binaries && \
     ln -s rclone-backup-agent-linux-amd64 rclone-backup-agent
 
 # ============================================
-# Runtime stage
+# Stage 4: Runtime
 # ============================================
 FROM alpine:3.18
 
@@ -90,41 +100,40 @@ FROM alpine:3.18
 RUN apk add --no-cache \
     ca-certificates \
     tzdata \
-    curl \
     wget
 
 # Create non-root user
 RUN addgroup -g 1000 -S rclone && \
     adduser -u 1000 -S rclone -G rclone
 
-# Set working directory
 WORKDIR /app
 
-# Copy binary from builder
-COPY --from=builder /build/hub-api /app/hub-api
+# Copy Go binary
+COPY --from=backend-builder /build/hub-api /app/hub-api
 
-# Copy agent binaries from agent-builder
+# Copy frontend build (will be served by Go)
+COPY --from=frontend-builder /frontend/dist /app/static/web
+
+# Copy Agent binaries (for download)
 COPY --from=agent-builder /agent-binaries /app/static/binaries
 
-# Copy installation script
+# Copy installation scripts
 COPY hub/static/scripts /app/static/scripts
 
 # Copy database migrations
 COPY hub/database/migrations /app/database/migrations
 
-# Create necessary directories
-RUN mkdir -p /app/config /app/data /app/logs && \
+# Create directories and set permissions
+RUN mkdir -p /app/data /app/logs && \
     chown -R rclone:rclone /app
 
-# Switch to non-root user
 USER rclone
 
-# Expose ports
-EXPOSE 8080 9090
+# Expose port (unified: API + Static files)
+EXPOSE 8080
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD wget -q --spider http://localhost:8080/health || exit 1
 
-# Run the application
 ENTRYPOINT ["/app/hub-api"]

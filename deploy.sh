@@ -2,12 +2,7 @@
 
 # ============================================
 # Rclone Backup Web V2.0 - 智能部署脚本
-# 特性：
-# - 自动检测Docker Compose版本
-# - 交互式配置生成
-# - 透明的数据持久化（./data目录）
-# - 智能数据清理与备份
-# - 本地镜像构建
+# 简化版：PostgreSQL + Hub (内嵌前端)
 # ============================================
 
 set -e
@@ -18,46 +13,25 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# 打印带颜色的消息
-print_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
+print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+print_prompt() { echo -e "${CYAN}[INPUT]${NC} $1"; }
 
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-print_prompt() {
-    echo -e "${CYAN}[INPUT]${NC} $1"
-}
-
-# Docker Compose命令兼容性处理
 DOCKER_COMPOSE=""
+COMPOSE_FILE="docker-compose.yml"
 
 # 检测Docker Compose版本
 detect_docker_compose() {
     if docker compose version &> /dev/null; then
         DOCKER_COMPOSE="docker compose"
-        print_info "检测到 Docker Compose V2 (docker compose)"
     elif docker-compose --version &> /dev/null; then
         DOCKER_COMPOSE="docker-compose"
-        print_info "检测到 Docker Compose V1 (docker-compose)"
     else
-        print_error "未找到 Docker Compose，请安装 Docker Compose"
-        echo "安装方法："
-        echo "  - 新版Docker已内置: 确保Docker版本 >= 20.10"
-        echo "  - 独立安装: https://docs.docker.com/compose/install/"
+        print_error "未找到 Docker Compose"
         exit 1
     fi
 }
@@ -65,38 +39,36 @@ detect_docker_compose() {
 # 显示帮助信息
 show_help() {
     cat << EOF
-Rclone Backup Web V2.0 - 部署脚本
+Rclone Backup Web V2.0 - 部署脚本 (简化版)
 
 用法:
-    ./deploy.sh [命令] [选项]
+    ./deploy.sh [命令]
 
 命令:
-    hub              部署Hub
-    build            构建所有镜像
+    deploy           一键部署 Hub + 本地Agent
+    hub              仅部署Hub (Docker)
+    agent            仅安装本地Agent
     status           查看服务状态
     logs [service]   查看服务日志
     stop             停止所有服务
     restart          重启服务
     clean            交互式清理数据
-    backup           备份数据目录
-    restore <file>   从备份恢复
     help             显示此帮助信息
 
-选项:
-    --clean          部署前清理数据
-    --force          跳过确认提示
-
-数据目录:
-    所有数据存储在 ./data 目录中：
-    ./data/postgres  - 数据库
-    ./data/redis     - 缓存
-    ./data/hub       - Hub数据
-    ./data/backups   - 自动备份
+架构说明:
+    Hub (Docker容器):
+        - postgres: 数据库
+        - hub: Go API + React前端
+    
+    本地Agent (原生安装):
+        - 安装到 /opt/rclone-agent
+        - 自动下载rclone
+        - 提供TestRemote等功能
 
 示例:
-    ./deploy.sh hub              # 部署Hub服务
-    ./deploy.sh backup           # 备份数据
-    ./deploy.sh logs hub-api     # 查看Hub日志
+    ./deploy.sh deploy    # 一键部署所有组件
+    ./deploy.sh hub       # 仅部署Hub
+    ./deploy.sh agent     # 仅安装Agent
 
 EOF
 }
@@ -105,429 +77,93 @@ EOF
 check_requirements() {
     print_info "检查系统依赖..."
     
-    # 检查Docker
     if ! command -v docker &> /dev/null; then
-        print_error "Docker未安装，请先安装Docker"
-        echo "安装指南: https://docs.docker.com/get-docker/"
+        print_error "Docker未安装"
         exit 1
     fi
     
-    # 检测Docker Compose
     detect_docker_compose
     
-    # 检查Docker服务是否运行
     if ! docker info &> /dev/null; then
-        print_error "Docker服务未运行，请启动Docker"
+        print_error "Docker服务未运行"
         exit 1
     fi
     
     print_success "依赖检查通过"
 }
 
-# 显示数据目录信息
-show_data_info() {
-    echo ""
-    echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${MAGENTA}📂 数据目录结构${NC}"
-    echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo "所有持久化数据将存储在 ./data 目录中："
-    echo ""
-    echo "  ./data/"
-    echo "  ├── postgres/        # PostgreSQL数据库"
-    echo "  ├── redis/           # Redis缓存"
-    echo "  ├── hub/"
-    echo "  │   ├── config/      # Hub配置文件"
-    echo "  │   ├── data/        # Hub运行数据"
-    echo "  │   └── logs/        # Hub日志"
-    echo "  └── backups/         # 数据库备份"
-    echo ""
-}
-
-# 检查现有数据
-check_existing_data() {
-    if [ -d "./data" ]; then
-        local size=$(du -sh ./data 2>/dev/null | cut -f1)
-        print_warning "检测到现有数据目录 (大小: ${size})"
+# 设置环境配置
+setup_env() {
+    if [ ! -f .env ]; then
+        print_info "生成环境配置..."
         
-        # 列出主要数据目录
-        echo ""
-        echo "现有数据内容："
-        for dir in postgres redis hub backups; do
-            if [ -d "./data/$dir" ]; then
-                local dir_size=$(du -sh ./data/$dir 2>/dev/null | cut -f1)
-                echo "  - $dir: $dir_size"
-            fi
-        done
-        return 0
-    else
-        return 1
-    fi
-}
-
-# 备份现有数据
-backup_existing_data() {
-    local backup_dir="./data.backup.$(date +%Y%m%d-%H%M%S)"
-    print_info "备份现有数据到 $backup_dir ..."
-    
-    # 停止容器以确保数据一致性
-    print_info "停止运行中的容器..."
-    $DOCKER_COMPOSE down 2>/dev/null || true
-    
-    # 创建备份
-    if mv ./data "$backup_dir"; then
-        print_success "数据已备份到: $backup_dir"
-        echo ""
-        echo "  提示：您可以通过以下命令恢复数据："
-        echo "  mv $backup_dir ./data"
-        echo ""
-        return 0
-    else
-        print_error "备份失败"
-        return 1
-    fi
-}
-
-# 清理数据函数（交互式）
-cleanup_data_interactive() {
-    echo ""
-    if check_existing_data; then
-        echo ""
-        print_warning "⚠️  警告：清理数据是不可逆的操作！"
-        echo ""
-        echo "请选择操作："
-        echo "  1) 保留现有数据（推荐）"
-        echo "  2) 备份后清理"
-        echo "  3) 直接清理（危险！）"
-        echo "  4) 取消操作"
-        echo ""
-        
-        print_prompt "请输入选择 [1-4]: "
-        read -r choice
-        
-        case "$choice" in
-            1)
-                print_info "保留现有数据"
-                ;;
-            2)
-                if backup_existing_data; then
-                    mkdir -p ./data
-                    print_success "数据清理完成（已备份）"
-                else
-                    print_error "备份失败，已取消清理"
-                    exit 1
-                fi
-                ;;
-            3)
-                print_prompt "请输入 'DELETE' 确认删除所有数据: "
-                read -r confirm
-                if [ "$confirm" = "DELETE" ]; then
-                    print_info "正在清理数据..."
-                    $DOCKER_COMPOSE down -v 2>/dev/null || true
-                    rm -rf ./data
-                    mkdir -p ./data
-                    print_success "数据已清理"
-                else
-                    print_info "已取消清理"
-                fi
-                ;;
-            4)
-                print_info "操作已取消"
-                exit 0
-                ;;
-            *)
-                print_error "无效的选择"
-                exit 1
-                ;;
-        esac
-    else
-        print_info "未检测到现有数据"
-        mkdir -p ./data
-    fi
-}
-
-# 生成环境配置
-generate_env_config() {
-    print_info "开始配置环境变量..."
-    echo ""
-    
-    # 数据库配置
-    print_prompt "请输入数据库名称 [默认: rclone_backup]: "
-    read -r DB_NAME
-    DB_NAME=${DB_NAME:-rclone_backup}
-    
-    print_prompt "请输入数据库用户名 [默认: rclone]: "
-    read -r DB_USER
-    DB_USER=${DB_USER:-rclone}
-    
-    print_prompt "请输入数据库密码 [自动生成]: "
-    read -r -s DB_PASSWORD
-    echo ""
-    if [ -z "$DB_PASSWORD" ]; then
+        # 生成随机密钥
+        JWT_SECRET=$(openssl rand -hex 32)
+        ENCRYPTION_KEY=$(openssl rand -hex 16)
         DB_PASSWORD=$(openssl rand -base64 20 | tr -d "=+/" | cut -c1-20)
-        print_info "已自动生成数据库密码"
-    fi
-    
-    # 端口配置
-    print_prompt "请输入Web UI端口 [默认: 3000]: "
-    read -r WEB_PORT
-    WEB_PORT=${WEB_PORT:-3000}
-    
-    # 生成安全密钥
-    print_info "生成安全密钥..."
-    JWT_SECRET=$(openssl rand -hex 32)
-    ENCRYPTION_KEY=$(openssl rand -hex 16)
-    
-    # 创建.env文件
-    cat > .env << EOF
-# ============================================
-# Rclone Backup Web V2.0 - 环境配置
+        
+        cat > .env << EOF
+# Rclone Backup Web - 环境配置
 # 生成时间: $(date)
-# ============================================
 
-# 数据库配置
-DB_NAME=$DB_NAME
-DB_USER=$DB_USER
+# 数据库
+DB_NAME=rclone_backup
+DB_USER=rclone
 DB_PASSWORD=$DB_PASSWORD
 
-# 安全密钥（自动生成）
+# 安全密钥
 JWT_SECRET=$JWT_SECRET
 ENCRYPTION_KEY=$ENCRYPTION_KEY
 
 # 服务端口
-WEB_PORT=$WEB_PORT
+WEB_PORT=3000
 
 # 应用设置
 GIN_MODE=release
 LOG_LEVEL=info
 VERSION=latest
 
-# Hub配置
-SESSION_TIMEOUT=24h
-API_KEY_EXPIRY=365d
-ENABLE_METRICS=true
-ENABLE_PROFILING=false
-
-# Redis配置
-REDIS_MAX_MEMORY=256mb
-
-# 数据库备份间隔（秒）
-DB_BACKUP_INTERVAL=86400
-
-# Rclone配置
-RCLONE_VERSION=latest
-RCLONE_LOG_LEVEL=INFO
-RCLONE_CPU_LIMIT=2.0
-RCLONE_MEMORY_LIMIT=1G
+# 本地Agent配置
+LOCAL_AGENT_URL=http://host.docker.internal:9092
 EOF
-    
-    print_success "配置文件 .env 已生成"
-}
-
-# 设置环境配置
-setup_env() {
-    if [ ! -f .env ]; then
-        print_warning "未找到 .env 文件"
-        echo ""
-        echo "请选择配置方式："
-        echo "  1) 交互式配置（推荐）"
-        echo "  2) 使用默认配置"
-        echo "  3) 退出"
-        echo ""
-        print_prompt "请选择 [1-3]: "
-        read -r choice
         
-        case $choice in
-            1)
-                generate_env_config
-                ;;
-            2)
-                print_info "使用默认配置..."
-                cp .env.example .env 2>/dev/null || generate_env_config
-                
-                # 生成随机密钥
-                JWT_SECRET=$(openssl rand -hex 32)
-                ENCRYPTION_KEY=$(openssl rand -hex 16)
-                DB_PASSWORD=$(openssl rand -base64 20 | tr -d "=+/" | cut -c1-20)
-                
-                # 替换默认值
-                if [[ "$OSTYPE" == "darwin"* ]]; then
-                    # macOS
-                    sed -i '' "s/JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" .env
-                    sed -i '' "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=$ENCRYPTION_KEY/" .env
-                    sed -i '' "s/DB_PASSWORD=.*/DB_PASSWORD=$DB_PASSWORD/" .env
-                else
-                    # Linux
-                    sed -i "s/JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" .env
-                    sed -i "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=$ENCRYPTION_KEY/" .env
-                    sed -i "s/DB_PASSWORD=.*/DB_PASSWORD=$DB_PASSWORD/" .env
-                fi
-                
-                print_success "已使用默认配置并生成安全密钥"
-                ;;
-            3)
-                print_info "退出安装"
-                exit 0
-                ;;
-            *)
-                print_error "无效选择"
-                exit 1
-                ;;
-        esac
+        print_success "配置文件已生成"
     else
-        print_info "使用现有的 .env 配置文件"
+        print_info "使用现有配置"
     fi
 }
 
-# 设置目录权限
-setup_permissions() {
-    print_info "设置目录权限..."
-    
-    # 创建必要的目录
-    mkdir -p ./data/{postgres,redis,hub/{config,data,logs},backups}
-    
-    # 设置权限（某些服务需要特定的权限）
-    # PostgreSQL需要700权限
+# 设置目录
+setup_directories() {
+    mkdir -p ./data/{postgres,hub/{data,logs},backups,local-agent}
     chmod 700 ./data/postgres 2>/dev/null || true
-    
-    print_success "目录权限已设置"
 }
 
-# 处理网络冲突
-handle_network_conflicts() {
-    print_info "处理Docker网络..."
-    
-    # 删除可能冲突的网络
-    NETWORK_NAME="v2_backend"
-    if docker network ls | grep -q "$NETWORK_NAME"; then
-        print_warning "删除现有网络 $NETWORK_NAME..."
-        docker network rm "$NETWORK_NAME" 2>/dev/null || true
-    fi
-    
-    print_success "网络准备就绪"
-}
-
-# 创建初始管理员账户
-create_initial_admin() {
-    # 检查是否已经存在admin用户
-    local admin_exists=$($DOCKER_COMPOSE -f $COMPOSE_FILE exec -T postgres psql -U ${DB_USER:-rclone} -d ${DB_NAME:-rclone_backup} -tAc "SELECT COUNT(*) FROM users WHERE username='admin';" 2>/dev/null || echo "0")
-
-    if [ "$admin_exists" -gt 0 ]; then
-        print_info "管理员账户已存在,跳过创建"
-        return 0
-    fi
-
-    print_info "创建初始管理员账户..."
-
-    # 生成随机密码(16字符)
-    local ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
-
-    # 使用htpasswd生成bcrypt哈希 (如果可用)
-    # 否则使用Python (在alpine镜像中通常可用)
-    local ADMIN_PASSWORD_HASH=""
-
-    if command -v htpasswd &> /dev/null; then
-        # 使用htpasswd生成bcrypt
-        ADMIN_PASSWORD_HASH=$(htpasswd -nbB -C 10 admin "$ADMIN_PASSWORD" 2>/dev/null | cut -d: -f2)
-    else
-        # 使用Docker运行一个临时容器生成bcrypt哈希
-        ADMIN_PASSWORD_HASH=$(docker run --rm alpine sh -c "apk add --no-cache py3-bcrypt > /dev/null 2>&1 && python3 -c \"import bcrypt; print(bcrypt.hashpw(b'$ADMIN_PASSWORD', bcrypt.gensalt(10)).decode())\"" 2>/dev/null)
-    fi
-
-    if [ -z "$ADMIN_PASSWORD_HASH" ]; then
-        print_warning "无法生成bcrypt哈希,使用默认密码 'changeme123'"
-        ADMIN_PASSWORD="changeme123"
-        # bcrypt hash for "changeme123" with cost 10
-        ADMIN_PASSWORD_HASH='$2a$10$rLJHvVQzMmKGvE5xF5xLN.XqYvHZYF7CdJxvCp7qP6vhqZWYxZKK6'
-    fi
-
-    # 插入管理员用户
-    $DOCKER_COMPOSE -f $COMPOSE_FILE exec -T postgres psql -U ${DB_USER:-rclone} -d ${DB_NAME:-rclone_backup} <<-EOSQL
-        INSERT INTO users (username, email, password_hash, full_name, role, is_active, is_admin)
-        VALUES (
-            'admin',
-            'admin@rclone-backup.local',
-            '$ADMIN_PASSWORD_HASH',
-            'System Administrator',
-            'admin',
-            true,
-            true
-        ) ON CONFLICT (username) DO NOTHING;
-EOSQL
-
-    # 保存密码到文件
-    mkdir -p ./data/hub
-    echo "$ADMIN_PASSWORD" > ./data/hub/admin_password.txt
-    chmod 600 ./data/hub/admin_password.txt 2>/dev/null || true
-
-    # 导出密码供后续使用
-    export INITIAL_ADMIN_PASSWORD="$ADMIN_PASSWORD"
-
-    print_success "管理员账户已创建"
-    echo ""
-    echo "  初始管理员账户信息："
-    echo "  ┌────────────────────────────────────────┐"
-    echo "  │  用户名: admin                          │"
-    echo "  │  密码: $ADMIN_PASSWORD"
-    # 根据密码长度调整间距
-    local padding_length=$((38 - ${#ADMIN_PASSWORD}))
-    printf "  │%${padding_length}s│\n" ""
-    echo "  └────────────────────────────────────────┘"
-    echo ""
-    echo "  密码已保存到: ./data/hub/admin_password.txt"
-    echo "  ⚠️  请立即登录并修改密码！"
-    echo ""
-}
-
-# 构建镜像
-build_images() {
-    print_info "开始构建Docker镜像..."
-
-    COMPOSE_FILE="docker-compose.yml"
-
-    # 构建Hub镜像
-    print_info "构建Hub API镜像..."
-    $DOCKER_COMPOSE -f $COMPOSE_FILE build hub-api
-
-    print_info "构建Web UI镜像..."
-    $DOCKER_COMPOSE -f $COMPOSE_FILE build web-ui
-
-    print_success "所有镜像构建完成"
-}
-
-# 部署Hub
+# 构建并启动Hub
 deploy_hub() {
-    print_info "开始部署Hub服务..."
+    print_info "部署Hub..."
     
     check_requirements
     setup_env
+    setup_directories
     
-    # 询问是否清理数据
-    if [[ "$2" == "--clean" ]]; then
-        cleanup_data_interactive
-    fi
-    
-    # 设置权限
-    setup_permissions
-    
-    # 处理网络冲突
-    handle_network_conflicts
+    # 加载环境变量并导出
+    set -a  # 自动导出所有变量
+    source .env
+    set +a
     
     # 构建镜像
-    build_images "hub"
-
-    COMPOSE_FILE="docker-compose.yml"
-
-    # 启动服务（分步启动以确保依赖顺序）
-    print_info "启动数据库服务..."
+    print_info "构建Hub镜像 (包含前端)..."
+    $DOCKER_COMPOSE -f $COMPOSE_FILE build hub
+    
+    # 启动数据库
+    print_info "启动数据库..."
     $DOCKER_COMPOSE -f $COMPOSE_FILE up -d postgres
     
-    # 等待数据库完全就绪
+    # 等待数据库就绪
     print_info "等待数据库初始化..."
-    local db_ready=0
     for i in {1..30}; do
         if $DOCKER_COMPOSE -f $COMPOSE_FILE exec -T postgres pg_isready -U ${DB_USER:-rclone} &> /dev/null; then
-            db_ready=1
             break
         fi
         echo -n "."
@@ -535,246 +171,317 @@ deploy_hub() {
     done
     echo ""
     
-    if [ $db_ready -eq 0 ]; then
-        print_error "数据库启动失败"
-        print_info "查看数据库日志："
-        $DOCKER_COMPOSE -f $COMPOSE_FILE logs postgres | tail -20
-        exit 1
-    fi
+    # 创建管理员账户
+    create_admin_account
     
-    print_success "数据库已就绪"
-
-    # 创建初始管理员账户
-    create_initial_admin
-
-    # 启动其他服务
+    # 启动Hub
     print_info "启动Hub服务..."
-    $DOCKER_COMPOSE -f $COMPOSE_FILE up -d redis hub-api web-ui
+    $DOCKER_COMPOSE -f $COMPOSE_FILE up -d hub
     
-    # 等待服务启动
-    print_info "等待服务启动..."
-    local max_attempts=30
-    local attempt=0
+    # 等待服务就绪
+    wait_for_hub
     
-    # 禁用错误立即退出，避免脚本意外中断
-    set +e
-    
-    while [ $attempt -lt $max_attempts ]; do
-        # 使用 Docker 健康检查状态
-        
-        # 获取所有容器的健康状态
-        POSTGRES_HEALTH=$(docker inspect rclone-backup-db --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
-        REDIS_HEALTH=$(docker inspect rclone-backup-redis --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
-        HUB_API_HEALTH=$(docker inspect rclone-backup-hub --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
-        WEB_UI_HEALTH=$(docker inspect rclone-backup-web --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_found")
-        
-        # 显示当前状态
-        if [ $attempt -eq 0 ]; then
-            print_info "等待服务健康检查..."
-        fi
-        
-        # 检查所有服务是否健康
-        if [ "$POSTGRES_HEALTH" = "healthy" ] && \
-           [ "$REDIS_HEALTH" = "healthy" ] && \
-           [ "$HUB_API_HEALTH" = "healthy" ] && \
-           [ "$WEB_UI_HEALTH" = "healthy" ]; then
-            print_success "所有服务健康检查通过！"
-            print_info "服务状态："
-            print_info "  PostgreSQL: ✓ healthy"
-            print_info "  Redis: ✓ healthy"  
-            print_info "  Hub API: ✓ healthy"
-            print_info "  Web UI: ✓ healthy"
-            show_access_info
-            # 恢复错误检查
-            set -e
-            return 0
-        else
-            # 显示各服务状态
-            if [ $((attempt % 5)) -eq 0 ] && [ $attempt -gt 0 ]; then
-                echo ""
-                echo -n "  状态: "
-                [ "$POSTGRES_HEALTH" = "healthy" ] && echo -n "DB✓ " || echo -n "DB:$POSTGRES_HEALTH "
-                [ "$REDIS_HEALTH" = "healthy" ] && echo -n "Redis✓ " || echo -n "Redis:$REDIS_HEALTH "
-                [ "$HUB_API_HEALTH" = "healthy" ] && echo -n "API✓ " || echo -n "API:$HUB_API_HEALTH "
-                [ "$WEB_UI_HEALTH" = "healthy" ] && echo -n "UI✓" || echo -n "UI:$WEB_UI_HEALTH"
-                echo ""
-            else
-                echo -n "."
-            fi
-        fi
-        
-        sleep 2
-        attempt=$((attempt + 1))
-    done
-    
-    # 恢复错误检查
-    set -e
-    
-    print_error "Hub服务启动超时，请检查日志"
-    $DOCKER_COMPOSE -f $COMPOSE_FILE logs hub-api
-    exit 1
+    print_success "Hub部署完成!"
 }
 
+# 创建管理员账户
+create_admin_account() {
+    source .env
+    
+    local admin_exists=$($DOCKER_COMPOSE -f $COMPOSE_FILE exec -T postgres psql -U ${DB_USER} -d ${DB_NAME} -tAc "SELECT COUNT(*) FROM users WHERE username='admin';" 2>/dev/null || echo "0")
+    
+    if [ "$admin_exists" -gt 0 ]; then
+        print_info "管理员账户已存在"
+        return 0
+    fi
+    
+    print_info "创建管理员账户..."
+    
+    local ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
+    
+    # 使用Docker生成bcrypt哈希
+    local ADMIN_PASSWORD_HASH=$(docker run --rm alpine sh -c "apk add --no-cache py3-bcrypt > /dev/null 2>&1 && python3 -c \"import bcrypt; print(bcrypt.hashpw(b'$ADMIN_PASSWORD', bcrypt.gensalt(10)).decode())\"" 2>/dev/null)
+    
+    if [ -z "$ADMIN_PASSWORD_HASH" ]; then
+        ADMIN_PASSWORD="changeme123"
+        ADMIN_PASSWORD_HASH='$2a$10$rLJHvVQzMmKGvE5xF5xLN.XqYvHZYF7CdJxvCp7qP6vhqZWYxZKK6'
+    fi
+    
+    $DOCKER_COMPOSE -f $COMPOSE_FILE exec -T postgres psql -U ${DB_USER} -d ${DB_NAME} <<-EOSQL
+        INSERT INTO users (username, email, password_hash, full_name, role, is_active, is_admin)
+        VALUES ('admin', 'admin@local', '$ADMIN_PASSWORD_HASH', 'Administrator', 'admin', true, true)
+        ON CONFLICT (username) DO NOTHING;
+EOSQL
+    
+    # 保存密码
+    mkdir -p ./data/hub
+    echo "$ADMIN_PASSWORD" > ./data/hub/admin_password.txt
+    chmod 600 ./data/hub/admin_password.txt
+    
+    export INITIAL_ADMIN_PASSWORD="$ADMIN_PASSWORD"
+    print_success "管理员账户已创建"
+}
 
+# 等待Hub就绪
+wait_for_hub() {
+    print_info "等待Hub启动..."
+    
+    for i in {1..30}; do
+        if curl -sf http://localhost:${WEB_PORT:-3000}/health &> /dev/null; then
+            print_success "Hub已就绪"
+            return 0
+        fi
+        echo -n "."
+        sleep 2
+    done
+    echo ""
+    
+    print_warning "Hub启动超时，请检查日志: ./deploy.sh logs hub"
+}
+
+# 安装本地Agent
+install_agent() {
+    print_info "安装本地Agent..."
+    
+    local AGENT_DIR="/opt/rclone-agent"
+    local AGENT_BIN="$AGENT_DIR/rclone-backup-agent"
+    
+    # 检查是否需要sudo
+    local SUDO=""
+    if [ "$(id -u)" != "0" ]; then
+        SUDO="sudo"
+    fi
+    
+    # 创建目录
+    $SUDO mkdir -p $AGENT_DIR/{bin,configs,tasks}
+    
+    # 检测平台
+    local OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    local ARCH=$(uname -m)
+    case $ARCH in
+        x86_64) ARCH="amd64" ;;
+        aarch64) ARCH="arm64" ;;
+        armv7l) ARCH="arm" ;;
+    esac
+    
+    local BINARY_NAME="rclone-backup-agent-${OS}-${ARCH}"
+    
+    # 编译Agent (如果源码存在)
+    if [ -d "./agent" ] && command -v go &> /dev/null; then
+        print_info "从源码编译Agent..."
+        cd agent
+        go build -o $BINARY_NAME ./main_standalone.go
+        $SUDO cp $BINARY_NAME $AGENT_BIN
+        $SUDO chmod +x $AGENT_BIN
+        cd ..
+    else
+        # 从Hub下载
+        print_info "从Hub下载Agent..."
+        local HUB_URL="http://localhost:${WEB_PORT:-3000}"
+        curl -sf "${HUB_URL}/api/v1/agent/download?platform=${OS}&arch=${ARCH}" -o /tmp/rclone-backup-agent
+        $SUDO mv /tmp/rclone-backup-agent $AGENT_BIN
+        $SUDO chmod +x $AGENT_BIN
+    fi
+    
+    # 创建配置文件
+    source .env 2>/dev/null || true
+    
+    local HUB_URL="http://localhost:${WEB_PORT:-3000}"
+    
+    $SUDO tee $AGENT_DIR/agent.json > /dev/null << EOF
+{
+    "hub_url": "$HUB_URL",
+    "agent_name": "local-agent",
+    "work_dir": "$AGENT_DIR",
+    "max_concurrent": 3,
+    "heartbeat_interval": 30,
+    "enable_api": true,
+    "api_port": 9092
+}
+EOF
+    
+    print_success "Agent已安装到 $AGENT_DIR"
+    
+    # 创建systemd服务
+    if command -v systemctl &> /dev/null; then
+        create_agent_service
+    else
+        print_info "启动Agent: $AGENT_BIN --config $AGENT_DIR/agent.json"
+    fi
+}
+
+# 创建systemd服务
+create_agent_service() {
+    local SUDO=""
+    if [ "$(id -u)" != "0" ]; then
+        SUDO="sudo"
+    fi
+    
+    $SUDO tee /etc/systemd/system/rclone-backup-agent.service > /dev/null << EOF
+[Unit]
+Description=Rclone Backup Agent
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/rclone-agent/rclone-backup-agent --config /opt/rclone-agent/agent.json
+Restart=always
+RestartSec=10
+WorkingDirectory=/opt/rclone-agent
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    $SUDO systemctl daemon-reload
+    $SUDO systemctl enable rclone-backup-agent
+    $SUDO systemctl start rclone-backup-agent
+    
+    print_success "Agent服务已启动"
+}
+
+# 一键部署
+deploy_all() {
+    print_info "开始一键部署..."
+    echo ""
+    echo "部署架构:"
+    echo "  ┌─────────────────────────────────────┐"
+    echo "  │  Docker                             │"
+    echo "  │  ├── postgres (数据库)              │"
+    echo "  │  └── hub (API + 前端)               │"
+    echo "  └─────────────────────────────────────┘"
+    echo "  ┌─────────────────────────────────────┐"
+    echo "  │  本地                               │"
+    echo "  │  └── agent (备份执行 + TestRemote)  │"
+    echo "  └─────────────────────────────────────┘"
+    echo ""
+    
+    # 部署Hub
+    deploy_hub
+    
+    # 安装Agent
+    install_agent
+    
+    # 显示访问信息
+    show_access_info
+}
 
 # 显示访问信息
 show_access_info() {
+    source .env 2>/dev/null || true
+    
     echo ""
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}✨ 部署成功！${NC}"
     echo ""
-    echo "📍 访问地址:"
-
-    WEB_PORT="${WEB_PORT:-3000}"
-
-    echo "  应用地址: http://localhost:${WEB_PORT}"
+    echo "📍 访问地址: http://localhost:${WEB_PORT:-3000}"
     echo ""
-    echo "  具体端点:"
-    echo "    Web界面: http://localhost:${WEB_PORT}"
-    echo "    API接口: http://localhost:${WEB_PORT}/api"
-    echo "    SSE事件: http://localhost:${WEB_PORT}/events"
-    echo "    监控指标: http://localhost:${WEB_PORT}/metrics"
-    echo ""
-
-    # 检查是否有初始管理员密码
+    
     if [ -f "./data/hub/admin_password.txt" ]; then
-        local SAVED_PASSWORD=$(cat ./data/hub/admin_password.txt 2>/dev/null)
-        if [ -n "$SAVED_PASSWORD" ]; then
-            echo "🔑 初始管理员账号:"
-            echo "  ┌────────────────────────────────────────┐"
-            echo "  │  用户名: admin                          │"
-            echo "  │  密码: $SAVED_PASSWORD"
-            local padding_length=$((38 - ${#SAVED_PASSWORD}))
-            printf "  │%${padding_length}s│\n" ""
-            echo "  └────────────────────────────────────────┘"
-            echo "  ⚠️  请立即登录并修改密码！"
-        fi
-    elif [ -n "$INITIAL_ADMIN_PASSWORD" ]; then
-        echo "🔑 初始管理员账号:"
-        echo "  ┌────────────────────────────────────────┐"
-        echo "  │  用户名: admin                          │"
-        echo "  │  密码: $INITIAL_ADMIN_PASSWORD"
-        local padding_length=$((38 - ${#INITIAL_ADMIN_PASSWORD}))
-        printf "  │%${padding_length}s│\n" ""
-        echo "  └────────────────────────────────────────┘"
-        echo "  ⚠️  请立即登录并修改密码！"
-    else
-        echo "🔑 默认管理员账号:"
-        echo "  用户名: admin"
-        echo "  密码: 请查看 ./data/hub/admin_password.txt"
-        echo "  (首次登录后请立即修改密码)"
+        local PASSWORD=$(cat ./data/hub/admin_password.txt)
+        echo "🔑 管理员账号:"
+        echo "   用户名: admin"
+        echo "   密码: $PASSWORD"
+        echo ""
+        echo "   ⚠️  请立即修改密码!"
     fi
-
+    
     echo ""
-    echo "📂 数据目录:"
-    echo "  ./data/"
-    echo ""
-    echo "📝 有用的命令:"
-    echo "  查看日志: ./deploy.sh logs"
-    echo "  查看状态: ./deploy.sh status"
-    echo "  停止服务: ./deploy.sh stop"
-    echo "  备份数据: ./deploy.sh backup"
+    echo "📝 常用命令:"
+    echo "   查看状态: ./deploy.sh status"
+    echo "   查看日志: ./deploy.sh logs hub"
+    echo "   停止服务: ./deploy.sh stop"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
-# 备份数据
-backup_data() {
-    if [ -d "./data" ]; then
-        local backup_file="data-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
-        print_info "创建备份: $backup_file"
-        tar czf "$backup_file" ./data
-        print_success "备份完成: $backup_file ($(du -h $backup_file | cut -f1))"
-    else
-        print_error "数据目录不存在"
-        exit 1
-    fi
-}
-
-# 恢复数据
-restore_data() {
-    if [ -z "$1" ]; then
-        print_error "请指定备份文件"
-        echo "用法: ./deploy.sh restore <backup-file.tar.gz>"
-        exit 1
-    fi
-    
-    if [ -f "$1" ]; then
-        print_info "恢复备份: $1"
-        
-        # 备份现有数据
-        if [ -d "./data" ]; then
-            backup_existing_data
-        fi
-        
-        # 恢复数据
-        tar xzf "$1"
-        print_success "备份已恢复"
-    else
-        print_error "备份文件不存在: $1"
-        exit 1
-    fi
-}
-
-# 查看服务状态
+# 查看状态
 show_status() {
     check_requirements
-
-    COMPOSE_FILE="docker-compose.yml"
-
-    print_info "服务状态:"
+    
+    echo ""
+    print_info "Docker服务状态:"
     $DOCKER_COMPOSE -f $COMPOSE_FILE ps
     
     echo ""
-    print_info "健康检查:"
-
-    # 检查Web UI (所有流量的统一入口)
-    if curl -sf http://localhost:${WEB_PORT:-3000}/ &> /dev/null; then
-        print_success "Web UI: 健康"
-
-        # 通过nginx代理检查Hub API健康状态
-        if curl -sf http://localhost:${WEB_PORT:-3000}/api/health &> /dev/null; then
-            print_success "Hub API (via nginx): 健康"
-        else
-            print_warning "Hub API (via nginx): 未响应"
-        fi
+    print_info "本地Agent状态:"
+    if command -v systemctl &> /dev/null; then
+        systemctl status rclone-backup-agent --no-pager 2>/dev/null || echo "Agent服务未安装"
     else
-        print_warning "Web UI: 未响应"
-    fi
-    
-    # 显示数据目录信息
-    if [ -d "./data" ]; then
-        echo ""
-        print_info "数据目录使用情况:"
-        du -sh ./data/* 2>/dev/null || echo "  无数据"
+        pgrep -f rclone-backup-agent &>/dev/null && echo "Agent正在运行" || echo "Agent未运行"
     fi
 }
 
 # 查看日志
 show_logs() {
     check_requirements
-
-    COMPOSE_FILE="docker-compose.yml"
-
+    
     if [ -n "$1" ]; then
-        print_info "查看 $1 服务日志..."
         $DOCKER_COMPOSE -f $COMPOSE_FILE logs -f --tail=100 "$1"
     else
-        print_info "查看所有服务日志..."
         $DOCKER_COMPOSE -f $COMPOSE_FILE logs -f --tail=100
+    fi
+}
+
+# 停止服务
+stop_services() {
+    check_requirements
+    
+    print_info "停止Docker服务..."
+    $DOCKER_COMPOSE -f $COMPOSE_FILE down
+    
+    print_info "停止本地Agent..."
+    if command -v systemctl &> /dev/null; then
+        sudo systemctl stop rclone-backup-agent 2>/dev/null || true
+    else
+        pkill -f rclone-backup-agent 2>/dev/null || true
+    fi
+    
+    print_success "所有服务已停止"
+}
+
+# 重启服务
+restart_services() {
+    check_requirements
+    
+    print_info "重启服务..."
+    $DOCKER_COMPOSE -f $COMPOSE_FILE restart
+    
+    if command -v systemctl &> /dev/null; then
+        sudo systemctl restart rclone-backup-agent 2>/dev/null || true
+    fi
+    
+    print_success "服务已重启"
+}
+
+# 清理数据
+clean_data() {
+    check_requirements
+    
+    print_warning "⚠️  此操作将删除所有数据!"
+    print_prompt "输入 'DELETE' 确认: "
+    read -r confirm
+    
+    if [ "$confirm" = "DELETE" ]; then
+        stop_services
+        rm -rf ./data
+        print_success "数据已清理"
+    else
+        print_info "操作已取消"
     fi
 }
 
 # 主函数
 main() {
     case "$1" in
-        hub)
-            show_data_info
-            deploy_hub "$@"
+        deploy)
+            deploy_all
             ;;
-        build)
-            check_requirements
-            setup_env
-            build_images "all"
+        hub)
+            deploy_hub
+            show_access_info
+            ;;
+        agent)
+            install_agent
             ;;
         status)
             show_status
@@ -783,28 +490,13 @@ main() {
             show_logs "$2"
             ;;
         stop)
-            check_requirements
-            COMPOSE_FILE="docker-compose.yml"
-            print_info "停止所有服务..."
-            $DOCKER_COMPOSE -f $COMPOSE_FILE --profile db-backup down
-            print_success "服务已停止"
+            stop_services
             ;;
         restart)
-            check_requirements
-            COMPOSE_FILE="docker-compose.yml"
-            print_info "重启服务..."
-            $DOCKER_COMPOSE -f $COMPOSE_FILE --profile db-backup restart
-            print_success "服务已重启"
+            restart_services
             ;;
         clean)
-            check_requirements
-            cleanup_data_interactive
-            ;;
-        backup)
-            backup_data
-            ;;
-        restore)
-            restore_data "$2"
+            clean_data
             ;;
         help|--help|-h|"")
             show_help
@@ -817,5 +509,4 @@ main() {
     esac
 }
 
-# 执行主函数
 main "$@"
