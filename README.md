@@ -1,230 +1,281 @@
-# RClone备份Web系统
+# 🚀 Rclone Backup Web V2.0
 
-一个基于rclone的文件备份管理系统，提供Web界面进行备份任务的创建、管理和监控。支持Docker部署和多种云存储服务。
+一个强大的分布式备份管理系统，基于Hub-and-Spoke架构设计。
 
-## ✨ 主要特性
+## ✨ 特性
 
-- 🔐 **简单认证**: Session-based登录系统
-- ☁️ **多云存储**: 支持9种主流云存储服务（S3、阿里云OSS、Google Drive等）
-- 📅 **定时备份**: 基于Cron表达式的灵活调度
-- 🔒 **加密压缩**: AES-256加密 + tar.gz压缩
-- 📊 **任务监控**: 实时备份状态监控和详细日志查看
-- 📤 **多目标备份**: 单个任务支持同时备份到多个存储目标
-- 🐳 **Docker部署**: 完整的Docker容器化部署方案
-- 🎨 **简洁界面**: 基于Flask + Bootstrap的响应式Web界面
+- 🌐 **分布式架构** - 中央Hub管理，多Agent执行
+- 📅 **智能调度** - Cron表达式支持，防重复执行
+- 🔄 **实时监控** - SSE推送，实时日志流
+- 🛡️ **高可用性** - Agent本地回退机制
+- 🎨 **现代UI** - React + TypeScript，响应式设计
+- 🔒 **安全加密** - JWT认证，AES-256加密存储
+- 📦 **容器化部署** - Docker Compose一键部署
 
-## 🏗️ 系统架构
+## 🏗️ 架构
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Flask Web应用                        │
-├─────────────────┬─────────────────┬─────────────────────┤
-│   HTML模板      │    路由处理      │    业务逻辑         │
-│  (Jinja2)       │   (Flask)       │   (Services)        │
-└─────────────────┴─────────────────┴─────────────────────┘
-                           │
-                  ┌────────┴────────┐
-                  │                 │
-        ┌─────────────────┐  ┌─────────────────┐
-        │   SQLite数据库   │  │   APScheduler   │
-        │   (任务配置)     │  │   (定时调度)     │
-        └─────────────────┘  └─────────────────┘
-                           │
-                  ┌────────┴────────┐
-                  │                 │
-        ┌─────────────────┐  ┌─────────────────┐
-        │  RClone容器      │  │   文件处理      │
-        │   (云存储)       │  │  (压缩/加密)    │
-        └─────────────────┘  └─────────────────┘
+┌─────────────────────────────────────────────┐
+│                  Hub (中央节点)               │
+│  ┌─────────┐  ┌─────────┐  ┌─────────────┐ │
+│  │ Web UI  │  │ API     │  │ PostgreSQL  │ │
+│  └─────────┘  └─────────┘  └─────────────┘ │
+└───────────────────┬─────────────────────────┘
+                    │ HTTPS/WSS
+    ┌───────────────┴───────────────┐
+    │                               │
+┌───▼────┐                    ┌────▼───┐
+│ Agent  │                    │ Agent  │
+│   +    │                    │   +    │
+│Sidecar │                    │Sidecar │
+└────────┘                    └────────┘
 ```
-
-## 🛠️ 技术栈
-
-### 后端
-- **框架**: Flask 2.3.3 + SQLAlchemy 3.0.5
-- **认证**: Session-based认证
-- **任务调度**: APScheduler 3.10.4
-- **文件处理**: cryptography 41.0.4
-- **数据库**: SQLite
-- **时区处理**: pytz 2023.3
-
-### 前端
-- **模板引擎**: Jinja2
-- **UI框架**: Bootstrap 5
-- **图标**: Bootstrap Icons
-- **JavaScript**: 原生JavaScript + 少量jQuery
-
-### 部署
-- **容器化**: Docker + Docker Compose
-- **存储后端**: RClone容器
-
-## 📋 功能模块
-
-### 1. 用户认证
-- 用户登录/登出
-- Session-based认证
-- 密码修改
-
-### 2. 存储配置管理
-- 支持9种存储类型的配置
-- 可视化配置界面
-- 配置测试功能
-- 配置历史记录
-- 模块化存储类型架构
-
-### 3. 备份任务管理
-- 任务创建和编辑
-- 多存储目标支持（单个任务可备份到多个存储）
-- Cron表达式调度（支持可视化编辑）
-- 目录树文件路径选择
-- 压缩和加密设置
-- 基于文件数量的保留策略
-
-### 4. 任务监控
-- 实时备份状态监控
-- 详细执行日志查看
-- 异步任务执行
-- 调度器状态监控
-
-### 5. 系统设置
-- 管理员密码修改
-- 完整数据导出/导入（加密）
-- 系统配置管理
 
 ## 🚀 快速开始
 
-### 环境要求
-- **Docker**: 推荐使用Docker部署
-- **Python**: 3.7+ (本地部署)
-- **浏览器**: 现代浏览器
+### 使用部署脚本（推荐）
 
-### Docker部署（推荐）
-
-1. **克隆项目**
 ```bash
-git clone https://github.com/dong-dong6/rclone-backup-web.git
-cd rclone-backup-web
+# 克隆仓库
+git clone https://github.com/yourusername/rclone-backup-web.git
+cd rclone-backup-web/v2
+
+# 部署Hub服务
+./deploy.sh hub
+
+# 或部署Hub + 本地Agent（自我备份）
+./deploy.sh hub-with-agent
 ```
 
-2. **启动服务**
+### 部署脚本功能
+
 ```bash
-# 使用Docker Compose启动
-docker-compose up -d
+./deploy.sh [命令] [选项]
+
+命令：
+  hub              # 部署Hub服务
+  hub-with-agent   # 部署Hub和本地Agent
+  agent            # 部署独立Agent
+  build            # 构建镜像
+  status           # 查看状态
+  logs [service]   # 查看日志
+  stop             # 停止服务
+  restart          # 重启服务
+  clean            # 交互式清理数据
+  backup           # 备份数据
+  restore <file>   # 恢复备份
+  help             # 显示帮助
+
+选项：
+  --clean          # 部署前清理数据
 ```
 
-3. **访问系统**
-- 打开浏览器访问: http://localhost:5000
-- 默认用户名: `admin`
-- 默认密码: `admin123`
+### 核心特性
 
-### 本地部署
+- ✅ **透明数据管理** - 所有数据存储在 `./data` 目录
+- ✅ **智能清理** - 交互式数据清理，自动备份
+- ✅ **版本兼容** - 自动检测Docker Compose V1/V2
+- ✅ **本地构建** - 所有镜像本地构建，无需外部仓库
+- ✅ **交互配置** - 首次运行自动生成配置
 
-1. **安装依赖**
+### 使用Makefile（可选）
+
 ```bash
-# 安装Python依赖
-pip install -r requirements.txt
+# 初始化环境
+make init
+
+# 构建镜像
+make build
+
+# 启动服务
+make up                # 仅Hub
+make up-with-agent     # Hub + 本地Agent
 ```
 
-2. **启动系统**
+## 📋 部署方案
+
+### 方案1：仅Hub部署
+
+适合集中管理，Agent部署在其他服务器：
+
 ```bash
-# 启动系统
-python3 run.py
+# 1. 配置环境变量
+cp .env.example .env
+vim .env  # 编辑配置
+
+# 2. 构建并启动
+make build
+make up
+
+# 3. 访问Web UI
+# http://localhost:3000
 ```
 
-**注意**: 本地部署需要系统已安装rclone命令行工具。
+### 方案2：Hub + 本地Agent
 
-## 🔧 支持的存储类型
+Hub可以备份自身数据：
 
-系统通过模块化架构支持以下存储类型：
+```bash
+# 1. 先启动Hub
+make up
 
-- **Amazon S3** - AWS S3及S3兼容存储
-- **阿里云OSS** - 阿里云对象存储服务
-- **Cloudflare R2** - Cloudflare R2存储
-- **Google Drive** - Google云端硬盘
-- **MinIO** - 开源对象存储
-- **SFTP** - SSH文件传输协议
-- **FTP** - 文件传输协议
-- **WebDAV** - Web分布式创作和版本控制
-- **原始RClone配置** - 支持直接输入rclone配置
+# 2. 获取注册令牌
+# 在Web UI的Agents页面生成令牌
+
+# 3. 配置本地Agent
+echo "LOCAL_AGENT_REGISTRATION_TOKEN=xxx" >> .env
+
+# 4. 重启服务
+make down
+make up-with-agent
+```
+
+### 方案3：独立Agent部署
+
+在远程服务器部署Agent：
+
+```bash
+# 1. 复制Agent配置
+scp -r v2/agent v2/docker-compose.agent.yml remote-server:
+
+# 2. 在远程服务器
+cd agent
+docker-compose -f docker-compose.agent.yml up -d
+```
 
 ## 🔧 配置说明
 
-### Docker环境变量
-```env
-# Flask配置
-FLASK_ENV=production
-SECRET_KEY=your-secret-key-change-this
-DATABASE_URL=sqlite:////app/data/database.db
+### 必需的环境变量
 
-# Docker环境标识
-DOCKER_ENV=true
+| 变量 | 说明 | 示例 |
+|------|------|------|
+| `DB_PASSWORD` | 数据库密码 | `strong_password` |
+| `JWT_SECRET` | JWT签名密钥 | 64位随机字符串 |
+| `ENCRYPTION_KEY` | 加密密钥 | 32位随机字符串 |
 
-# rclone配置
-RCLONE_CONFIG_DIR=/app/data/rclone_configs
+### 生成安全密钥
+
+```bash
+# 自动生成所有密钥
+make gen-keys >> .env
+
+# 或手动生成
+openssl rand -hex 32  # JWT_SECRET
+openssl rand -hex 16  # ENCRYPTION_KEY
 ```
 
-### Docker Compose配置要点
+## 📦 镜像构建
 
-- **数据持久化**: `./data` 和 `./logs` 目录挂载
-- **文件访问**: 宿主机根目录挂载到 `/host` (只读)
-- **RClone服务**: 独立的rclone容器提供存储服务
-- **网络**: 使用bridge网络连接主应用和rclone容器
+所有镜像都在本地构建，无需依赖外部镜像仓库：
 
-## 🔒 安全特性
+```bash
+# 构建所有镜像
+make build
 
-- **密码加密**: 使用Werkzeug进行密码哈希
-- **Session认证**: 基于Flask Session的安全认证
-- **文件加密**: AES-256加密备份文件
-- **数据加密**: 系统数据导出时完整加密
-- **输入验证**: 严格的数据验证和过滤
-- **容器隔离**: Docker容器化部署提供安全隔离
+# 查看构建的镜像
+docker images | grep rclone-backup
 
-## 📊 监控和日志
+# 输出:
+# rclone-backup-hub      latest    xxx    1.2GB
+# rclone-backup-web      latest    xxx    45MB
+# rclone-backup-agent    latest    xxx    850MB
+```
 
-### 任务监控
-- 备份任务执行状态
-- 实时日志查看
-- 调度器状态监控
-- 任务执行历史
+## 🌐 访问地址
 
-### 日志系统
-- 详细的备份操作日志
-- 系统错误日志记录
-- 文件和控制台双重输出
-- 支持不同日志级别
+启动后可以访问：
 
-## 🤝 贡献指南
+- **Web UI**: http://localhost:3000
+- **API**: http://localhost:8080
+- **Metrics**: http://localhost:9090/metrics
 
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 创建 Pull Request
+默认管理员账号：
+- 用户名：`admin`
+- 密码：`admin` （首次登录后请修改）
 
-### 开发规范
-- 遵循PEP 8 Python代码规范
-- 更新相关文档
-- 测试新功能的完整性
+## 📊 监控与维护
 
-## 📄 许可证
+### 查看服务状态
 
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
+```bash
+make status           # 服务状态
+make logs            # 查看日志
+make local-agent-logs # 本地Agent日志
+```
+
+### 数据库备份
+
+```bash
+make backup          # 手动备份
+make backup-auto     # 启动自动备份
+make restore FILE=backups/xxx.sql.gz  # 恢复
+```
+
+### 健康检查
+
+```bash
+curl http://localhost:8080/health
+```
+
+## 🔄 更新升级
+
+```bash
+# 更新代码
+git pull
+
+# 重新构建并更新
+make update              # 更新Hub
+make update-with-agent   # 更新Hub和Agent
+```
+
+## 🛠️ 故障排查
+
+### Hub无法启动
+
+```bash
+# 检查日志
+docker-compose logs hub-api
+
+# 检查数据库连接
+docker-compose exec postgres pg_isready
+
+# 重置环境（谨慎）
+make clean
+```
+
+### Agent无法连接
+
+```bash
+# 检查网络
+docker-compose exec local-agent curl http://hub-api:8080/health
+
+# 重新注册
+make down
+rm -rf agent_data
+make up-with-agent
+```
+
+## 📚 文档
+
+- [部署指南](deploy/README.md)
+- [本地Agent配置](deploy/LOCAL_AGENT.md)
+- [API文档](docs/API.md)
+- [架构设计](docs/ARCHITECTURE.md)
+
+## 🤝 贡献
+
+欢迎提交Issue和Pull Request！
+
+## 📄 许可
+
+MIT License
 
 ## 🙏 致谢
 
-- [rclone](https://rclone.org/) - 强大的云存储同步工具
-- [Flask](https://flask.palletsprojects.com/) - 轻量级Web框架
-- [Bootstrap](https://getbootstrap.com/) - 响应式CSS框架
-- [APScheduler](https://apscheduler.readthedocs.io/) - Python任务调度库
-
-## 📞 支持
-
-如果您遇到问题或有建议，请：
-
-1. 搜索 [Issues](https://github.com/dong-dong6/rclone-backup-web/issues)
-2. 创建新的 Issue
-3. 联系维护者
+- [Rclone](https://rclone.org/) - 强大的云存储工具
+- [Docker](https://www.docker.com/) - 容器化平台
+- 所有贡献者
 
 ---
 
-⭐ 如果这个项目对您有帮助，请给我们一个星标！
+**Made with ❤️ by the Community**

@@ -1,58 +1,179 @@
 version: '3.8'
 
+# ============================================
+# Rclone Backup Web V2.0 - Docker Compose 配置
+# 使用绑定挂载实现透明的数据持久化
+# ============================================
+
 services:
-  backup-web:
-    build: .
+  # ============================================
+  # HUB SERVICES (Always On)
+  # ============================================
+  
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: rclone-backup-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-rclone_backup}
+      POSTGRES_USER: ${DB_USER:-rclone}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Database password required}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      # 使用绑定挂载 - 数据存储在 ./data/postgres
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./hub/database/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rclone} -d ${DB_NAME:-rclone_backup}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Hub API Server (Go)
+  hub-api:
+    build:
+      context: .
+      dockerfile: ./hub/Dockerfile
+      args:
+        - GO_VERSION=1.21
+    image: rclone-backup-hub:${VERSION:-latest}
+    container_name: rclone-backup-hub
+    restart: unless-stopped
+    environment:
+      # Database Configuration (CRITICAL: Use service name, not localhost!)
+      DB_HOST: postgres
+      DATABASE_URL: postgres://${DB_USER:-rclone}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-rclone_backup}?sslmode=disable
+      
+      # Security Keys (Required)
+      JWT_SECRET: ${JWT_SECRET:?JWT secret required}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Encryption key required}
+      
+      # Server Configuration - 强制使用 8080，忽略环境变量
+      PORT: 8080
+      GIN_MODE: ${GIN_MODE:-release}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+      # Features
+      ENABLE_METRICS: ${ENABLE_METRICS:-true}
+      ENABLE_PROFILING: ${ENABLE_PROFILING:-false}
+      
+      # Session Configuration
+      SESSION_TIMEOUT: ${SESSION_TIMEOUT:-24h}
+      API_KEY_EXPIRY: ${API_KEY_EXPIRY:-365d}
+    # 不再对外暴露端口，只在内部网络访问
+    # ports:
+    #   - "${HUB_PORT:-8080}:8080"
+    #   - "${METRICS_PORT:-9090}:9090"
+    volumes:
+      # 使用绑定挂载 - 配置和数据存储在 ./data/hub
+      - ./hub/config:/app/config:ro
+      - ./data/hub/data:/data
+      - ./data/hub/logs:/app/logs
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # 使用 wget 检查健康端点，确保返回 200
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s  # 给服务充足的启动时间
+
+  # Web UI (React)
+  web-ui:
+    build:
+      context: ./hub/web
+      dockerfile: Dockerfile
+      args:
+        - NODE_VERSION=20-alpine
+    image: rclone-backup-web:${VERSION:-latest}
     container_name: rclone-backup-web
+    restart: unless-stopped
+    environment:
+      REACT_APP_API_URL: ${API_URL:-http://localhost:8080}
+      REACT_APP_SSE_URL: ${SSE_URL:-http://localhost:8080}
+      REACT_APP_VERSION: ${VERSION:-latest}
     ports:
-      - "5000:5000"
-    volumes:
-      # 数据持久化
-      - ./data:/app/data
-      - ./logs:/app/logs
-      # Docker socket用于调用rclone容器
-      - /var/run/docker.sock:/var/run/docker.sock
-      # 备份源目录挂载：将宿主机根目录挂载到容器的/host目录
-      - /:/host:ro  # 挂载整个宿主机根目录到/host（只读）
-    environment:
-      - FLASK_ENV=production
-      - DOCKER_ENV=true
-      - RCLONE_CONFIG_DIR=/app/data/rclone_configs
-      - DATABASE_URL=sqlite:////app/data/database.db
-      - SECRET_KEY=your-secret-key-change-this
-      # 日志配置 - 可选值: DEBUG, INFO, WARNING, ERROR
-      # DEBUG: 最详细的日志，包括所有调试信息、rclone配置内容等
-      # INFO: 标准日志级别，包含重要操作信息
-      # WARNING: 仅警告和错误信息
-      # ERROR: 仅错误信息
-#      - LOG_LEVEL=INFO
-      # 取消注释下面这行以开启最详细的调试日志
-      - LOG_LEVEL=DEBUG
-    restart: unless-stopped
+      - "${WEB_PORT:-3000}:80"
     networks:
-      - backup-network
+      - backend
+    depends_on:
+      - hub-api
+    healthcheck:
+      # Nginx 容器使用 curl 检查（已安装）
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
-  # rclone服务容器（用于执行rclone命令）
-  rclone:
-    image: rclone/rclone:latest
-    container_name: rclone-service
-    volumes:
-      # rclone配置文件 - 挂载到与主应用相同的路径结构
-      - ./data:/app/data
-      # 备份源目录（与主应用保持一致的挂载）
-      - /:/host:ro  # 挂载整个宿主机根目录到/host（只读）
-    environment:
-      - RCLONE_CONFIG=/app/data/rclone_configs/rclone.conf
-    networks:
-      - backup-network
-    # 保持容器运行 - 使用rclone rcd命令启动RPC守护进程
-    command: ["rcd", "--rc-addr=0.0.0.0:5572", "--rc-no-auth"]
+  # Cache/Session Store
+  redis:
+    image: redis:7-alpine
+    container_name: rclone-backup-redis
     restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_MAX_MEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+    volumes:
+      # 使用绑定挂载 - 数据存储在 ./data/redis
+      - ./data/redis:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # ============================================
+  # OPTIONAL: Database Backup Service
+  # ============================================
+  
+  # 定期备份数据库的服务
+  db-backup:
+    image: postgres:15-alpine
+    container_name: rclone-backup-db-backup
+    profiles:
+      - db-backup  # 可选profile，用于定期备份
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+    volumes:
+      # 使用绑定挂载 - 备份存储在 ./data/backups
+      - ./data/backups:/backups
+    networks:
+      - backend
+    command: >
+      sh -c "while true; do
+        echo 'Backing up database...';
+        pg_dump -h postgres -U ${DB_USER:-rclone} ${DB_NAME:-rclone_backup} | 
+        gzip > /backups/backup-$$(date +%Y%m%d-%H%M%S).sql.gz;
+        echo 'Backup complete: backup-$$(date +%Y%m%d-%H%M%S).sql.gz';
+        echo 'Cleaning old backups (keeping last 7 days)...';
+        find /backups -name '*.sql.gz' -mtime +7 -delete;
+        sleep ${DB_BACKUP_INTERVAL:-86400};
+      done"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+# ============================================
+# Networks
+# ============================================
 networks:
-  backup-network:
+  backend:
     driver: bridge
-
-volumes:
-  backup-data:
-    driver: local
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+          gateway: 172.30.0.1
