@@ -25,6 +25,7 @@ logs/
 *.dylib
 vendor/
 go.sum
+agent/rclone-backup-agent-*
 
 # Node.js
 node_modules/
