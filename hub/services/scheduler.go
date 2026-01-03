@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/robfig/cron/v3"
 	"github.com/rclone-backup-web/hub/models"
+	"github.com/robfig/cron/v3"
 )
 
 type SchedulerService struct {
@@ -36,19 +36,19 @@ func NewSchedulerService(db *pgxpool.Pool) *SchedulerService {
 // Start starts the scheduler service
 func (s *SchedulerService) Start() {
 	log.Println("Starting scheduler service...")
-	
+
 	// Load all active tasks
 	s.reloadTasks()
-	
+
 	// Start cron scheduler
 	s.cron.Start()
-	
+
 	// Periodically check for offline agents
 	go s.checkOfflineAgents()
-	
+
 	// Periodically reload tasks
 	go s.periodicallyReloadTasks()
-	
+
 	log.Println("Scheduler service started")
 }
 
@@ -63,38 +63,38 @@ func (s *SchedulerService) Stop() {
 func (s *SchedulerService) reloadTasks() {
 	ctx := context.Background()
 	taskModel := models.NewTaskModel(s.db)
-	
+
 	tasks, err := taskModel.List(ctx)
 	if err != nil {
 		log.Printf("Failed to load tasks: %v", err)
 		return
 	}
-	
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// Remove all existing schedules
 	for taskID, entryID := range s.taskSchedules {
 		s.cron.Remove(entryID)
 		delete(s.taskSchedules, taskID)
 	}
-	
+
 	// Add new schedules
 	for _, task := range tasks {
 		if !task.IsActive || task.Schedule == "" {
 			continue
 		}
-		
+
 		taskCopy := *task
 		entryID, err := s.cron.AddFunc(task.Schedule, func() {
 			s.triggerTask(taskCopy.ID)
 		})
-		
+
 		if err != nil {
 			log.Printf("Failed to schedule task %s: %v", task.ID, err)
 			continue
 		}
-		
+
 		s.taskSchedules[task.ID] = entryID
 		log.Printf("Scheduled task %s (%s) with cron: %s", task.ID, task.Name, task.Schedule)
 	}
@@ -103,7 +103,7 @@ func (s *SchedulerService) reloadTasks() {
 // triggerTask triggers a task execution
 func (s *SchedulerService) triggerTask(taskID uuid.UUID) {
 	ctx := context.Background()
-	
+
 	// Get task details
 	taskModel := models.NewTaskModel(s.db)
 	task, err := taskModel.GetByID(ctx, taskID)
@@ -111,14 +111,14 @@ func (s *SchedulerService) triggerTask(taskID uuid.UUID) {
 		log.Printf("Failed to get task %s: %v", taskID, err)
 		return
 	}
-	
+
 	// Get assigned agents
 	agents := task.AssignedAgents
 	if len(agents) == 0 {
 		log.Printf("No agents assigned to task %s", taskID)
 		return
 	}
-	
+
 	// Create execution for each assigned agent
 	executionModel := models.NewExecutionModel(s.db)
 	for _, agentID := range agents {
@@ -129,14 +129,14 @@ func (s *SchedulerService) triggerTask(taskID uuid.UUID) {
 			log.Printf("Agent %s is offline, skipping task %s", agentID, taskID)
 			continue
 		}
-		
+
 		// Create execution record
-		_, err = executionModel.Create(ctx, taskID, agentID, "central")
+		_, err = executionModel.Create(ctx, taskID, agentID, models.TriggerModeScheduled)
 		if err != nil {
 			log.Printf("Failed to create execution for task %s, agent %s: %v", taskID, agentID, err)
 			continue
 		}
-		
+
 		log.Printf("Created execution for task %s on agent %s", taskID, agentID)
 	}
 }
@@ -145,7 +145,7 @@ func (s *SchedulerService) triggerTask(taskID uuid.UUID) {
 func (s *SchedulerService) NeedsConfigSync(agentID uuid.UUID) bool {
 	s.syncMu.RLock()
 	defer s.syncMu.RUnlock()
-	
+
 	needsSync, exists := s.syncFlags[agentID]
 	if exists && needsSync {
 		// Clear the flag after reading
@@ -156,7 +156,7 @@ func (s *SchedulerService) NeedsConfigSync(agentID uuid.UUID) bool {
 		s.syncMu.RLock()
 		return true
 	}
-	
+
 	return false
 }
 
@@ -171,11 +171,11 @@ func (s *SchedulerService) MarkAgentForSync(agentID uuid.UUID) {
 func (s *SchedulerService) checkOfflineAgents() {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		ctx := context.Background()
 		agentModel := models.NewAgentModel(s.db)
-		
+
 		// Mark agents as offline if they haven't sent heartbeat in 2 minutes
 		if err := agentModel.CheckOfflineAgents(ctx, 2*time.Minute); err != nil {
 			log.Printf("Failed to check offline agents: %v", err)
@@ -187,7 +187,7 @@ func (s *SchedulerService) checkOfflineAgents() {
 func (s *SchedulerService) periodicallyReloadTasks() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		s.reloadTasks()
 	}
@@ -216,7 +216,7 @@ func (s *SchedulerService) ShouldTaskRunNow(taskID uuid.UUID, cronExpr string, n
 	nextRun := schedule.Next(lastDispatch)
 
 	// Check if it's time to run (with 1-minute tolerance)
-	return now.After(nextRun) || now.Equal(nextRun) || 
+	return now.After(nextRun) || now.Equal(nextRun) ||
 		(now.After(nextRun.Add(-1*time.Minute)) && now.Before(nextRun.Add(1*time.Minute)))
 }
 

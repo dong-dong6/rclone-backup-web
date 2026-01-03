@@ -51,7 +51,7 @@ export const SSEProvider: React.FC<SSEProviderProps> = ({ children }) => {
 
     // Create SSE connection
     const baseUrl = import.meta.env.VITE_API_URL || '';
-    const es = new EventSource(`${baseUrl}/events`, {
+    const es = new EventSource(`${baseUrl}/events?token=${encodeURIComponent(token)}`, {
       withCredentials: true,
     });
 

@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -37,7 +38,7 @@ func (s *TaskService) FindPendingTaskForAgent(ctx context.Context, agentID uuid.
 		taskModel := models.NewTaskModel(s.db)
 		task, err := taskModel.GetByID(ctx, pendingExecutions[0].TaskID)
 		if err == nil {
-			log.Printf("[TaskService] Found manually triggered task %s for agent %s", 
+			log.Printf("[TaskService] Found manually triggered task %s for agent %s",
 				task.Name, agentID)
 			return task, nil
 		}
@@ -52,12 +53,12 @@ func (s *TaskService) FindPendingTaskForAgent(ctx context.Context, agentID uuid.
 	if len(dueTasks) > 0 {
 		// Return the first due task
 		task := dueTasks[0]
-		log.Printf("[TaskService] Found scheduled task %s for agent %s", 
+		log.Printf("[TaskService] Found scheduled task %s for agent %s",
 			task.Name, agentID)
-		
+
 		// Mark that we're executing this task now
 		s.scheduler.MarkTaskExecuted(task.ID, time.Now())
-		
+
 		return task, nil
 	}
 
@@ -74,7 +75,7 @@ func (s *TaskService) findScheduledTaskForAgent(ctx context.Context, agentID uui
 	}
 
 	now := time.Now()
-	
+
 	for _, task := range tasks {
 		if !task.IsActive || task.Schedule == "" {
 			continue
@@ -82,7 +83,7 @@ func (s *TaskService) findScheduledTaskForAgent(ctx context.Context, agentID uui
 
 		// Check if this task should run based on its schedule
 		if s.shouldTaskRunNow(ctx, task, now) {
-			log.Printf("Task %s (%s) is due for execution on agent %s", 
+			log.Printf("Task %s (%s) is due for execution on agent %s",
 				task.ID, task.Name, agentID)
 			return task, nil
 		}
@@ -103,7 +104,7 @@ func (s *TaskService) shouldTaskRunNow(ctx context.Context, task *models.BackupT
 	// Get the last execution time for this task
 	executionModel := models.NewExecutionModel(s.db)
 	lastExecution, err := executionModel.GetLastExecutionForTask(ctx, task.ID)
-	
+
 	var lastRunTime time.Time
 	if err != nil || lastExecution == nil {
 		// No previous execution, use a time 24 hours ago as reference
@@ -121,11 +122,11 @@ func (s *TaskService) shouldTaskRunNow(ctx context.Context, task *models.BackupT
 
 	// Check if it's time to run (with 1-minute tolerance for heartbeat delays)
 	shouldRun := now.After(nextRunTime) || now.Equal(nextRunTime)
-	
+
 	// Also check that we're not too far past the scheduled time (e.g., 1 hour)
 	// This prevents running very old missed schedules
 	if shouldRun && now.After(nextRunTime.Add(1*time.Hour)) {
-		log.Printf("Skipping task %s - scheduled time %v is too far in the past", 
+		log.Printf("Skipping task %s - scheduled time %v is too far in the past",
 			task.ID, nextRunTime)
 		return false
 	}
@@ -172,12 +173,11 @@ func (s *TaskService) BuildTaskDetailsForAgent(ctx context.Context, task *models
 		"execution_id":      executionID.String(),
 		"task_id":           task.ID.String(),
 		"task_name":         task.Name,
+		"remote_id":         remote.ID.String(),
 		"source_path":       task.SourcePath,
 		"destination_path":  task.DestinationPath,
-		"rclone_config": map[string]interface{}{
-			"name":   remote.Name,
-			"config": decryptedConfig,
-		},
+		"schedule":          task.Schedule,
+		"rclone_config_b64": base64.StdEncoding.EncodeToString([]byte(decryptedConfig)),
 	}
 
 	// Add rclone arguments if present

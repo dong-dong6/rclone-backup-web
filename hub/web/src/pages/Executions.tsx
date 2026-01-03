@@ -18,7 +18,7 @@ interface TaskExecution {
   agent_id: string;
   agent_name: string;
   status: 'pending' | 'running' | 'success' | 'failed';
-  trigger_mode: 'manual' | 'central' | 'local_fallback';
+  trigger_mode: 'manual' | 'scheduled' | 'local_fallback' | 'central';
   log_output?: string;
   error_message?: string;
   started_at?: string;
@@ -120,11 +120,12 @@ const ExecutionList: React.FC = () => {
   const getTriggerModeLabel = (mode: string) => {
     switch (mode) {
       case 'manual':
-        return t('executions.trigger.manual');
-      case 'central':
-        return t('executions.trigger.scheduled');
+        return t('executions.triggerMode.manual');
+      case 'scheduled':
+      case 'central': // legacy value mapped to scheduled
+        return t('executions.triggerMode.scheduled');
       case 'local_fallback':
-        return t('executions.trigger.fallback');
+        return t('executions.triggerMode.local_fallback');
       default:
         return mode;
     }
@@ -221,7 +222,7 @@ const ExecutionList: React.FC = () => {
                   {t('executions.agent')}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('executions.trigger')}
+                  {t('executions.list.columns.triggerMode')}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {t('executions.started')}
@@ -443,7 +444,7 @@ const ExecutionDetail: React.FC = () => {
             <div className="font-medium">{execution.agent_name}</div>
           </div>
           <div>
-            <div className="text-sm text-gray-500 mb-1">{t('executions.trigger')}</div>
+            <div className="text-sm text-gray-500 mb-1">{t('executions.list.columns.triggerMode')}</div>
             <div className="font-medium">{getTriggerModeLabel(execution.trigger_mode)}</div>
           </div>
           <div>

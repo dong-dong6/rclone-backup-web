@@ -85,6 +85,7 @@ type HeartbeatRequest struct {
 type HeartbeatAction struct {
 	Action      string          `json:"action"`
 	ExecutionID string          `json:"execution_id,omitempty"`
+	TriggerMode string          `json:"trigger_mode,omitempty"`
 	Task        json.RawMessage `json:"task,omitempty"`
 }
 
@@ -95,7 +96,7 @@ type HeartbeatResponse struct {
 // AgentHeartbeat handles agent heartbeat and returns pending actions
 func (h *Handler) AgentHeartbeat(c *gin.Context) {
 	agentID := c.MustGet("agent_id").(uuid.UUID)
-	
+
 	var req HeartbeatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -122,9 +123,9 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 				Action:      "CANCEL_TASK",
 				ExecutionID: exec.ID.String(),
 			})
-			
-			// Mark as fully stopped/acknowledged by moving to 'cancelled' status (actually it stays in cancelled, 
-			// but we might need a way to stop signaling it. 
+
+			// Mark as fully stopped/acknowledged by moving to 'cancelled' status (actually it stays in cancelled,
+			// but we might need a way to stop signaling it.
 			// For now, let's assume the agent will stop it and then report its final status.)
 		}
 	}
@@ -139,21 +140,21 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 	// Use TaskService to find pending tasks
 	taskService := services.NewTaskService(h.db)
 	pendingTask, err := taskService.FindPendingTaskForAgent(c.Request.Context(), agentID)
-	
+
 	if err != nil {
 		log.Printf("Error finding pending task for agent %s: %v", agentID, err)
 	} else if pendingTask != nil {
 		// We have a task to execute!
-		log.Printf("Found pending task %s (%s) for agent %s", 
+		log.Printf("Found pending task %s (%s) for agent %s",
 			pendingTask.ID, pendingTask.Name, agentID)
 
 		// Determine trigger mode
-		triggerMode := "central" // Default to scheduled/central trigger
-		
+		triggerMode := models.TriggerModeScheduled
+
 		// Check if there's already a pending execution (manual trigger)
 		executionModel := models.NewExecutionModel(h.db)
 		pendingExecutions, _ := executionModel.GetPendingForAgent(c.Request.Context(), agentID)
-		
+
 		var execution *models.TaskExecution
 		if len(pendingExecutions) > 0 && pendingExecutions[0].TaskID == pendingTask.ID {
 			// Use existing pending execution
@@ -161,7 +162,7 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 			triggerMode = execution.TriggerMode
 		} else {
 			// Create new execution for scheduled task
-			execution, err = taskService.CreateExecution(c.Request.Context(), 
+			execution, err = taskService.CreateExecution(c.Request.Context(),
 				pendingTask.ID, agentID, triggerMode)
 			if err != nil {
 				log.Printf("Failed to create execution: %v", err)
@@ -171,7 +172,7 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 		}
 
 		// Build task details for agent
-		taskDetails, err := taskService.BuildTaskDetailsForAgent(c.Request.Context(), 
+		taskDetails, err := taskService.BuildTaskDetailsForAgent(c.Request.Context(),
 			pendingTask, execution.ID, h.cryptoService)
 		if err != nil {
 			log.Printf("Failed to build task details: %v", err)
@@ -188,16 +189,17 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 		actions = append(actions, HeartbeatAction{
 			Action:      "EXECUTE_TASK",
 			ExecutionID: execution.ID.String(),
+			TriggerMode: triggerMode,
 			Task:        taskJSON,
 		})
 
 		// Mark execution as running
 		now := time.Now()
 		executionModel.UpdateStatus(c.Request.Context(), execution.ID, "running", &now)
-		
-		log.Printf("✅ Dispatching task %s to agent %s (execution: %s, trigger: %s)", 
+
+		log.Printf("✅ Dispatching task %s to agent %s (execution: %s, trigger: %s)",
 			pendingTask.Name, agentID.String(), execution.ID.String(), triggerMode)
-		
+
 		// Send SSE event for real-time UI update
 		h.sseService.SendEvent("task.dispatched", map[string]interface{}{
 			"task_id":      pendingTask.ID.String(),
@@ -280,7 +282,7 @@ type UpdateExecutionRequest struct {
 func (h *Handler) UpdateExecution(c *gin.Context) {
 	agentID := c.MustGet("agent_id").(uuid.UUID)
 	executionIDStr := c.Param("executionId")
-	
+
 	executionID, err := uuid.Parse(executionIDStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid execution ID"})
@@ -348,7 +350,7 @@ type StreamLogsRequest struct {
 func (h *Handler) StreamExecutionLogs(c *gin.Context) {
 	agentID := c.MustGet("agent_id").(uuid.UUID)
 	executionIDStr := c.Param("executionId")
-	
+
 	executionID, err := uuid.Parse(executionIDStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid execution ID"})

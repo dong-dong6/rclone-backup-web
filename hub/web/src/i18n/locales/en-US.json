@@ -281,6 +281,7 @@
       "cancelled": "Cancelled"
     },
     "triggerMode": {
+      "scheduled": "Scheduled",
       "central": "Central",
       "local_fallback": "Local Fallback",
       "manual": "Manual"

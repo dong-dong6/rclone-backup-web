@@ -10,6 +10,20 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const (
+	TriggerModeScheduled     = "scheduled"
+	TriggerModeManual        = "manual"
+	TriggerModeRetry         = "retry"
+	TriggerModeLocalFallback = "local_fallback"
+)
+
+var validTriggerModes = map[string]struct{}{
+	TriggerModeScheduled:     {},
+	TriggerModeManual:        {},
+	TriggerModeRetry:         {},
+	TriggerModeLocalFallback: {},
+}
+
 type TaskExecution struct {
 	ID               uuid.UUID  `json:"id"`
 	TaskID           uuid.UUID  `json:"task_id"`
@@ -24,10 +38,10 @@ type TaskExecution struct {
 	StartedAt        *time.Time `json:"started_at"`
 	EndedAt          *time.Time `json:"ended_at"`
 	CreatedAt        time.Time  `json:"created_at"`
-	
+
 	// Additional fields from joins
-	TaskName         string     `json:"task_name,omitempty"`
-	AgentName        string     `json:"agent_name,omitempty"`
+	TaskName  string `json:"task_name,omitempty"`
+	AgentName string `json:"agent_name,omitempty"`
 }
 
 type ExecutionModel struct {
@@ -38,8 +52,26 @@ func NewExecutionModel(db *pgxpool.Pool) *ExecutionModel {
 	return &ExecutionModel{db: db}
 }
 
+// NormalizeTriggerMode validates and normalizes trigger mode values
+func NormalizeTriggerMode(triggerMode string) (string, error) {
+	if triggerMode == "" {
+		triggerMode = TriggerModeScheduled
+	}
+
+	if _, ok := validTriggerModes[triggerMode]; ok {
+		return triggerMode, nil
+	}
+
+	return "", fmt.Errorf("invalid trigger mode: %s", triggerMode)
+}
+
 // Create creates a new task execution record
 func (m *ExecutionModel) Create(ctx context.Context, taskID, agentID uuid.UUID, triggerMode string) (*TaskExecution, error) {
+	triggerMode, err := NormalizeTriggerMode(triggerMode)
+	if err != nil {
+		return nil, err
+	}
+
 	execution := &TaskExecution{
 		ID:          uuid.New(),
 		TaskID:      taskID,
@@ -55,7 +87,7 @@ func (m *ExecutionModel) Create(ctx context.Context, taskID, agentID uuid.UUID, 
 		RETURNING id, created_at
 	`
 
-	err := m.db.QueryRow(ctx, query,
+	err = m.db.QueryRow(ctx, query,
 		execution.ID,
 		execution.TaskID,
 		execution.AgentID,
@@ -234,14 +266,14 @@ func (m *ExecutionModel) GetCancelledForAgent(ctx context.Context, agentID uuid.
 // UpdateStatus updates the status of an execution
 func (m *ExecutionModel) UpdateStatus(ctx context.Context, id uuid.UUID, status string, endedAt *time.Time) error {
 	now := time.Now()
-	
+
 	query := `
 		UPDATE task_executions
 		SET status = $2, started_at = COALESCE(started_at, $3)
 	`
-	
+
 	args := []interface{}{id, status, now}
-	
+
 	if endedAt != nil {
 		query += `, ended_at = $4 WHERE id = $1`
 		args = append(args, *endedAt)
@@ -359,9 +391,9 @@ func (m *ExecutionModel) GetStatsByTask(ctx context.Context, taskID uuid.UUID, d
 	}
 
 	stats := map[string]interface{}{
-		"total":       total,
-		"success":     success,
-		"failed":      failed,
+		"total":        total,
+		"success":      success,
+		"failed":       failed,
 		"avg_duration": avgDuration,
 	}
 

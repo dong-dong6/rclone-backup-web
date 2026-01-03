@@ -51,6 +51,13 @@ func (h *Handler) AdminLogin(c *gin.Context) {
 
 	log.Printf("[Login] User authenticated successfully: %s (ID: %s)", user.Username, user.ID)
 
+	// Enforce admin role
+	if !user.IsAdmin && user.Role != "admin" {
+		log.Printf("[Login] User %s is not admin, role: %s", user.Username, user.Role)
+		c.JSON(http.StatusForbidden, gin.H{"error": "Admin privileges required"})
+		return
+	}
+
 	// Generate JWT token
 	token, err := h.authService.GenerateJWT(user.ID.String(), user.Role)
 	if err != nil {
@@ -133,10 +140,14 @@ func (h *Handler) DeleteAgent(c *gin.Context) {
 // CreateRegistrationToken creates a new registration token
 func (h *Handler) CreateRegistrationToken(c *gin.Context) {
 	log.Printf("[CreateRegistrationToken] Generating new registration token")
-	
+
 	token := services.GenerateRegistrationToken()
-	log.Printf("[CreateRegistrationToken] Generated token: %s", token)
-	
+	if h.logTokens {
+		log.Printf("[CreateRegistrationToken] Generated token: %s", token)
+	} else {
+		log.Printf("[CreateRegistrationToken] Generated token (redacted)")
+	}
+
 	tokenModel := models.NewRegistrationTokenModel(h.db)
 	regToken, err := tokenModel.Create(c.Request.Context(), token, 24*time.Hour)
 	if err != nil {
@@ -145,7 +156,11 @@ func (h *Handler) CreateRegistrationToken(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[CreateRegistrationToken] Token created successfully: %v", regToken)
+	if h.logTokens {
+		log.Printf("[CreateRegistrationToken] Token created successfully: %v", regToken)
+	} else {
+		log.Printf("[CreateRegistrationToken] Token created successfully: id=%s expires_at=%s", regToken.ID, regToken.ExpiresAt.Format(time.RFC3339))
+	}
 	c.JSON(http.StatusCreated, regToken)
 }
 
@@ -179,7 +194,7 @@ func (h *Handler) CreateTask(c *gin.Context) {
 	if len(task.AssignedAgents) > 0 {
 		for _, agentID := range task.AssignedAgents {
 			taskModel.AssignAgent(c.Request.Context(), task.ID, agentID)
-			
+
 			// Mark agent for config sync
 			h.schedulerService.MarkAgentForSync(agentID)
 		}
@@ -348,14 +363,14 @@ func (h *Handler) DeleteRemote(c *gin.Context) {
 func (h *Handler) ListExecutions(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	
+
 	if page < 1 {
 		page = 1
 	}
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
-	
+
 	offset := (page - 1) * limit
 
 	executionModel := models.NewExecutionModel(h.db)
@@ -417,7 +432,7 @@ func (h *Handler) TriggerExecution(c *gin.Context) {
 
 	// Create execution record
 	executionModel := models.NewExecutionModel(h.db)
-	execution, err := executionModel.Create(c.Request.Context(), taskID, agentID, "central")
+	execution, err := executionModel.Create(c.Request.Context(), taskID, agentID, models.TriggerModeManual)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to trigger execution"})
 		return
@@ -437,82 +452,99 @@ func (h *Handler) SSEEndpoint(c *gin.Context) {
 // GetTask returns a single task by ID
 func (h *Handler) GetTask(c *gin.Context) {
 	taskID := c.Param("id")
-	
+
 	taskModel := models.NewTaskModel(h.db)
 	task, err := taskModel.GetByID(c.Request.Context(), uuid.MustParse(taskID))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, task)
 }
 
 // GetRemote returns a single remote by ID
 func (h *Handler) GetRemote(c *gin.Context) {
 	remoteID := c.Param("id")
-	
+
 	remoteModel := models.NewRemoteModel(h.db)
 	remote, err := remoteModel.GetByID(c.Request.Context(), uuid.MustParse(remoteID))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Remote not found"})
 		return
 	}
-	
+
 	// Decrypt the config for display
 	decryptedConfig, err := h.cryptoService.Decrypt(remote.ConfigData)
 	if err == nil {
 		remote.ConfigData = decryptedConfig
 	}
-	
+
 	c.JSON(http.StatusOK, remote)
 }
 
-// TestRemote tests a remote connection
+// TestRemote tests a remote connection via local Agent
 func (h *Handler) TestRemote(c *gin.Context) {
 	remoteID := c.Param("id")
-	
+
 	remoteModel := models.NewRemoteModel(h.db)
 	remote, err := remoteModel.GetByID(c.Request.Context(), uuid.MustParse(remoteID))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Remote not found"})
 		return
 	}
-	
+
 	// Decrypt the config
-	_, err = h.cryptoService.Decrypt(remote.ConfigData)
+	decryptedConfig, err := h.cryptoService.Decrypt(remote.ConfigData)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decrypt remote config"})
 		return
 	}
-	
-	// TODO: Implement actual rclone test with decrypted config
-	// For now, just validate the config can be decrypted
+
+	// Check if local Agent is available
+	if !h.rcloneService.IsAvailable() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "Local Agent unavailable",
+			"message": "The local Agent is not running. Please ensure Agent is started to test remote connections.",
+		})
+		return
+	}
+
+	// Test connection via local Agent
+	result, err := h.rcloneService.TestConnection(c.Request.Context(), remote.Name, decryptedConfig)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to test connection: " + err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Remote connection test successful",
-		"remote_id": remoteID,
+		"success":     result.Success,
+		"message":     result.Message,
+		"remote_id":   remoteID,
 		"remote_name": remote.Name,
+		"duration_ms": result.DurationMs,
+		"output":      result.Output,
+		"error":       result.Error,
 	})
 }
 
 // CancelExecution cancels a running execution
 func (h *Handler) CancelExecution(c *gin.Context) {
 	executionID := c.Param("id")
-	
+
 	executionModel := models.NewExecutionModel(h.db)
 	execution, err := executionModel.GetByID(c.Request.Context(), uuid.MustParse(executionID))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Execution not found"})
 		return
 	}
-	
+
 	// Check if execution is still running
 	if execution.Status != "running" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Execution is not running"})
 		return
 	}
-	
+
 	// Update status to cancelled
 	now := time.Now()
 	err = executionModel.UpdateStatus(c.Request.Context(), execution.ID, "cancelled", &now)
@@ -520,21 +552,21 @@ func (h *Handler) CancelExecution(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cancel execution"})
 		return
 	}
-	
+
 	// Broadcast cancellation event
 	h.sseService.SendEvent("execution.status.update", map[string]interface{}{
 		"execution_id": executionID,
-		"status": "cancelled",
-		"timestamp": time.Now().Format(time.RFC3339),
+		"status":       "cancelled",
+		"timestamp":    time.Now().Format(time.RFC3339),
 	})
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Execution cancelled"})
 }
 
 // GetDashboardStats returns dashboard statistics
 func (h *Handler) GetDashboardStats(c *gin.Context) {
 	ctx := c.Request.Context()
-	
+
 	// Get agent stats
 	agentModel := models.NewAgentModel(h.db)
 	agents, _ := agentModel.List(ctx)
@@ -544,7 +576,7 @@ func (h *Handler) GetDashboardStats(c *gin.Context) {
 			onlineAgents++
 		}
 	}
-	
+
 	// Get task stats
 	taskModel := models.NewTaskModel(h.db)
 	tasks, _ := taskModel.List(ctx)
@@ -554,15 +586,15 @@ func (h *Handler) GetDashboardStats(c *gin.Context) {
 			activeTasks++
 		}
 	}
-	
+
 	// Get recent execution stats
 	executionModel := models.NewExecutionModel(h.db)
 	executions, _ := executionModel.List(ctx, 100, 0)
-	
+
 	successCount := 0
 	failedCount := 0
 	runningCount := 0
-	
+
 	for _, exec := range executions {
 		switch exec.Status {
 		case "success":
@@ -573,28 +605,28 @@ func (h *Handler) GetDashboardStats(c *gin.Context) {
 			runningCount++
 		}
 	}
-	
+
 	successRate := float64(0)
 	if len(executions) > 0 {
 		successRate = float64(successCount) / float64(len(executions)) * 100
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"agents": gin.H{
-			"total": len(agents),
-			"online": onlineAgents,
+			"total":   len(agents),
+			"online":  onlineAgents,
 			"offline": len(agents) - onlineAgents,
 		},
 		"tasks": gin.H{
-			"total": len(tasks),
-			"active": activeTasks,
+			"total":    len(tasks),
+			"active":   activeTasks,
 			"inactive": len(tasks) - activeTasks,
 		},
 		"executions": gin.H{
-			"total": len(executions),
-			"success": successCount,
-			"failed": failedCount,
-			"running": runningCount,
+			"total":        len(executions),
+			"success":      successCount,
+			"failed":       failedCount,
+			"running":      runningCount,
 			"success_rate": successRate,
 		},
 		"timestamp": time.Now().Format(time.RFC3339),
@@ -605,11 +637,26 @@ func (h *Handler) GetDashboardStats(c *gin.Context) {
 func (h *Handler) AdminLogout(c *gin.Context) {
 	// Get user ID from context (set by middleware)
 	userID, exists := c.Get("user_id")
+	userModel := models.NewUserModel(h.db)
+
+	// Revoke session if present
+	if sessionVal, hasSession := c.Get("session_id"); hasSession {
+		if sessionID, ok := sessionVal.(uuid.UUID); ok {
+			if err := userModel.DeleteSession(c.Request.Context(), sessionID); err != nil {
+				log.Printf("[Logout] Failed to delete session %s: %v", sessionID, err)
+			}
+		}
+	} else if token, err := extractBearerToken(c); err == nil {
+		if session, err := userModel.GetSessionByToken(c.Request.Context(), h.authService.HashToken(token)); err == nil {
+			_ = userModel.DeleteSession(c.Request.Context(), session.ID)
+		}
+	}
+
 	if exists {
 		// Log audit event
 		h.logAuditEvent(c, userID.(uuid.UUID), "logout", "user", userID.(uuid.UUID), nil)
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }
 
@@ -668,14 +715,14 @@ func (h *Handler) GetRecentActivity(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"executions": executions,
-		"timestamp": time.Now().Format(time.RFC3339),
+		"timestamp":  time.Now().Format(time.RFC3339),
 	})
 }
 
 // GetChartData returns data for dashboard charts
 func (h *Handler) GetChartData(c *gin.Context) {
 	timeRange := c.DefaultQuery("range", "7d")
-	
+
 	// Parse time range
 	var days int
 	switch timeRange {
@@ -691,9 +738,9 @@ func (h *Handler) GetChartData(c *gin.Context) {
 
 	// Simple mock data for now
 	c.JSON(http.StatusOK, gin.H{
-		"data": []map[string]interface{}{},
-		"range": timeRange,
-		"days": days,
+		"data":      []map[string]interface{}{},
+		"range":     timeRange,
+		"days":      days,
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
 }
@@ -716,7 +763,7 @@ func (h *Handler) DownloadAgent(c *gin.Context) {
 	// 获取平台参数
 	platform := c.Query("platform")
 	arch := c.Query("arch")
-	
+
 	// 如果没有指定平台，尝试从User-Agent检测
 	if platform == "" || arch == "" {
 		userAgent := c.GetHeader("User-Agent")
@@ -736,20 +783,48 @@ func (h *Handler) DownloadAgent(c *gin.Context) {
 			arch = "amd64"
 		}
 	}
-	
+
 	// 构建文件名
+	if strings.Contains(platform, "/") || strings.Contains(platform, "\\") || strings.Contains(platform, "..") ||
+		strings.Contains(arch, "/") || strings.Contains(arch, "\\") || strings.Contains(arch, "..") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid platform or architecture"})
+		return
+	}
+
+	validMatrix := map[string][]string{
+		"linux":   {"amd64", "arm64", "arm", "386"},
+		"windows": {"amd64", "arm64", "386"},
+		"darwin":  {"amd64", "arm64"},
+	}
+
+	validArch := false
+	allowedArchs, ok := validMatrix[platform]
+	if ok {
+		for _, allowed := range allowedArchs {
+			if arch == allowed {
+				validArch = true
+				break
+			}
+		}
+	}
+
+	if !ok || !validArch {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported platform or architecture"})
+		return
+	}
+
 	var fileName string
 	if platform == "windows" {
 		fileName = fmt.Sprintf("rclone-backup-agent-%s-%s.exe", platform, arch)
 	} else {
 		fileName = fmt.Sprintf("rclone-backup-agent-%s-%s", platform, arch)
 	}
-	
+
 	// 设置二进制文件下载的HTTP头
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
 	c.Header("Content-Transfer-Encoding", "binary")
-	
+
 	// 读取实际的二进制文件
 	binaryPath := fmt.Sprintf("./static/binaries/%s", fileName)
 	fileData, err := os.ReadFile(binaryPath)
@@ -759,8 +834,8 @@ func (h *Handler) DownloadAgent(c *gin.Context) {
 		fileData, err = os.ReadFile(defaultPath)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{
-				"error": "Agent binary not found",
-				"message": fmt.Sprintf("Binary file for %s/%s not available", platform, arch),
+				"error":               "Agent binary not found",
+				"message":             fmt.Sprintf("Binary file for %s/%s not available", platform, arch),
 				"available_platforms": []string{"linux/amd64", "linux/arm64", "linux/arm", "darwin/amd64", "darwin/arm64", "windows/amd64"},
 			})
 			return
@@ -769,7 +844,7 @@ func (h *Handler) DownloadAgent(c *gin.Context) {
 		fileName = "rclone-backup-agent"
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
 	}
-	
+
 	// 返回二进制文件
 	c.Data(http.StatusOK, "application/octet-stream", fileData)
 }

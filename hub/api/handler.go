@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"time"
-	
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,6 +20,8 @@ type Handler struct {
 	authService      *services.AuthService
 	schedulerService *services.SchedulerService
 	sseService       *services.SSEService
+	rcloneService    *services.RcloneService
+	logTokens        bool
 }
 
 func NewHandler(
@@ -26,6 +30,7 @@ func NewHandler(
 	authService *services.AuthService,
 	schedulerService *services.SchedulerService,
 	sseService *services.SSEService,
+	rcloneService *services.RcloneService,
 ) *Handler {
 	return &Handler{
 		db:               db,
@@ -33,23 +38,25 @@ func NewHandler(
 		authService:      authService,
 		schedulerService: schedulerService,
 		sseService:       sseService,
+		rcloneService:    rcloneService,
+		logTokens:        strings.EqualFold(os.Getenv("DEBUG_LOG_TOKENS"), "true"),
 	}
 }
 
 // logAuditEvent logs an audit event
 func (h *Handler) logAuditEvent(c *gin.Context, userID uuid.UUID, action, resourceType string, resourceID uuid.UUID, details map[string]interface{}) {
 	auditModel := models.NewAuditModel(h.db)
-	
+
 	ipAddress := c.ClientIP()
 	userAgent := c.Request.UserAgent()
-	
+
 	// Add request method and path to details
 	if details == nil {
 		details = make(map[string]interface{})
 	}
 	details["method"] = c.Request.Method
 	details["path"] = c.Request.URL.Path
-	
+
 	// Log asynchronously to avoid blocking the request
 	go func() {
 		ctx := context.Background()
@@ -82,7 +89,7 @@ func (h *Handler) checkScheduledTasksForAgent(ctx context.Context, agentID uuid.
 		// Check if this task should run now based on its schedule
 		if h.schedulerService.ShouldTaskRunNow(task.ID, task.Schedule, now) {
 			scheduledTasks = append(scheduledTasks, task)
-			
+
 			// Mark that we've dispatched this task
 			h.schedulerService.MarkTaskDispatched(task.ID, now)
 		}

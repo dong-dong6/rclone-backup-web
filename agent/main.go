@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -21,39 +23,70 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
+const (
+	triggerModeScheduled     = "scheduled"
+	triggerModeManual        = "manual"
+	triggerModeRetry         = "retry"
+	triggerModeLocalFallback = "local_fallback"
+)
+
+var i18nLogMessages = map[string]map[string]string{
+	"en": {
+		"TaskExecutionStarted":   "Task {task_id} started (execution {execution_id}, trigger {trigger})",
+		"TaskExecutionCompleted": "Task {task_id} finished with status {status}, duration {duration_ms} ms (execution {execution_id})",
+		"TaskCancelled":          "Task {task_id} cancelled (execution {execution_id})",
+		"ConfigSyncStarted":      "Syncing configuration from hub",
+		"ConfigSynced":           "Configuration synced successfully, tasks: {task_count}",
+		"ConfigSyncFailed":       "Configuration sync failed: {error}",
+		"HeartbeatFailed":        "Heartbeat failed: {error}",
+	},
+	"zh": {
+		"TaskExecutionStarted":   "开始执行任务 {task_id}（执行ID {execution_id}，触发方式 {trigger}）",
+		"TaskExecutionCompleted": "任务 {task_id} 完成，状态 {status}，耗时 {duration_ms} 毫秒（执行ID {execution_id}）",
+		"TaskCancelled":          "任务 {task_id} 已取消（执行ID {execution_id}）",
+		"ConfigSyncStarted":      "开始从 Hub 同步配置",
+		"ConfigSynced":           "配置同步完成，任务数 {task_count}",
+		"ConfigSyncFailed":       "配置同步失败：{error}",
+		"HeartbeatFailed":        "心跳发送失败：{error}",
+	},
+}
+
 // Config holds agent configuration
 type Config struct {
-	HubURL         string
-	AgentID        string
-	APIKey         string
+	HubURL            string
+	AgentID           string
+	APIKey            string
 	HeartbeatInterval time.Duration
-	ConfigCacheDir string
-	RcloneEndpoint string
+	ConfigCacheDir    string
+	RcloneEndpoint    string
 }
 
 // Agent represents the backup agent
 type Agent struct {
-	config        *Config
-	httpClient    *http.Client
-	cron          *cron.Cron
-	taskCache     map[string]*Task
-	taskCacheMux  sync.RWMutex
-	isRunningTask bool
-	runningMux    sync.Mutex
+	config                  *Config
+	httpClient              *http.Client
+	cron                    *cron.Cron
+	taskCache               map[string]*Task
+	taskCacheMux            sync.RWMutex
+	isRunningTask           bool
+	runningMux              sync.Mutex
+	runningTasks            map[string]context.CancelFunc
+	runningTasksMux         sync.Mutex
 	lastSuccessfulHeartbeat time.Time
-	lastTaskExecution      map[string]time.Time
-	hubReachable           bool
+	lastTaskExecution       map[string]time.Time
+	hubReachable            bool
+	logLocale               string
 }
 
 // Task represents a backup task
 type Task struct {
-	TaskID          string          `json:"task_id"`
-	RemoteID        string          `json:"remote_id"`
-	SourcePath      string          `json:"source_path"`
-	DestinationPath string          `json:"destination_path"`
-	Schedule        string          `json:"schedule"`
-	RcloneArgs      []string        `json:"rclone_args"`
-	RcloneConfigB64 string          `json:"rclone_config_b64,omitempty"`
+	TaskID          string   `json:"task_id"`
+	RemoteID        string   `json:"remote_id"`
+	SourcePath      string   `json:"source_path"`
+	DestinationPath string   `json:"destination_path"`
+	Schedule        string   `json:"schedule"`
+	RcloneArgs      []string `json:"rclone_args"`
+	RcloneConfigB64 string   `json:"rclone_config_b64,omitempty"`
 }
 
 // HeartbeatRequest represents the heartbeat request payload
@@ -63,24 +96,60 @@ type HeartbeatRequest struct {
 
 // HeartbeatResponse represents the heartbeat response
 type HeartbeatResponse struct {
-	Actions []struct {
-		Action      string          `json:"action"`
-		ExecutionID string          `json:"execution_id,omitempty"`
-		Task        json.RawMessage `json:"task,omitempty"`
-	} `json:"actions"`
+	Actions []HeartbeatAction `json:"actions"`
+}
+
+type HeartbeatAction struct {
+	Action      string          `json:"action"`
+	ExecutionID string          `json:"execution_id,omitempty"`
+	TriggerMode string          `json:"trigger_mode,omitempty"`
+	Task        json.RawMessage `json:"task,omitempty"`
+}
+
+func normalizeTriggerMode(mode string) string {
+	switch mode {
+	case triggerModeScheduled, triggerModeManual, triggerModeRetry, triggerModeLocalFallback:
+		return mode
+	default:
+		return triggerModeScheduled
+	}
+}
+
+func (a *Agent) logI18n(level, code string, details map[string]interface{}) {
+	template := i18nLogMessages[a.logLocale][code]
+	if template == "" {
+		template = i18nLogMessages["en"][code]
+	}
+	if template == "" {
+		template = code
+	}
+
+	message := template
+	for key, value := range details {
+		message = strings.ReplaceAll(message, "{"+key+"}", fmt.Sprintf("%v", value))
+	}
+
+	log.Printf("[%s] %s", strings.ToUpper(level), message)
 }
 
 // NewAgent creates a new agent instance
 func NewAgent(config *Config) *Agent {
+	locale := os.Getenv("LOG_LOCALE")
+	if locale == "" {
+		locale = "zh"
+	}
+
 	return &Agent{
 		config: config,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		cron:      cron.New(cron.WithSeconds()),
-		taskCache: make(map[string]*Task),
+		cron:              cron.New(cron.WithSeconds()),
+		taskCache:         make(map[string]*Task),
+		runningTasks:      make(map[string]context.CancelFunc),
 		lastTaskExecution: make(map[string]time.Time),
-		hubReachable: true,
+		hubReachable:      true,
+		logLocale:         locale,
 	}
 }
 
@@ -122,6 +191,20 @@ func (a *Agent) heartbeatLoop() {
 	}
 }
 
+func (a *Agent) cancelTask(executionID string) {
+	a.runningTasksMux.Lock()
+	cancel, ok := a.runningTasks[executionID]
+	a.runningTasksMux.Unlock()
+
+	if !ok {
+		log.Printf("No running task found for execution %s to cancel", executionID)
+		return
+	}
+
+	log.Printf("Cancelling execution %s", executionID)
+	cancel()
+}
+
 // sendHeartbeat sends a heartbeat to the hub
 func (a *Agent) sendHeartbeat() {
 	a.runningMux.Lock()
@@ -136,7 +219,7 @@ func (a *Agent) sendHeartbeat() {
 
 	req, err := http.NewRequest("POST", a.config.HubURL+"/api/v1/agent/heartbeat", bytes.NewReader(bodyBytes))
 	if err != nil {
-		log.Printf("Failed to create heartbeat request: %v", err)
+		a.logI18n("error", "HeartbeatFailed", map[string]interface{}{"error": err})
 		return
 	}
 
@@ -145,14 +228,14 @@ func (a *Agent) sendHeartbeat() {
 
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
-		log.Printf("Failed to send heartbeat: %v", err)
+		a.logI18n("error", "HeartbeatFailed", map[string]interface{}{"error": err})
 		a.executeLocalFallback()
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Heartbeat failed with status: %d", resp.StatusCode)
+		a.logI18n("error", "HeartbeatFailed", map[string]interface{}{"error": resp.StatusCode})
 		a.hubReachable = false
 		a.executeLocalFallback()
 		return
@@ -166,7 +249,7 @@ func (a *Agent) sendHeartbeat() {
 
 	var heartbeatResp HeartbeatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&heartbeatResp); err != nil {
-		log.Printf("Failed to decode heartbeat response: %v", err)
+		a.logI18n("error", "HeartbeatFailed", map[string]interface{}{"error": err})
 		return
 	}
 
@@ -181,18 +264,20 @@ func (a *Agent) sendHeartbeat() {
 				log.Printf("Failed to unmarshal task: %v", err)
 				continue
 			}
-			go a.executeTask(action.ExecutionID, &task, "central")
+			go a.executeTask(action.ExecutionID, &task, normalizeTriggerMode(action.TriggerMode))
+		case "CANCEL_TASK":
+			a.cancelTask(action.ExecutionID)
 		}
 	}
 }
 
 // syncConfig syncs configuration from the hub
 func (a *Agent) syncConfig() {
-	log.Println("Syncing configuration from hub...")
+	a.logI18n("info", "ConfigSyncStarted", nil)
 
 	req, err := http.NewRequest("GET", a.config.HubURL+"/api/v1/agent/tasks", nil)
 	if err != nil {
-		log.Printf("Failed to create sync request: %v", err)
+		a.logI18n("error", "ConfigSyncFailed", map[string]interface{}{"error": err})
 		return
 	}
 
@@ -200,13 +285,13 @@ func (a *Agent) syncConfig() {
 
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
-		log.Printf("Failed to sync config: %v", err)
+		a.logI18n("error", "ConfigSyncFailed", map[string]interface{}{"error": err})
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Config sync failed with status: %d", resp.StatusCode)
+		a.logI18n("error", "ConfigSyncFailed", map[string]interface{}{"error": resp.StatusCode})
 		return
 	}
 
@@ -219,7 +304,7 @@ func (a *Agent) syncConfig() {
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&configResp); err != nil {
-		log.Printf("Failed to decode config response: %v", err)
+		a.logI18n("error", "ConfigSyncFailed", map[string]interface{}{"error": err})
 		return
 	}
 
@@ -240,18 +325,27 @@ func (a *Agent) syncConfig() {
 
 	// Save to disk
 	if err := a.saveCachedConfig(); err != nil {
-		log.Printf("Failed to save cached config: %v", err)
+		a.logI18n("error", "ConfigSyncFailed", map[string]interface{}{"error": err})
 	}
 
 	// Update local scheduler
 	a.updateLocalScheduler()
 
-	log.Println("Configuration synced successfully")
+	a.logI18n("info", "ConfigSynced", map[string]interface{}{"task_count": len(configResp.Tasks)})
 }
 
 // executeTask executes a backup task
 func (a *Agent) executeTask(executionID string, task *Task, triggerMode string) {
-	log.Printf("Executing task %s (execution: %s, trigger: %s)", task.TaskID, executionID, triggerMode)
+	a.logI18n("info", "TaskExecutionStarted", map[string]interface{}{
+		"task_id":      task.TaskID,
+		"execution_id": executionID,
+		"trigger":      triggerMode,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	a.runningTasksMux.Lock()
+	a.runningTasks[executionID] = cancel
+	a.runningTasksMux.Unlock()
 
 	a.runningMux.Lock()
 	a.isRunningTask = true
@@ -260,15 +354,18 @@ func (a *Agent) executeTask(executionID string, task *Task, triggerMode string) 
 		a.runningMux.Lock()
 		a.isRunningTask = false
 		a.runningMux.Unlock()
+		a.runningTasksMux.Lock()
+		delete(a.runningTasks, executionID)
+		a.runningTasksMux.Unlock()
 	}()
 
 	// For now, always use direct execution
 	// TODO: Implement sidecar support
-	a.executeTaskDirect(executionID, task, triggerMode)
+	a.executeTaskDirect(ctx, executionID, task, triggerMode)
 }
 
 // executeTaskDirect executes task directly (fallback method)
-func (a *Agent) executeTaskDirect(executionID string, task *Task, triggerMode string) {
+func (a *Agent) executeTaskDirect(ctx context.Context, executionID string, task *Task, triggerMode string) {
 	startTime := time.Now()
 
 	// Prepare rclone configuration
@@ -290,8 +387,8 @@ func (a *Agent) executeTaskDirect(executionID string, task *Task, triggerMode st
 	}
 	args = append(args, task.RcloneArgs...)
 
-	cmd := exec.Command("rclone", args...)
-	
+	cmd := exec.CommandContext(ctx, "rclone", args...)
+
 	// Capture output
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -300,29 +397,56 @@ func (a *Agent) executeTaskDirect(executionID string, task *Task, triggerMode st
 	// Stream logs periodically
 	logTicker := time.NewTicker(5 * time.Second)
 	defer logTicker.Stop()
-	
+	done := make(chan struct{})
+
 	go func() {
-		for range logTicker.C {
-			if stdout.Len() > 0 || stderr.Len() > 0 {
-				a.streamLogs(executionID, stdout.String()+stderr.String())
+		for {
+			select {
+			case <-done:
+				return
+			case <-logTicker.C:
+				if stdout.Len() > 0 || stderr.Len() > 0 {
+					a.streamLogs(executionID, stdout.String()+stderr.String())
+				}
 			}
 		}
 	}()
 
 	// Execute command
 	err = cmd.Run()
-	
+	close(done)
+
 	// Final log stream
 	finalOutput := stdout.String() + stderr.String()
 	a.streamLogs(executionID, finalOutput)
 
+	durationMs := time.Since(startTime).Milliseconds()
 	status := "success"
 	if err != nil {
-		status = "failed"
-		finalOutput = fmt.Sprintf("Command failed: %v\n\n%s", err, finalOutput)
-		log.Printf("Task execution failed: %v", err)
+		if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+			status = "cancelled"
+			finalOutput = fmt.Sprintf("Task cancelled\n\n%s", finalOutput)
+			a.logI18n("warn", "TaskCancelled", map[string]interface{}{
+				"task_id":      task.TaskID,
+				"execution_id": executionID,
+			})
+		} else {
+			status = "failed"
+			finalOutput = fmt.Sprintf("Command failed: %v\n\n%s", err, finalOutput)
+			a.logI18n("error", "TaskExecutionCompleted", map[string]interface{}{
+				"task_id":      task.TaskID,
+				"execution_id": executionID,
+				"status":       status,
+				"duration_ms":  durationMs,
+			})
+		}
 	} else {
-		log.Printf("Task executed successfully")
+		a.logI18n("info", "TaskExecutionCompleted", map[string]interface{}{
+			"task_id":      task.TaskID,
+			"execution_id": executionID,
+			"status":       status,
+			"duration_ms":  durationMs,
+		})
 	}
 
 	// Report result
@@ -374,7 +498,7 @@ func (a *Agent) reportExecutionResult(executionID, status, logOutput string, sta
 
 	bodyBytes, _ := json.Marshal(reqBody)
 
-	req, err := http.NewRequest("PUT", 
+	req, err := http.NewRequest("PUT",
 		fmt.Sprintf("%s/api/v1/agent/executions/%s", a.config.HubURL, executionID),
 		bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -467,7 +591,7 @@ func (a *Agent) updateLocalScheduler() {
 			// Only execute if we haven't heard from hub recently
 			if a.shouldExecuteLocalFallback() {
 				executionID := uuid.New().String()
-				go a.executeTask(executionID, &taskCopy, "local_fallback")
+				go a.executeTask(executionID, &taskCopy, triggerModeLocalFallback)
 			}
 		})
 
@@ -484,12 +608,12 @@ func (a *Agent) shouldExecuteLocalFallback() bool {
 	// Check if we have a last successful heartbeat
 	a.runningMux.Lock()
 	defer a.runningMux.Unlock()
-	
+
 	// If we haven't had a successful heartbeat in 5 minutes, enable local fallback
 	if a.lastSuccessfulHeartbeat.IsZero() {
 		return false // Never had a successful connection
 	}
-	
+
 	timeSinceLastHeartbeat := time.Since(a.lastSuccessfulHeartbeat)
 	return timeSinceLastHeartbeat > 5*time.Minute
 }
@@ -497,10 +621,10 @@ func (a *Agent) shouldExecuteLocalFallback() bool {
 // executeLocalFallback executes tasks based on local cache
 func (a *Agent) executeLocalFallback() {
 	log.Printf("Executing local fallback mode - Hub unreachable for %v", time.Since(a.lastSuccessfulHeartbeat))
-	
+
 	a.taskCacheMux.RLock()
 	defer a.taskCacheMux.RUnlock()
-	
+
 	// Check each cached task
 	for taskID, task := range a.taskCache {
 		// Parse cron schedule
@@ -509,21 +633,21 @@ func (a *Agent) executeLocalFallback() {
 			log.Printf("Failed to parse schedule for task %s: %v", taskID, err)
 			continue
 		}
-		
+
 		// Check if task should run now
 		now := time.Now()
 		next := schedule.Next(a.lastTaskExecution[taskID])
-		
+
 		if now.After(next) || now.Equal(next) {
 			// Task should run
 			log.Printf("Local fallback: Triggering task %s", taskID)
-			
+
 			// Generate a local execution ID
 			executionID := fmt.Sprintf("local-%s-%d", taskID, now.Unix())
-			
+
 			// Execute task asynchronously
-			go a.executeTask(executionID, task, "local_fallback")
-			
+			go a.executeTask(executionID, task, triggerModeLocalFallback)
+
 			// Update last execution time
 			a.lastTaskExecution[taskID] = now
 		}

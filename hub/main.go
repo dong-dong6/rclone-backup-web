@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -36,12 +38,19 @@ func main() {
 	}
 	defer db.Close()
 
+	encryptionKey := strings.TrimSpace(os.Getenv("ENCRYPTION_KEY"))
+	jwtSecret := strings.TrimSpace(os.Getenv("JWT_SECRET"))
+	if err := validateSecrets(encryptionKey, jwtSecret); err != nil {
+		log.Fatalf("Configuration error: %v", err)
+	}
+
 	// Initialize services
-	cryptoService := services.NewCryptoService(os.Getenv("ENCRYPTION_KEY"))
-	authService := services.NewAuthService(os.Getenv("JWT_SECRET"))
+	cryptoService := services.NewCryptoService(encryptionKey)
+	authService := services.NewAuthService(jwtSecret)
 	schedulerService := services.NewSchedulerService(db)
 	sseService := services.NewSSEService()
 	executionMonitor := services.NewExecutionMonitor(db)
+	rcloneService := services.NewRcloneService()
 
 	// Setup Gin router with logger and recovery middleware
 	router := gin.Default()
@@ -51,17 +60,17 @@ func main() {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		
+
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
 		}
-		
+
 		c.Next()
 	})
 
 	// Initialize API handlers
-	apiHandler := api.NewHandler(db, cryptoService, authService, schedulerService, sseService)
+	apiHandler := api.NewHandler(db, cryptoService, authService, schedulerService, sseService, rcloneService)
 
 	// API routes
 	v1 := router.Group("/api/v1")
@@ -92,7 +101,7 @@ func main() {
 
 			// Authenticated endpoints
 			adminAuth := admin.Group("")
-			adminAuth.Use(api.AdminAuthMiddleware(authService))
+			adminAuth.Use(api.AdminAuthMiddleware(authService, db))
 			{
 				adminAuth.POST("/logout", apiHandler.AdminLogout)
 
@@ -126,7 +135,7 @@ func main() {
 				adminAuth.GET("/dashboard/stats", apiHandler.GetDashboardStats)
 				adminAuth.GET("/dashboard/recent", apiHandler.GetRecentActivity)
 				adminAuth.GET("/dashboard/charts", apiHandler.GetChartData)
-				
+
 				// Statistics
 				adminAuth.GET("/statistics/overview", apiHandler.GetStatisticsOverview)
 				adminAuth.GET("/statistics/agents/:id", apiHandler.GetAgentStatistics)
@@ -135,8 +144,8 @@ func main() {
 		}
 	}
 
-	// Server-Sent Events endpoint
-	router.GET("/events", apiHandler.SSEEndpoint)
+	// Server-Sent Events endpoint (admin auth required)
+	router.GET("/events", api.AdminAuthMiddleware(authService, db), apiHandler.SSEEndpoint)
 
 	// Health check - support both GET and HEAD methods
 	healthHandler := func(c *gin.Context) {
@@ -145,7 +154,7 @@ func main() {
 			"status": "healthy",
 			"time":   time.Now().Unix(),
 		}
-		
+
 		// 检查数据库连接
 		if err := db.Ping(c.Request.Context()); err != nil {
 			c.JSON(503, gin.H{
@@ -155,19 +164,84 @@ func main() {
 			})
 			return
 		}
-		
+
 		// 返回健康状态
 		c.JSON(200, health)
 	}
 	router.GET("/health", healthHandler)
 	router.HEAD("/health", healthHandler)
 
+	// ============================================
+	// Static file serving (React SPA)
+	// ============================================
+	staticPath := os.Getenv("STATIC_PATH")
+	if staticPath == "" {
+		staticPath = "./static/web"
+	}
+
+	// Check if static directory exists
+	if _, err := os.Stat(staticPath); err == nil {
+		log.Printf("Serving static files from: %s", staticPath)
+
+		// Serve static assets (JS, CSS, images)
+		router.Static("/assets", staticPath+"/assets")
+
+		// Serve favicon.ico if exists
+		faviconPath := staticPath + "/favicon.ico"
+		if _, err := os.Stat(faviconPath); err == nil {
+			router.GET("/favicon.ico", func(c *gin.Context) {
+				c.File(faviconPath)
+			})
+		}
+
+		// Serve vite.svg if exists
+		viteSvgPath := staticPath + "/vite.svg"
+		if _, err := os.Stat(viteSvgPath); err == nil {
+			router.GET("/vite.svg", func(c *gin.Context) {
+				c.File(viteSvgPath)
+			})
+		}
+
+		// Serve index.html for SPA routing
+		router.NoRoute(func(c *gin.Context) {
+			path := c.Request.URL.Path
+
+			// Skip API requests
+			if strings.HasPrefix(path, "/api/") {
+				c.JSON(404, gin.H{"error": "API endpoint not found"})
+				return
+			}
+
+			// Skip /events (SSE endpoint)
+			if path == "/events" {
+				c.JSON(404, gin.H{"error": "SSE endpoint not configured"})
+				return
+			}
+
+			// Skip /health
+			if path == "/health" {
+				c.JSON(404, gin.H{"error": "Health endpoint"})
+				return
+			}
+
+			// For all other routes, serve index.html (SPA routing)
+			c.File(staticPath + "/index.html")
+		})
+
+		// Serve root
+		router.GET("/", func(c *gin.Context) {
+			c.File(staticPath + "/index.html")
+		})
+	} else {
+		log.Printf("Static directory not found at %s, skipping frontend serving", staticPath)
+	}
+
 	// Start scheduler service
 	go schedulerService.Start()
-	
+
 	// Start SSE service
 	go sseService.Start()
-	
+
 	// Start execution monitor
 	monitorCtx := context.Background()
 	go executionMonitor.Start(monitorCtx)
@@ -211,4 +285,16 @@ func getPort() string {
 		port = "8080"
 	}
 	return port
+}
+
+func validateSecrets(encryptionKey, jwtSecret string) error {
+	if len(encryptionKey) < 16 {
+		return fmt.Errorf("ENCRYPTION_KEY must be at least 16 characters long")
+	}
+
+	if len(jwtSecret) < 16 {
+		return fmt.Errorf("JWT_SECRET must be at least 16 characters long")
+	}
+
+	return nil
 }

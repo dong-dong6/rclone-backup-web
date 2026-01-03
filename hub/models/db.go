@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,33 +19,47 @@ func InitDB() (*pgxpool.Pool, error) {
 	if dbHost == "" {
 		dbHost = "localhost" // Default for local development
 	}
-	
+
 	dbPort := os.Getenv("DB_PORT")
 	if dbPort == "" {
 		dbPort = "5432"
 	}
-	
+
 	dbUser := os.Getenv("DB_USER")
 	if dbUser == "" {
 		dbUser = "postgres"
 	}
-	
+
 	dbPassword := os.Getenv("DB_PASSWORD")
 	if dbPassword == "" {
 		dbPassword = "password"
 	}
-	
+
 	dbName := os.Getenv("DB_NAME")
 	if dbName == "" {
 		dbName = "rclone_backup"
 	}
-	
+
+	sslMode := strings.TrimSpace(os.Getenv("DB_SSLMODE"))
+	if sslMode == "" {
+		sslMode = "require"
+	}
+
+	allowWeakPassword := strings.EqualFold(os.Getenv("ALLOW_INSECURE_DB_PASSWORD"), "true")
+	if !allowWeakPassword && (dbPassword == "" || dbPassword == "password") {
+		return nil, fmt.Errorf("DB_PASSWORD must be set to a non-default value (set ALLOW_INSECURE_DB_PASSWORD=true only for local development)")
+	}
+
+	if strings.EqualFold(sslMode, "disable") && !strings.EqualFold(os.Getenv("ALLOW_INSECURE_DB_SSL"), "true") {
+		return nil, fmt.Errorf("DB_SSLMODE=disable requires ALLOW_INSECURE_DB_SSL=true (use only for local development)")
+	}
+
 	// Check for complete DATABASE_URL first (for compatibility)
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		// Build URL from individual components
-		dbURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-			dbUser, dbPassword, dbHost, dbPort, dbName)
+		dbURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+			dbUser, dbPassword, dbHost, dbPort, dbName, sslMode)
 	}
 
 	config, err := pgxpool.ParseConfig(dbURL)
