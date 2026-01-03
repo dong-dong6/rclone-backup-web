@@ -46,6 +46,10 @@ services:
     environment:
       # Database Configuration
       DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-rclone}
+      DB_PASSWORD: ${DB_PASSWORD:?Database password required}
+      DB_NAME: ${DB_NAME:-rclone_backup}
       DATABASE_URL: postgres://${DB_USER:-rclone}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-rclone_backup}?sslmode=disable
       
       # Security Keys (Required)
@@ -59,6 +63,7 @@ services:
       
       # Features
       ENABLE_METRICS: ${ENABLE_METRICS:-true}
+      ALLOW_JWT_WITHOUT_SESSION: ${ALLOW_JWT_WITHOUT_SESSION:-true}
       
       # Session Configuration
       SESSION_TIMEOUT: ${SESSION_TIMEOUT:-24h}
