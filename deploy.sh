@@ -296,6 +296,43 @@ install_agent() {
     
     local HUB_URL="http://localhost:${WEB_PORT:-3000}"
     
+    # 生成注册 token 并注册 Agent
+    print_info "生成Agent注册令牌..."
+    
+    # 获取管理员登录 token
+    local ADMIN_PASSWORD=""
+    if [ -f "./data/hub/admin_password.txt" ]; then
+        ADMIN_PASSWORD=$(cat ./data/hub/admin_password.txt)
+    else
+        ADMIN_PASSWORD="changeme123"
+    fi
+    
+    # 登录获取 session token
+    local LOGIN_RESPONSE=$(curl -sf -X POST "${HUB_URL}/api/v1/admin/login" \
+        -H "Content-Type: application/json" \
+        -d "{\"username\": \"admin\", \"password\": \"${ADMIN_PASSWORD}\"}" 2>/dev/null || echo "")
+    
+    local AUTH_TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"token":"[^"]*"' | sed 's/"token":"//;s/"$//' || echo "")
+    
+    local REG_TOKEN=""
+    if [ -n "$AUTH_TOKEN" ]; then
+        # 生成注册令牌
+        local TOKEN_RESPONSE=$(curl -sf -X POST "${HUB_URL}/api/v1/admin/agents/registration-token" \
+            -H "Authorization: Bearer ${AUTH_TOKEN}" 2>/dev/null || echo "")
+        
+        REG_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"token":"[^"]*"' | sed 's/"token":"//;s/"$//' || echo "")
+    fi
+    
+    if [ -z "$REG_TOKEN" ]; then
+        print_warning "无法自动生成注册令牌，请手动注册Agent"
+        print_info "1. 登录Web界面"
+        print_info "2. 在节点管理页面生成注册令牌"
+        print_info "3. 运行: $AGENT_BIN register --hub-url $HUB_URL --token <TOKEN> --name local-agent"
+        REG_TOKEN="MANUAL_REGISTRATION_REQUIRED"
+    else
+        print_success "注册令牌已生成"
+    fi
+    
     $SUDO tee $AGENT_DIR/agent.json > /dev/null << EOF
 {
     "hub_url": "$HUB_URL",
@@ -304,7 +341,8 @@ install_agent() {
     "max_concurrent": 3,
     "heartbeat_interval": 30,
     "enable_api": true,
-    "api_port": 9092
+    "api_port": 9092,
+    "registration_token": "$REG_TOKEN"
 }
 EOF
     
