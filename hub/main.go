@@ -51,6 +51,11 @@ func main() {
 	sseService := services.NewSSEService()
 	executionMonitor := services.NewExecutionMonitor(db)
 	rcloneService := services.NewRcloneService()
+	systemSettingsModel := models.NewSystemSettingsModel(db)
+	metricsModel := models.NewMetricsModel(db)
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	defer cleanupCancel()
+	services.StartMetricsCleanup(cleanupCtx, metricsModel, systemSettingsModel)
 
 	// Setup Gin router with logger and recovery middleware
 	router := gin.Default()
@@ -107,6 +112,8 @@ func main() {
 
 				// Agents management
 				adminAuth.GET("/agents", apiHandler.ListAgents)
+				adminAuth.GET("/agents/:id/metrics/latest", apiHandler.GetAgentMetricsLatest)
+				adminAuth.GET("/agents/:id/metrics/history", apiHandler.GetAgentMetricsHistory)
 				adminAuth.DELETE("/agents/:id", apiHandler.DeleteAgent)
 				adminAuth.POST("/agents/registration-token", apiHandler.CreateRegistrationToken)
 
@@ -265,6 +272,8 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+
+	cleanupCancel()
 
 	log.Println("Shutting down server...")
 

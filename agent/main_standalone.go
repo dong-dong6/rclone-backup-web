@@ -173,7 +173,7 @@ func NewAgent(config *Config) (*Agent, error) {
 		executor:  taskExecutor,
 		ctx:       ctx,
 		cancel:    cancel,
-		hubClient: services.NewHubClient(config.HubURL, "", ""),
+		hubClient: services.NewHubClient(config.HubURL, "", "", Version),
 	}
 
 	// Register with hub if not already registered

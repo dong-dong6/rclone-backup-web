@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"log"
+	"math"
 	"net/http"
 	"time"
 
@@ -79,7 +80,8 @@ func (h *Handler) RegisterAgent(c *gin.Context) {
 }
 
 type HeartbeatRequest struct {
-	Status string `json:"status" binding:"required"`
+	Status     string            `json:"status" binding:"required"`
+	SystemInfo SystemInfoRequest `json:"system_info"`
 }
 
 type HeartbeatAction struct {
@@ -91,6 +93,34 @@ type HeartbeatAction struct {
 
 type HeartbeatResponse struct {
 	Actions []HeartbeatAction `json:"actions"`
+}
+
+type SystemInfoRequest struct {
+	Hostname     string `json:"hostname"`
+	Platform     string `json:"platform"`
+	AgentVersion string `json:"agent_version"`
+
+	CPUUsage float64 `json:"cpu_usage"`
+
+	MemoryTotal uint64  `json:"memory_total"`
+	MemoryUsed  uint64  `json:"memory_used"`
+	MemoryUsage float64 `json:"memory_usage"`
+	SwapTotal   uint64  `json:"swap_total"`
+	SwapUsed    uint64  `json:"swap_used"`
+
+	DiskTotal uint64  `json:"disk_total"`
+	DiskUsed  uint64  `json:"disk_used"`
+	DiskUsage float64 `json:"disk_usage"`
+
+	NetworkRxBytes uint64 `json:"network_rx_bytes"`
+	NetworkTxBytes uint64 `json:"network_tx_bytes"`
+	NetworkRxRate  uint64 `json:"network_rx_rate"`
+	NetworkTxRate  uint64 `json:"network_tx_rate"`
+
+	TCPConnections int `json:"tcp_connections"`
+	UDPConnections int `json:"udp_connections"`
+
+	ProcessCount int `json:"process_count"`
 }
 
 // AgentHeartbeat handles agent heartbeat and returns pending actions
@@ -108,6 +138,41 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 	if err := agentModel.UpdateHeartbeat(c.Request.Context(), agentID, req.Status); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update heartbeat"})
 		return
+	}
+
+	metricsModel := models.NewMetricsModel(h.db)
+	metric := &models.AgentMetric{
+		AgentID:        agentID,
+		Hostname:       req.SystemInfo.Hostname,
+		Platform:       req.SystemInfo.Platform,
+		AgentVersion:   req.SystemInfo.AgentVersion,
+		CPUUsage:       req.SystemInfo.CPUUsage,
+		MemoryTotal:    int64(req.SystemInfo.MemoryTotal),
+		MemoryUsed:     int64(req.SystemInfo.MemoryUsed),
+		MemoryUsage:    req.SystemInfo.MemoryUsage,
+		SwapTotal:      int64(req.SystemInfo.SwapTotal),
+		SwapUsed:       int64(req.SystemInfo.SwapUsed),
+		DiskTotal:      int64(req.SystemInfo.DiskTotal),
+		DiskUsed:       int64(req.SystemInfo.DiskUsed),
+		DiskUsage:      req.SystemInfo.DiskUsage,
+		NetworkRxBytes: int64(req.SystemInfo.NetworkRxBytes),
+		NetworkTxBytes: int64(req.SystemInfo.NetworkTxBytes),
+		NetworkRxRate:  int64(req.SystemInfo.NetworkRxRate),
+		NetworkTxRate:  int64(req.SystemInfo.NetworkTxRate),
+		TCPConnections: req.SystemInfo.TCPConnections,
+		UDPConnections: req.SystemInfo.UDPConnections,
+		ProcessCount:   req.SystemInfo.ProcessCount,
+	}
+	// Ensure values stay within signed range
+	if metric.NetworkRxBytes > math.MaxInt64 {
+		metric.NetworkRxBytes = math.MaxInt64
+	}
+	if metric.NetworkTxBytes > math.MaxInt64 {
+		metric.NetworkTxBytes = math.MaxInt64
+	}
+
+	if err := metricsModel.Create(c.Request.Context(), metric); err != nil {
+		log.Printf("Failed to persist metrics for agent %s: %v", agentID, err)
 	}
 
 	// Initialize actions array

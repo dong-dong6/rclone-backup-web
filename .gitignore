@@ -3,6 +3,12 @@
 .env.local
 .env.agent
 
+# 缓存/运行时数据
+.cache/
+cache/
+cache-*/
+.rclone-cache/
+
 # 数据目录
 data/
 data.backup*/
@@ -48,6 +54,8 @@ yarn-error.log*
 coverage/
 *.test
 *.cover
+test/
+@test/
 
 # 临时文件
 tmp/

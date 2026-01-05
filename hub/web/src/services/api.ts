@@ -83,6 +83,12 @@ export const apiService = {
   
   createRegistrationToken: () => 
     api.post('/admin/agents/registration-token'),
+
+  getAgentMetricsLatest: (id: string) => 
+    api.get(`/admin/agents/${id}/metrics/latest`),
+
+  getAgentMetricsHistory: (id: string, hours: number) =>
+    api.get(`/admin/agents/${id}/metrics/history`, { params: { hours } }),
   
   // Tasks
   getTasks: () => 

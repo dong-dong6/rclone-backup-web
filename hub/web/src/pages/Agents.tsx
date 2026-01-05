@@ -3,11 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { 
   IconWifi, IconWifiOff, IconActivity, IconPlus, IconCopy, IconCheck, 
   IconRefresh, IconTrash, IconServer, IconClock, IconCalendar,
-  IconChevronRight, IconAlertCircle, IconCheckCircle
+  IconChevronRight, IconAlertCircle
 } from '@tabler/icons-react';
 import { apiClient } from '../services/api';
 import { useSSE } from '../contexts/SSEContext';
 import classNames from 'classnames';
+import { LineChart, Line, CartesianGrid, XAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface Agent {
   id: string;
@@ -17,12 +18,22 @@ interface Agent {
   created_at: string;
   task_count?: number;
   current_task?: string;
-  system_info?: {
-    platform: string;
-    hostname: string;
-    cpu_usage: number;
-    memory_usage: number;
-  };
+}
+
+interface AgentMetric {
+  cpu_usage: number;
+  memory_usage: number;
+  memory_total: number;
+  memory_used: number;
+  disk_total: number;
+  disk_used: number;
+  disk_usage: number;
+  network_rx_rate: number;
+  network_tx_rate: number;
+  tcp_connections: number;
+  udp_connections: number;
+  process_count: number;
+  recorded_at: string;
 }
 
 interface HeartbeatEvent {
@@ -42,6 +53,9 @@ const Agents: React.FC = () => {
   const [tokenExpiry, setTokenExpiry] = useState<Date | null>(null);
   const [copied, setCopied] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [metricsLatest, setMetricsLatest] = useState<AgentMetric | null>(null);
+  const [metricsHistory, setMetricsHistory] = useState<AgentMetric[]>([]);
+  const [metricsLoading, setMetricsLoading] = useState(false);
   const [realtimeStats, setRealtimeStats] = useState({
     totalAgents: 0,
     onlineAgents: 0,
@@ -90,6 +104,44 @@ const Agents: React.FC = () => {
     };
     setRealtimeStats(stats);
   }, [agents]);
+
+  useEffect(() => {
+    if (!selectedAgent) {
+      setMetricsLatest(null);
+      setMetricsHistory([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadMetrics = async () => {
+      setMetricsLoading(true);
+      try {
+        const [latestResp, historyResp] = await Promise.all([
+          apiClient.get(`/admin/agents/${selectedAgent.id}/metrics/latest`),
+          apiClient.get(`/admin/agents/${selectedAgent.id}/metrics/history`, { params: { hours: 6 } })
+        ]);
+
+        if (cancelled) return;
+
+        setMetricsLatest(latestResp.data);
+        setMetricsHistory(historyResp.data);
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load metrics:', error);
+        }
+      } finally {
+        if (!cancelled) {
+          setMetricsLoading(false);
+        }
+      }
+    };
+
+    loadMetrics();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAgent]);
 
   const loadAgents = async () => {
     try {
@@ -285,6 +337,26 @@ const Agents: React.FC = () => {
     return date.toLocaleString();
   };
 
+  const formatBytes = (value: number) => {
+    if (!value) return '0 B';
+    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+    let idx = 0;
+    let val = value;
+    while (val >= 1024 && idx < units.length - 1) {
+      val /= 1024;
+      idx += 1;
+    }
+    return `${val.toFixed(2)} ${units[idx]}`;
+  };
+
+  const formatRate = (value: number) => `${formatBytes(value)}/s`;
+
+  const chartData = metricsHistory.map((metric) => ({
+    time: new Date(metric.recorded_at).toLocaleTimeString(),
+    cpu: Number(metric.cpu_usage.toFixed(2)),
+    memory: Number(metric.memory_usage.toFixed(2)),
+  }));
+
   if (loading) {
     return (
       <div className="row">
@@ -422,36 +494,6 @@ const Agents: React.FC = () => {
                       </div>
                     </div>
                   </div>
-
-                  {/* System Info (if available) */}
-                  {agent.system_info && (
-                    <div className="mb-3">
-                      <div className="mb-2">
-                        <div className="d-flex justify-content-between small text-muted">
-                          <span>CPU</span>
-                          <span>{agent.system_info.cpu_usage}%</span>
-                        </div>
-                        <div className="progress progress-sm">
-                          <div 
-                            className="progress-bar bg-primary"
-                            style={{ width: `${agent.system_info.cpu_usage}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="d-flex justify-content-between small text-muted">
-                          <span>Memory</span>
-                          <span>{agent.system_info.memory_usage}%</span>
-                        </div>
-                        <div className="progress progress-sm">
-                          <div 
-                            className="progress-bar bg-info"
-                            style={{ width: `${agent.system_info.memory_usage}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Actions */}
                   <div className="d-flex gap-2">
@@ -610,8 +652,145 @@ const Agents: React.FC = () => {
                 ></button>
               </div>
               <div className="modal-body">
-                {/* Add detailed agent information here */}
-                <p className="text-muted">Agent details will be displayed here...</p>
+                <div className="mb-4">
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <h6 className="mb-0">实时监控</h6>
+                    {metricsLatest && (
+                      <small className="text-muted">
+                        更新于 {new Date(metricsLatest.recorded_at).toLocaleTimeString()}
+                      </small>
+                    )}
+                  </div>
+                  {metricsLoading ? (
+                    <div className="text-center py-5">
+                      <IconRefresh className="spinner text-primary" size={32} />
+                    </div>
+                  ) : (
+                    <div className="row g-3">
+                      <div className="col-md-6">
+                        <div className="border rounded p-3 h-100">
+                          <div className="d-flex justify-content-between small text-muted">
+                            <span>CPU</span>
+                            <span>
+                              {metricsLatest ? `${metricsLatest.cpu_usage.toFixed(1)}%` : '--'}
+                            </span>
+                          </div>
+                          <div className="progress progress-sm mt-2">
+                            <div
+                              className="progress-bar bg-primary"
+                              role="progressbar"
+                              style={{ width: `${metricsLatest?.cpu_usage ?? 0}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="border rounded p-3 h-100">
+                          <div className="d-flex justify-content-between small text-muted">
+                            <span>内存</span>
+                            <span>
+                              {metricsLatest
+                                ? `${metricsLatest.memory_usage.toFixed(1)}%`
+                                : '--'}
+                            </span>
+                          </div>
+                          <p className="mb-1">
+                            {metricsLatest
+                              ? `${formatBytes(metricsLatest.memory_used)} / ${formatBytes(
+                                  metricsLatest.memory_total
+                                )}`
+                              : '--'}
+                          </p>
+                          <div className="progress progress-sm">
+                            <div
+                              className="progress-bar bg-info"
+                              role="progressbar"
+                              style={{ width: `${metricsLatest?.memory_usage ?? 0}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="border rounded p-3 h-100">
+                          <div className="d-flex justify-content-between small text-muted">
+                            <span>磁盘</span>
+                            <span>
+                              {metricsLatest ? `${metricsLatest.disk_usage.toFixed(1)}%` : '--'}
+                            </span>
+                          </div>
+                          <p className="mb-1">
+                            {metricsLatest
+                              ? `${formatBytes(metricsLatest.disk_used)} / ${formatBytes(
+                                  metricsLatest.disk_total
+                                )}`
+                              : '--'}
+                          </p>
+                          <div className="progress progress-sm">
+                            <div
+                              className="progress-bar bg-warning"
+                              role="progressbar"
+                              style={{ width: `${metricsLatest?.disk_usage ?? 0}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="border rounded p-3 h-100">
+                          <div className="d-flex justify-content-between small text-muted">
+                            <span>网络</span>
+                            <span>
+                              {metricsLatest
+                                ? `${formatRate(metricsLatest.network_rx_rate)} ↓ / ${formatRate(
+                                    metricsLatest.network_tx_rate
+                                  )} ↑`
+                                : '--'}
+                            </span>
+                          </div>
+                          <p className="mb-1 text-muted">
+                            TCP {metricsLatest?.tcp_connections ?? '--'} · UDP{' '}
+                            {metricsLatest?.udp_connections ?? '--'}
+                          </p>
+                          <p className="mb-0 text-muted">
+                            进程数 {metricsLatest?.process_count ?? '--'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <h6 className="mb-0">历史趋势 (6h)</h6>
+                  </div>
+                  {metricsHistory.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={240}>
+                      <LineChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="time" />
+                        <Tooltip />
+                        <Legend />
+                        <Line
+                          type="monotone"
+                          dataKey="cpu"
+                          stroke="#0d6efd"
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="memory"
+                          stroke="#0dcaf0"
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className="text-muted mb-0">
+                      {metricsLoading ? '正在加载历史数据...' : '暂无历史监控数据。'}
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="modal-footer">
                 <button

@@ -16,6 +16,8 @@ type HubClient struct {
 	agentID    string
 	apiKey     string
 	httpClient *http.Client
+	collector  *SystemCollector
+	version    string
 }
 
 // HeartbeatRequest represents a heartbeat request
@@ -25,17 +27,6 @@ type HeartbeatRequest struct {
 	Tasks      interface{} `json:"tasks,omitempty"`
 	SystemInfo SystemInfo  `json:"system_info"`
 	Timestamp  time.Time   `json:"timestamp"`
-}
-
-// SystemInfo contains system information
-type SystemInfo struct {
-	Hostname     string  `json:"hostname"`
-	OS           string  `json:"os"`
-	Arch         string  `json:"arch"`
-	CPUUsage     float64 `json:"cpu_usage"`
-	MemoryUsage  float64 `json:"memory_usage"`
-	DiskUsage    float64 `json:"disk_usage"`
-	AgentVersion string  `json:"agent_version"`
 }
 
 // HeartbeatResponse represents a heartbeat response
@@ -66,7 +57,7 @@ type Task struct {
 }
 
 // NewHubClient creates a new hub client
-func NewHubClient(baseURL, agentID, apiKey string) *HubClient {
+func NewHubClient(baseURL, agentID, apiKey, version string) *HubClient {
 	return &HubClient{
 		baseURL: baseURL,
 		agentID: agentID,
@@ -74,6 +65,8 @@ func NewHubClient(baseURL, agentID, apiKey string) *HubClient {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		collector: NewSystemCollector(),
+		version:   version,
 	}
 }
 
@@ -89,16 +82,16 @@ func (c *HubClient) Register(ctx context.Context, token, name string) (string, s
 		"token": token,
 		"name":  name,
 	}
-	
+
 	resp := struct {
 		AgentID string `json:"agent_id"`
 		APIKey  string `json:"api_key"`
 	}{}
-	
+
 	if err := c.doRequest(ctx, "POST", "/api/v1/agent/register", req, &resp); err != nil {
 		return "", "", err
 	}
-	
+
 	return resp.AgentID, resp.APIKey, nil
 }
 
@@ -108,15 +101,15 @@ func (c *HubClient) SendHeartbeat(ctx context.Context, status string, tasks inte
 		AgentID:    c.agentID,
 		Status:     status,
 		Tasks:      tasks,
-		SystemInfo: c.getSystemInfo(),
+		SystemInfo: c.collector.Collect(c.version),
 		Timestamp:  time.Now(),
 	}
-	
+
 	var resp HeartbeatResponse
 	if err := c.doRequest(ctx, "POST", "/api/v1/agent/heartbeat", req, &resp); err != nil {
 		return nil, err
 	}
-	
+
 	return &resp, nil
 }
 
@@ -127,11 +120,11 @@ func (c *HubClient) UpdateExecutionStatus(executionID, status string, err error)
 		"status":       status,
 		"timestamp":    time.Now(),
 	}
-	
+
 	if err != nil {
 		req["error"] = err.Error()
 	}
-	
+
 	return c.doRequest(context.Background(), "POST", "/api/v1/agent/execution/status", req, nil)
 }
 
@@ -142,7 +135,7 @@ func (c *HubClient) SendLogs(executionID string, logs []string) error {
 		"logs":         logs,
 		"timestamp":    time.Now(),
 	}
-	
+
 	return c.doRequest(context.Background(), "POST", "/api/v1/agent/execution/logs", req, nil)
 }
 
@@ -158,7 +151,7 @@ func (c *HubClient) GetTasks(ctx context.Context) ([]Task, error) {
 // doRequest performs an HTTP request to the hub
 func (c *HubClient) doRequest(ctx context.Context, method, path string, body interface{}, response interface{}) error {
 	url := c.baseURL + path
-	
+
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -167,85 +160,35 @@ func (c *HubClient) doRequest(ctx context.Context, method, path string, body int
 		}
 		bodyReader = bytes.NewBuffer(data)
 	}
-	
+
 	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	req.Header.Set("Content-Type", "application/json")
 	if c.apiKey != "" && c.agentID != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s:%s", c.agentID, c.apiKey))
 	} else if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
-	
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("hub returned %d: %s", resp.StatusCode, body)
 	}
-	
+
 	if response != nil {
 		if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
 			return fmt.Errorf("failed to decode response: %w", err)
 		}
 	}
-	
+
 	return nil
-}
-
-// getSystemInfo gathers system information
-func (c *HubClient) getSystemInfo() SystemInfo {
-	// This is a simplified version - would need proper implementation
-	return SystemInfo{
-		Hostname:     getHostname(),
-		OS:           getOS(),
-		Arch:         getArch(),
-		CPUUsage:     getCPUUsage(),
-		MemoryUsage:  getMemoryUsage(),
-		DiskUsage:    getDiskUsage(),
-		AgentVersion: getAgentVersion(),
-	}
-}
-
-// Helper functions (these would need proper implementation)
-func getHostname() string {
-	// Implementation
-	return "agent-host"
-}
-
-func getOS() string {
-	// Implementation
-	return "linux"
-}
-
-func getArch() string {
-	// Implementation
-	return "amd64"
-}
-
-func getCPUUsage() float64 {
-	// Implementation
-	return 0.0
-}
-
-func getMemoryUsage() float64 {
-	// Implementation
-	return 0.0
-}
-
-func getDiskUsage() float64 {
-	// Implementation
-	return 0.0
-}
-
-func getAgentVersion() string {
-	// Implementation
-	return "1.0.0"
 }

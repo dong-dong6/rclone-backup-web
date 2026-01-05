@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/rclone-backup-web/hub/models"
 	"github.com/rclone-backup-web/hub/services"
 )
@@ -135,6 +137,55 @@ func (h *Handler) DeleteAgent(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusNoContent, nil)
+}
+
+func (h *Handler) GetAgentMetricsLatest(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid agent ID"})
+		return
+	}
+
+	metricsModel := models.NewMetricsModel(h.db)
+	metric, err := metricsModel.GetLatest(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "No metrics found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch metrics"})
+		return
+	}
+
+	c.JSON(http.StatusOK, metric)
+}
+
+func (h *Handler) GetAgentMetricsHistory(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid agent ID"})
+		return
+	}
+
+	hoursParam := c.DefaultQuery("hours", "24")
+	hours, err := strconv.ParseFloat(hoursParam, 64)
+	if err != nil || hours <= 0 {
+		hours = 24
+	}
+
+	end := time.Now()
+	start := end.Add(-time.Duration(hours * float64(time.Hour)))
+
+	metricsModel := models.NewMetricsModel(h.db)
+	history, err := metricsModel.GetHistory(c.Request.Context(), id, start, end)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch metrics history"})
+		return
+	}
+
+	c.JSON(http.StatusOK, history)
 }
 
 // CreateRegistrationToken creates a new registration token
