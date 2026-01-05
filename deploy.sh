@@ -48,6 +48,7 @@ Rclone Backup Web V2.0 - 部署脚本 (简化版)
     deploy           一键部署 Hub + 本地Agent
     hub              仅部署Hub (Docker)
     agent            仅安装本地Agent
+    uninstall-agent  卸载本地Agent
     status           查看服务状态
     logs [service]   查看服务日志
     stop             停止所有服务
@@ -370,6 +371,7 @@ After=network.target
 
 [Service]
 Type=simple
+Environment="RCLONE_CHECKSUM_LINUX_AMD64=07c23d21a94d70113d949253478e13261c54d14d72023bb14d96a8da5f3e7722"
 ExecStart=/opt/rclone-agent/rclone-backup-agent --config /opt/rclone-agent/agent.json
 Restart=always
 RestartSec=10
@@ -503,7 +505,7 @@ restart_services() {
 clean_data() {
     check_requirements
     
-    print_warning "⚠️  此操作将删除所有数据!"
+    print_warning "⚠️  此操作将删除所有数据并卸载本地Agent!"
     print_prompt "输入 'DELETE' 确认: "
     read -r confirm
     
@@ -511,9 +513,60 @@ clean_data() {
         stop_services
         rm -rf ./data
         print_success "数据已清理"
+        
+        # 卸载本地Agent（跳过确认）
+        uninstall_agent_force
     else
         print_info "操作已取消"
     fi
+}
+
+# 卸载本地Agent（带确认）
+uninstall_agent() {
+    print_warning "⚠️  此操作将完全删除本地Agent!"
+    print_prompt "输入 'UNINSTALL' 确认: "
+    read -r confirm
+    
+    if [ "$confirm" != "UNINSTALL" ]; then
+        print_info "操作已取消"
+        return 0
+    fi
+    
+    uninstall_agent_force
+}
+
+# 卸载本地Agent（不需要确认，供内部调用）
+uninstall_agent_force() {
+    local SUDO=""
+    if [ "$(id -u)" != "0" ]; then
+        SUDO="sudo"
+    fi
+    
+    local AGENT_DIR="/opt/rclone-agent"
+    
+    # 停止并禁用服务
+    if command -v systemctl &> /dev/null; then
+        print_info "停止Agent服务..."
+        $SUDO systemctl stop rclone-backup-agent 2>/dev/null || true
+        $SUDO systemctl disable rclone-backup-agent 2>/dev/null || true
+        $SUDO rm -f /etc/systemd/system/rclone-backup-agent.service
+        $SUDO systemctl daemon-reload
+        print_success "服务已停止并移除"
+    else
+        # 非systemd系统，直接杀进程
+        pkill -f rclone-backup-agent 2>/dev/null || true
+    fi
+    
+    # 删除安装目录
+    if [ -d "$AGENT_DIR" ]; then
+        print_info "删除Agent目录: $AGENT_DIR"
+        $SUDO rm -rf "$AGENT_DIR"
+        print_success "Agent目录已删除"
+    else
+        print_info "Agent目录不存在: $AGENT_DIR"
+    fi
+    
+    print_success "本地Agent已完全卸载"
 }
 
 # 主函数
@@ -528,6 +581,9 @@ main() {
             ;;
         agent)
             install_agent
+            ;;
+        uninstall-agent)
+            uninstall_agent
             ;;
         status)
             show_status
