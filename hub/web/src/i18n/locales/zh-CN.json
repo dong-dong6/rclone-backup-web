@@ -28,7 +28,17 @@
     "download": "下载",
     "previous": "上一页",
     "next": "下一页",
-    "page_of": "第 {{current}} 页，共 {{total}} 页"
+    "page_of": "第 {{current}} 页，共 {{total}} 页",
+    "never": "从未",
+    "close": "关闭",
+    "copy": "复制",
+    "copied": "已复制",
+    "online": "在线",
+    "offline": "离线",
+    "running": "运行中",
+    "edit": "编辑",
+    "cancel": "取消",
+    "save": "保存"
   },
   "menu": {
     "dashboard": "仪表盘",
@@ -215,7 +225,9 @@
       "restart": "重启节点",
       "syncConfig": "同步配置",
       "sync_config": "同步配置",
-      "view_details": "查看详情"
+      "sync": "同步",
+      "view_details": "查看详情",
+      "details": "详情"
     },
     "load_failed": "加载节点失败",
     "went_offline": "已离线",
@@ -228,7 +240,14 @@
     "config_sync_triggered": "配置同步已触发",
     "config_sync_failed": "配置同步失败",
     "last_heartbeat": "最后心跳",
-    "assigned_tasks": "分配任务"
+    "assigned_tasks": "分配任务",
+    "updated_successfully": "节点信息已更新",
+    "update_failed": "更新节点失败",
+    "edit": {
+      "title": "编辑节点",
+      "name_label": "节点名称",
+      "name_placeholder": "请输入节点名称"
+    }
   },
   "tasks": {
     "title": "任务管理",

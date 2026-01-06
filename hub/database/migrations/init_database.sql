@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS agents (
     last_heartbeat TIMESTAMP WITH TIME ZONE,                     -- 最后一次心跳时间
     current_task UUID,                                           -- 当前执行的任务 ID
     version VARCHAR(50),                                         -- 代理软件版本
+    is_local BOOLEAN NOT NULL DEFAULT FALSE,                     -- 是否为本地Agent（不可删除）
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),  -- 记录创建时间
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()   -- 记录更新时间
 );

@@ -341,6 +341,7 @@ install_agent() {
     "work_dir": "$AGENT_DIR",
     "max_concurrent": 3,
     "heartbeat_interval": 30,
+    "is_local": true,
     "enable_api": true,
     "api_port": 9092,
     "registration_token": "$REG_TOKEN"

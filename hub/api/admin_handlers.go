@@ -131,12 +131,51 @@ func (h *Handler) DeleteAgent(c *gin.Context) {
 	}
 
 	agentModel := models.NewAgentModel(h.db)
+
+	// Check if agent is local (cannot be deleted)
+	agent, err := agentModel.GetByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
+		return
+	}
+
+	if agent.IsLocal {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete local agent"})
+		return
+	}
+
 	if err := agentModel.Delete(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete agent"})
 		return
 	}
 
 	c.JSON(http.StatusNoContent, nil)
+}
+
+// UpdateAgent updates an agent's information
+func (h *Handler) UpdateAgent(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid agent ID"})
+		return
+	}
+
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	agentModel := models.NewAgentModel(h.db)
+	if err := agentModel.UpdateName(c.Request.Context(), id, req.Name); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agent"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Agent updated successfully"})
 }
 
 func (h *Handler) GetAgentMetricsLatest(c *gin.Context) {

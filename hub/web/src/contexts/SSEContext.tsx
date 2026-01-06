@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 
 interface SSEEvent {
@@ -35,7 +35,7 @@ export const SSEProvider: React.FC<SSEProviderProps> = ({ children }) => {
   const [connected, setConnected] = useState(false);
   const [lastEvent, setLastEvent] = useState<SSEEvent | null>(null);
   const [eventSource, setEventSource] = useState<EventSource | null>(null);
-  const [subscribers, setSubscribers] = useState<Map<string, Set<(event: SSEEvent) => void>>>(new Map());
+  const subscribersRef = useRef<Map<string, Set<(event: SSEEvent) => void>>>(new Map());
   const { token } = useAuth();
 
   useEffect(() => {
@@ -63,7 +63,7 @@ export const SSEProvider: React.FC<SSEProviderProps> = ({ children }) => {
     es.onerror = (error) => {
       console.error('SSE connection error:', error);
       setConnected(false);
-      
+
       // Reconnect after 5 seconds
       setTimeout(() => {
         if (es.readyState === EventSource.CLOSED) {
@@ -117,14 +117,14 @@ export const SSEProvider: React.FC<SSEProviderProps> = ({ children }) => {
       setEvents(prev => [...prev.slice(-99), newEvent]); // Keep last 100 events
       setLastEvent(newEvent);
 
-      // Notify subscribers
-      const typeSubscribers = subscribers.get(type);
+      // Notify subscribers (using ref to avoid stale closure)
+      const typeSubscribers = subscribersRef.current.get(type);
       if (typeSubscribers) {
         typeSubscribers.forEach(callback => callback(newEvent));
       }
 
       // Notify wildcard subscribers
-      const wildcardSubscribers = subscribers.get('*');
+      const wildcardSubscribers = subscribersRef.current.get('*');
       if (wildcardSubscribers) {
         wildcardSubscribers.forEach(callback => callback(newEvent));
       }
@@ -145,28 +145,21 @@ export const SSEProvider: React.FC<SSEProviderProps> = ({ children }) => {
   };
 
   const subscribe = (eventType: string, callback: (event: SSEEvent) => void) => {
-    setSubscribers(prev => {
-      const newMap = new Map(prev);
-      if (!newMap.has(eventType)) {
-        newMap.set(eventType, new Set());
-      }
-      newMap.get(eventType)!.add(callback);
-      return newMap;
-    });
+    // Directly modify ref to avoid stale closure issues
+    if (!subscribersRef.current.has(eventType)) {
+      subscribersRef.current.set(eventType, new Set());
+    }
+    subscribersRef.current.get(eventType)!.add(callback);
 
     // Return unsubscribe function
     return () => {
-      setSubscribers(prev => {
-        const newMap = new Map(prev);
-        const typeSubscribers = newMap.get(eventType);
-        if (typeSubscribers) {
-          typeSubscribers.delete(callback);
-          if (typeSubscribers.size === 0) {
-            newMap.delete(eventType);
-          }
+      const typeSubscribers = subscribersRef.current.get(eventType);
+      if (typeSubscribers) {
+        typeSubscribers.delete(callback);
+        if (typeSubscribers.size === 0) {
+          subscribersRef.current.delete(eventType);
         }
-        return newMap;
-      });
+      }
     };
   };
 

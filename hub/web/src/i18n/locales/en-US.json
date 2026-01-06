@@ -50,7 +50,17 @@
     "download": "Download",
     "previous": "Previous",
     "next": "Next",
-    "page_of": "Page {{current}} of {{total}}"
+    "page_of": "Page {{current}} of {{total}}",
+    "never": "Never",
+    "close": "Close",
+    "copy": "Copy",
+    "copied": "Copied",
+    "online": "Online",
+    "offline": "Offline",
+    "running": "Running",
+    "edit": "Edit",
+    "cancel": "Cancel",
+    "save": "Save"
   },
   "menu": {
     "dashboard": "Dashboard",
@@ -137,7 +147,9 @@
       "restart": "Restart Agent",
       "syncConfig": "Sync Config",
       "sync_config": "Sync Config",
-      "view_details": "View Details"
+      "sync": "Sync",
+      "view_details": "View Details",
+      "details": "Details"
     },
     "load_failed": "Failed to load agents",
     "went_offline": "went offline",
@@ -150,7 +162,14 @@
     "config_sync_triggered": "Config sync triggered",
     "config_sync_failed": "Config sync failed",
     "last_heartbeat": "Last Heartbeat",
-    "assigned_tasks": "Assigned Tasks"
+    "assigned_tasks": "Assigned Tasks",
+    "updated_successfully": "Agent updated successfully",
+    "update_failed": "Failed to update agent",
+    "edit": {
+      "title": "Edit Agent",
+      "name_label": "Agent Name",
+      "name_placeholder": "Enter agent name"
+    }
   },
   "tasks": {
     "title": "Task Management",

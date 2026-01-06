@@ -17,6 +17,7 @@ type Agent struct {
 	LastHeartbeat *time.Time `json:"last_heartbeat"`
 	CurrentTask   *uuid.UUID `json:"current_task,omitempty"`
 	Version       *string    `json:"version,omitempty"`
+	IsLocal       bool       `json:"is_local"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
@@ -30,19 +31,20 @@ func NewAgentModel(db *pgxpool.Pool) *AgentModel {
 }
 
 // Create creates a new agent
-func (m *AgentModel) Create(ctx context.Context, name, apiKeyHash string) (*Agent, error) {
+func (m *AgentModel) Create(ctx context.Context, name, apiKeyHash string, isLocal bool) (*Agent, error) {
 	agent := &Agent{
 		ID:         uuid.New(),
 		Name:       name,
 		APIKeyHash: apiKeyHash,
 		Status:     "offline",
+		IsLocal:    isLocal,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
 
 	query := `
-		INSERT INTO agents (id, name, api_key_hash, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO agents (id, name, api_key_hash, status, is_local, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, current_task, version, created_at, updated_at
 	`
 
@@ -51,6 +53,7 @@ func (m *AgentModel) Create(ctx context.Context, name, apiKeyHash string) (*Agen
 		agent.Name,
 		agent.APIKeyHash,
 		agent.Status,
+		agent.IsLocal,
 		agent.CreatedAt,
 		agent.UpdatedAt,
 	).Scan(&agent.ID, &agent.CurrentTask, &agent.Version, &agent.CreatedAt, &agent.UpdatedAt)
@@ -66,7 +69,7 @@ func (m *AgentModel) Create(ctx context.Context, name, apiKeyHash string) (*Agen
 func (m *AgentModel) GetByID(ctx context.Context, id uuid.UUID) (*Agent, error) {
 	agent := &Agent{}
 	query := `
-		SELECT id, name, api_key_hash, status, last_heartbeat, current_task, version, created_at, updated_at
+		SELECT id, name, api_key_hash, status, last_heartbeat, current_task, version, is_local, created_at, updated_at
 		FROM agents
 		WHERE id = $1
 	`
@@ -79,6 +82,7 @@ func (m *AgentModel) GetByID(ctx context.Context, id uuid.UUID) (*Agent, error) 
 		&agent.LastHeartbeat,
 		&agent.CurrentTask,
 		&agent.Version,
+		&agent.IsLocal,
 		&agent.CreatedAt,
 		&agent.UpdatedAt,
 	)
@@ -94,7 +98,7 @@ func (m *AgentModel) GetByID(ctx context.Context, id uuid.UUID) (*Agent, error) 
 func (m *AgentModel) GetByAPIKeyHash(ctx context.Context, apiKeyHash string) (*Agent, error) {
 	agent := &Agent{}
 	query := `
-		SELECT id, name, api_key_hash, status, last_heartbeat, current_task, version, created_at, updated_at
+		SELECT id, name, api_key_hash, status, last_heartbeat, current_task, version, is_local, created_at, updated_at
 		FROM agents
 		WHERE api_key_hash = $1
 	`
@@ -107,6 +111,7 @@ func (m *AgentModel) GetByAPIKeyHash(ctx context.Context, apiKeyHash string) (*A
 		&agent.LastHeartbeat,
 		&agent.CurrentTask,
 		&agent.Version,
+		&agent.IsLocal,
 		&agent.CreatedAt,
 		&agent.UpdatedAt,
 	)
@@ -121,7 +126,7 @@ func (m *AgentModel) GetByAPIKeyHash(ctx context.Context, apiKeyHash string) (*A
 // List retrieves all agents
 func (m *AgentModel) List(ctx context.Context) ([]*Agent, error) {
 	query := `
-		SELECT id, name, status, last_heartbeat, current_task, version, created_at, updated_at
+		SELECT id, name, status, last_heartbeat, current_task, version, is_local, created_at, updated_at
 		FROM agents
 		ORDER BY created_at DESC
 	`
@@ -142,6 +147,7 @@ func (m *AgentModel) List(ctx context.Context) ([]*Agent, error) {
 			&agent.LastHeartbeat,
 			&agent.CurrentTask,
 			&agent.Version,
+			&agent.IsLocal,
 			&agent.CreatedAt,
 			&agent.UpdatedAt,
 		)
@@ -170,6 +176,13 @@ func (m *AgentModel) UpdateHeartbeat(ctx context.Context, id uuid.UUID, status s
 func (m *AgentModel) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM agents WHERE id = $1`
 	_, err := m.db.Exec(ctx, query, id)
+	return err
+}
+
+// UpdateName updates an agent's name
+func (m *AgentModel) UpdateName(ctx context.Context, id uuid.UUID, name string) error {
+	query := `UPDATE agents SET name = $2, updated_at = NOW() WHERE id = $1`
+	_, err := m.db.Exec(ctx, query, id, name)
 	return err
 }
 

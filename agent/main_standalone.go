@@ -39,6 +39,7 @@ type Config struct {
 	WorkDir           string `json:"work_dir"`
 	MaxConcurrent     int    `json:"max_concurrent"`
 	HeartbeatInterval int    `json:"heartbeat_interval"`
+	IsLocal           bool   `json:"is_local"`
 
 	// Features
 	EnableLocalFallback bool   `json:"enable_local_fallback"`
@@ -381,7 +382,7 @@ func (a *Agent) ensureRegistered() error {
 	log.Println("Registering with hub...")
 
 	// Use the main hubClient (which has no credentials yet) to register
-	agentID, apiKey, err := a.hubClient.Register(context.Background(), a.config.RegistrationToken, a.config.AgentName)
+	agentID, apiKey, err := a.hubClient.Register(context.Background(), a.config.RegistrationToken, a.config.AgentName, a.config.IsLocal)
 	if err != nil {
 		return fmt.Errorf("registration failed: %w", err)
 	}

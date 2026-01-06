@@ -114,6 +114,7 @@ func main() {
 				adminAuth.GET("/agents", apiHandler.ListAgents)
 				adminAuth.GET("/agents/:id/metrics/latest", apiHandler.GetAgentMetricsLatest)
 				adminAuth.GET("/agents/:id/metrics/history", apiHandler.GetAgentMetricsHistory)
+				adminAuth.PUT("/agents/:id", apiHandler.UpdateAgent)
 				adminAuth.DELETE("/agents/:id", apiHandler.DeleteAgent)
 				adminAuth.POST("/agents/registration-token", apiHandler.CreateRegistrationToken)
 

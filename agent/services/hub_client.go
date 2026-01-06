@@ -77,10 +77,11 @@ func (c *HubClient) SetCredentials(agentID, apiKey string) {
 }
 
 // Register registers the agent with the hub
-func (c *HubClient) Register(ctx context.Context, token, name string) (string, string, error) {
-	req := map[string]string{
-		"token": token,
-		"name":  name,
+func (c *HubClient) Register(ctx context.Context, token, name string, isLocal bool) (string, string, error) {
+	req := map[string]interface{}{
+		"token":    token,
+		"name":     name,
+		"is_local": isLocal,
 	}
 
 	resp := struct {

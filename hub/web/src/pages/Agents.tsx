@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { 
-  IconWifi, IconWifiOff, IconActivity, IconPlus, IconCopy, IconCheck, 
+import {
+  IconWifi, IconWifiOff, IconActivity, IconPlus, IconCopy, IconCheck,
   IconRefresh, IconTrash, IconServer, IconClock, IconCalendar,
-  IconChevronRight, IconAlertCircle
+  IconChevronRight, IconAlertCircle, IconEdit
 } from '@tabler/icons-react';
 import { apiClient } from '../services/api';
 import { useSSE } from '../contexts/SSEContext';
@@ -15,6 +15,7 @@ interface Agent {
   name: string;
   status: 'online' | 'offline' | 'running_task';
   last_heartbeat: string | null;
+  is_local: boolean;
   created_at: string;
   task_count?: number;
   current_task?: string;
@@ -41,6 +42,21 @@ interface HeartbeatEvent {
   status: string;
   timestamp: string;
   actions?: number;
+  metrics?: {
+    cpu_usage: number;
+    memory_usage: number;
+    memory_total: number;
+    memory_used: number;
+    disk_usage: number;
+    disk_total: number;
+    disk_used: number;
+    network_rx_rate: number;
+    network_tx_rate: number;
+    tcp_connections: number;
+    udp_connections: number;
+    process_count: number;
+    recorded_at: string;
+  };
 }
 
 const Agents: React.FC = () => {
@@ -61,34 +77,93 @@ const Agents: React.FC = () => {
     onlineAgents: 0,
     runningTasks: 0
   });
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
+  const [editName, setEditName] = useState('');
+
+  // Use ref to track selectedAgent for SSE handler without re-subscribing
+  const selectedAgentRef = useRef<Agent | null>(null);
+  useEffect(() => {
+    selectedAgentRef.current = selectedAgent;
+  }, [selectedAgent]);
 
   // Load agents and setup SSE listeners
   useEffect(() => {
     loadAgents();
-    
-    // Subscribe to multiple SSE events
+
+    // Subscribe to multiple SSE events (except heartbeat which has its own effect)
     const unsubscribers = [
       // Agent status updates
       subscribe('agent.status.update', (event) => {
         handleAgentStatusUpdate(event.data);
       }),
-      
-      // Agent heartbeat events
-      subscribe('agent.heartbeat', (event: { data: HeartbeatEvent }) => {
-        handleHeartbeat(event.data);
-      }),
-      
+
       // Task dispatch events
       subscribe('task.dispatched', (event) => {
         handleTaskDispatched(event.data);
       }),
-      
+
+      // Agent heartbeat events with real-time metrics update
+      subscribe('agent.heartbeat', (event: { data: HeartbeatEvent }) => {
+        const { agent_id, timestamp, metrics } = event.data;
+
+        // Update agent list
+        setAgents(prev => prev.map(agent => {
+          if (agent.id === agent_id) {
+            return {
+              ...agent,
+              last_heartbeat: timestamp,
+              className: 'heartbeat-pulse'
+            };
+          }
+          return agent;
+        }));
+
+        // Remove pulse animation after 500ms
+        setTimeout(() => {
+          setAgents(prev => prev.map(agent => {
+            if (agent.id === agent_id) {
+              const { className, ...rest } = agent as any;
+              return rest;
+            }
+            return agent;
+          }));
+        }, 500);
+
+        // Update metrics for selected agent in real-time using ref
+        const currentSelectedAgent = selectedAgentRef.current;
+        if (currentSelectedAgent && agent_id === currentSelectedAgent.id && metrics) {
+          const newMetric: AgentMetric = {
+            cpu_usage: metrics.cpu_usage,
+            memory_usage: metrics.memory_usage,
+            memory_total: metrics.memory_total,
+            memory_used: metrics.memory_used,
+            disk_usage: metrics.disk_usage,
+            disk_total: metrics.disk_total,
+            disk_used: metrics.disk_used,
+            network_rx_rate: metrics.network_rx_rate,
+            network_tx_rate: metrics.network_tx_rate,
+            tcp_connections: metrics.tcp_connections,
+            udp_connections: metrics.udp_connections,
+            process_count: metrics.process_count,
+            recorded_at: metrics.recorded_at || new Date().toISOString(),
+          };
+
+          setMetricsLatest(newMetric);
+
+          // Append to history chart
+          setMetricsHistory(prev => {
+            const updated = [...prev, newMetric];
+            return updated.slice(-360);
+          });
+        }
+      }),
+
       // Agent registration events
       subscribe('agent.registered', (event) => {
         handleNewAgentRegistered(event.data);
       })
     ];
-    
+
     // Cleanup subscriptions
     return () => {
       unsubscribers.forEach(unsubscribe => unsubscribe());
@@ -160,14 +235,14 @@ const Agents: React.FC = () => {
   // SSE Event Handlers
   const handleAgentStatusUpdate = (data: any) => {
     const { agent_id, status } = data;
-    
+
     setAgents(prev => prev.map(agent => {
       if (agent.id === agent_id) {
         // Animate status change
         animateStatusChange(agent_id);
-        
-        return { 
-          ...agent, 
+
+        return {
+          ...agent,
           status,
           last_heartbeat: new Date().toISOString()
         };
@@ -186,40 +261,13 @@ const Agents: React.FC = () => {
     }
   };
 
-  const handleHeartbeat = (data: HeartbeatEvent) => {
-    const { agent_id, timestamp } = data;
-    
-    setAgents(prev => prev.map(agent => {
-      if (agent.id === agent_id) {
-        return { 
-          ...agent, 
-          last_heartbeat: timestamp,
-          // Pulse animation for heartbeat
-          className: 'heartbeat-pulse'
-        };
-      }
-      return agent;
-    }));
-
-    // Remove pulse animation after 500ms
-    setTimeout(() => {
-      setAgents(prev => prev.map(agent => {
-        if (agent.id === agent_id) {
-          const { className, ...rest } = agent as any;
-          return rest;
-        }
-        return agent;
-      }));
-    }, 500);
-  };
-
   const handleTaskDispatched = (data: any) => {
     const { agent_id, task_name } = data;
-    
+
     setAgents(prev => prev.map(agent => {
       if (agent.id === agent_id) {
-        return { 
-          ...agent, 
+        return {
+          ...agent,
           status: 'running_task',
           current_task: task_name
         };
@@ -241,12 +289,12 @@ const Agents: React.FC = () => {
     try {
       const response = await apiClient.post('/admin/agents/registration-token');
       setRegistrationToken(response.data.token);
-      
+
       // Set token expiry (24 hours from now)
       const expiry = new Date();
       expiry.setHours(expiry.getHours() + 24);
       setTokenExpiry(expiry);
-      
+
       setShowRegisterModal(true);
     } catch (error) {
       console.error('Failed to generate token:', error);
@@ -264,13 +312,13 @@ const Agents: React.FC = () => {
     if (!confirm(t('agents.actions.deleteConfirm', { name }))) {
       return;
     }
-    
+
     try {
       await apiClient.delete(`/admin/agents/${id}`);
-      
+
       // Optimistic UI update with animation
       setAgents(prev => prev.filter(agent => agent.id !== id));
-      
+
       showNotification('success', t('agents.deleted_successfully'));
     } catch (error) {
       console.error('Failed to delete agent:', error);
@@ -289,6 +337,33 @@ const Agents: React.FC = () => {
       showNotification('error', t('agents.config_sync_failed'));
     }
   };
+
+  const startEditAgent = (agent: Agent) => {
+    setEditingAgent(agent);
+    setEditName(agent.name);
+  };
+
+  const updateAgent = async () => {
+    if (!editingAgent || !editName.trim()) return;
+
+    try {
+      await apiClient.put(`/admin/agents/${editingAgent.id}`, { name: editName.trim() });
+
+      // Update local state
+      setAgents(prev => prev.map(agent =>
+        agent.id === editingAgent.id ? { ...agent, name: editName.trim() } : agent
+      ));
+
+      showNotification('success', t('agents.updated_successfully'));
+      setEditingAgent(null);
+      setEditName('');
+    } catch (error) {
+      console.error('Failed to update agent:', error);
+      showNotification('error', t('agents.update_failed'));
+    }
+  };
+
+  const isLocalAgent = (agent: Agent) => agent.is_local;
 
   // Animation helpers
   const animateStatusChange = (agentId: string) => {
@@ -309,31 +384,21 @@ const Agents: React.FC = () => {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'online':
-        return <IconWifi className="text-success" size={20} />;
+        return <span className="badge bg-success">{t('common.online')}</span>;
       case 'offline':
-        return <IconWifiOff className="text-muted" size={20} />;
+        return <span className="badge bg-danger">{t('common.offline')}</span>;
       case 'running_task':
-        return <IconActivity className="text-primary spinner" size={20} />;
+        return <span className="badge bg-primary">{t('common.running')}</span>;
       default:
-        return <IconAlertCircle className="text-warning" size={20} />;
+        return <span className="badge bg-warning">{t('common.offline')}</span>;
     }
   };
 
   const formatLastHeartbeat = (heartbeat: string | null) => {
     if (!heartbeat) return t('common.never');
-    
+
     const date = new Date(heartbeat);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffSecs = Math.floor(diffMs / 1000);
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    
-    if (diffSecs < 10) return <span className="text-green-500">{t('time.just_now')}</span>;
-    if (diffMins < 1) return t('time.seconds_ago', { count: diffSecs });
-    if (diffMins < 60) return t('time.minutes_ago', { count: diffMins });
-    if (diffHours < 24) return t('time.hours_ago', { count: diffHours });
-    
+    // 显示日期+时间格式 YYYY-MM-DD HH:MM:SS
     return date.toLocaleString();
   };
 
@@ -415,15 +480,15 @@ const Agents: React.FC = () => {
               <div className="subheader">{t('common.actions')}</div>
             </div>
             <div className="d-flex gap-2">
-              <button 
+              <button
                 onClick={loadAgents}
                 className="btn btn-outline-primary btn-sm"
               >
                 <IconRefresh size={16} />
                 {t('common.refresh')}
               </button>
-              
-              <button 
+
+              <button
                 onClick={generateToken}
                 className="btn btn-primary btn-sm"
               >
@@ -461,26 +526,6 @@ const Agents: React.FC = () => {
                     {getStatusIcon(agent.status)}
                   </div>
 
-                  {/* Status Badge */}
-                  <div className="mb-3">
-                    <span className={classNames(
-                      'badge',
-                      agent.status === 'online' 
-                        ? 'bg-success'
-                        : agent.status === 'running_task'
-                        ? 'bg-primary'
-                        : 'bg-secondary'
-                    )}>
-                      {t(`agents.status.${agent.status}`)}
-                    </span>
-                    
-                    {agent.current_task && (
-                      <span className="badge bg-info ms-1">
-                        {agent.current_task}
-                      </span>
-                    )}
-                  </div>
-
                   {/* Agent Details */}
                   <div className="mb-3">
                     <div className="row">
@@ -496,31 +541,45 @@ const Agents: React.FC = () => {
                   </div>
 
                   {/* Actions */}
-                  <div className="d-flex gap-2">
+                  <div className="d-flex gap-2 pt-2 border-top">
                     <button
                       onClick={() => syncConfig(agent.id)}
-                      className="btn btn-outline-primary btn-sm"
+                      className="btn btn-outline-primary btn-sm d-flex align-items-center gap-1"
                       title={t('agents.actions.sync_config')}
                       disabled={agent.status === 'offline'}
                     >
-                      <IconRefresh size={16} />
+                      <IconRefresh size={14} />
+                      <span>{t('agents.actions.sync')}</span>
                     </button>
-                    
+
                     <button
                       onClick={() => setSelectedAgent(agent)}
-                      className="btn btn-outline-secondary btn-sm"
+                      className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
                       title={t('agents.actions.view_details')}
                     >
-                      <IconChevronRight size={16} />
+                      <IconChevronRight size={14} />
+                      <span>{t('agents.actions.details')}</span>
                     </button>
-                    
+
                     <button
-                      onClick={() => deleteAgent(agent.id, agent.name)}
-                      className="btn btn-outline-danger btn-sm"
-                      title={t('agents.actions.delete')}
+                      onClick={() => startEditAgent(agent)}
+                      className="btn btn-outline-info btn-sm d-flex align-items-center gap-1"
+                      title={t('common.edit')}
                     >
-                      <IconTrash size={16} />
+                      <IconEdit size={14} />
+                      <span>{t('common.edit')}</span>
                     </button>
+
+                    {!isLocalAgent(agent) && (
+                      <button
+                        onClick={() => deleteAgent(agent.id, agent.name)}
+                        className="btn btn-outline-danger btn-sm d-flex align-items-center gap-1"
+                        title={t('agents.actions.delete')}
+                      >
+                        <IconTrash size={14} />
+                        <span>{t('common.delete')}</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -537,7 +596,7 @@ const Agents: React.FC = () => {
               <IconServer className="mx-auto text-muted mb-4" size={64} />
               <h3 className="card-title">{t('agents.no_agents')}</h3>
               <p className="text-muted mb-4">{t('agents.no_agents_description')}</p>
-              <button 
+              <button
                 onClick={generateToken}
                 className="btn btn-primary"
               >
@@ -551,14 +610,14 @@ const Agents: React.FC = () => {
 
       {/* Registration Modal */}
       {showRegisterModal && (
-        <div className="modal modal-blur fade show" style={{display: 'block'}} tabIndex={-1}>
+        <div className="modal modal-blur fade show" style={{ display: 'block' }} tabIndex={-1}>
           <div className="modal-dialog modal-lg modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">{t('agents.register.title')}</h5>
-                <button 
-                  type="button" 
-                  className="btn-close" 
+                <button
+                  type="button"
+                  className="btn-close"
                   onClick={() => {
                     setShowRegisterModal(false);
                     setRegistrationToken('');
@@ -591,8 +650,8 @@ const Agents: React.FC = () => {
                 {tokenExpiry && (
                   <div className="alert alert-warning">
                     <IconAlertCircle className="me-1" size={16} />
-                    {t('agents.register.token_expires', { 
-                      time: tokenExpiry.toLocaleString() 
+                    {t('agents.register.token_expires', {
+                      time: tokenExpiry.toLocaleString()
                     })}
                   </div>
                 )}
@@ -607,12 +666,12 @@ const Agents: React.FC = () => {
                       <li className="mb-2">2. {t('agents.register.step2')}</li>
                       <li className="mb-2">
                         <code className="d-block bg-dark text-light p-2 rounded">
-                          curl -L http://hub:8080/api/v1/agent/download -o rclone-backup-agent<br/>
-                          chmod +x rclone-backup-agent<br/>
-                          ./rclone-backup-agent register \\<br/>
-                          &nbsp;&nbsp;--hub-url http://hub:8080 \\<br/>
-                          &nbsp;&nbsp;--token {registrationToken} \\<br/>
-                          &nbsp;&nbsp;--name my-agent \\<br/>
+                          curl -L http://hub:8080/api/v1/agent/download -o rclone-backup-agent<br />
+                          chmod +x rclone-backup-agent<br />
+                          ./rclone-backup-agent register \\<br />
+                          &nbsp;&nbsp;--hub-url http://hub:8080 \\<br />
+                          &nbsp;&nbsp;--token {registrationToken} \\<br />
+                          &nbsp;&nbsp;--name my-agent \\<br />
                           &nbsp;&nbsp;--daemon
                         </code>
                       </li>
@@ -638,16 +697,67 @@ const Agents: React.FC = () => {
         </div>
       )}
 
+      {/* Edit Agent Modal */}
+      {editingAgent && (
+        <div className="modal modal-blur fade show" style={{ display: 'block' }} tabIndex={-1}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">{t('agents.edit.title')}</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => {
+                    setEditingAgent(null);
+                    setEditName('');
+                  }}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <label className="form-label">{t('agents.edit.name_label')}</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder={t('agents.edit.name_placeholder')}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  onClick={() => {
+                    setEditingAgent(null);
+                    setEditName('');
+                  }}
+                  className="btn btn-secondary"
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  onClick={updateAgent}
+                  className="btn btn-primary"
+                  disabled={!editName.trim() || editName === editingAgent.name}
+                >
+                  {t('common.save')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Agent Detail Modal */}
       {selectedAgent && (
-        <div className="modal modal-blur fade show" style={{display: 'block'}} tabIndex={-1}>
+        <div className="modal modal-blur fade show" style={{ display: 'block' }} tabIndex={-1}>
           <div className="modal-dialog modal-lg modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">{selectedAgent.name}</h5>
-                <button 
-                  type="button" 
-                  className="btn-close" 
+                <button
+                  type="button"
+                  className="btn-close"
                   onClick={() => setSelectedAgent(null)}
                 ></button>
               </div>
@@ -697,8 +807,8 @@ const Agents: React.FC = () => {
                           <p className="mb-1">
                             {metricsLatest
                               ? `${formatBytes(metricsLatest.memory_used)} / ${formatBytes(
-                                  metricsLatest.memory_total
-                                )}`
+                                metricsLatest.memory_total
+                              )}`
                               : '--'}
                           </p>
                           <div className="progress progress-sm">
@@ -721,8 +831,8 @@ const Agents: React.FC = () => {
                           <p className="mb-1">
                             {metricsLatest
                               ? `${formatBytes(metricsLatest.disk_used)} / ${formatBytes(
-                                  metricsLatest.disk_total
-                                )}`
+                                metricsLatest.disk_total
+                              )}`
                               : '--'}
                           </p>
                           <div className="progress progress-sm">
@@ -741,8 +851,8 @@ const Agents: React.FC = () => {
                             <span>
                               {metricsLatest
                                 ? `${formatRate(metricsLatest.network_rx_rate)} ↓ / ${formatRate(
-                                    metricsLatest.network_tx_rate
-                                  )} ↑`
+                                  metricsLatest.network_tx_rate
+                                )} ↑`
                                 : '--'}
                             </span>
                           </div>

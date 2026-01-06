@@ -15,8 +15,9 @@ import (
 )
 
 type RegisterAgentRequest struct {
-	Token string `json:"token" binding:"required"`
-	Name  string `json:"name" binding:"required"`
+	Token   string `json:"token" binding:"required"`
+	Name    string `json:"name" binding:"required"`
+	IsLocal bool   `json:"is_local"`
 }
 
 type RegisterAgentResponse struct {
@@ -53,9 +54,9 @@ func (h *Handler) RegisterAgent(c *gin.Context) {
 		return
 	}
 
-	// Create agent
+	// Create agent with is_local flag
 	agentModel := models.NewAgentModel(h.db)
-	agent, err := agentModel.Create(c.Request.Context(), req.Name, apiKeyHash)
+	agent, err := agentModel.Create(c.Request.Context(), req.Name, apiKeyHash, req.IsLocal)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create agent"})
 		return
@@ -282,11 +283,27 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 		})
 	}
 
-	// Send SSE event for heartbeat
+	// Send SSE event for heartbeat with metrics
 	h.sseService.SendEvent("agent.heartbeat", map[string]interface{}{
-		"agent_id": agentID,
-		"status":   req.Status,
-		"actions":  len(actions),
+		"agent_id":  agentID,
+		"status":    req.Status,
+		"timestamp": time.Now().Format(time.RFC3339),
+		"actions":   len(actions),
+		"metrics": map[string]interface{}{
+			"cpu_usage":       metric.CPUUsage,
+			"memory_usage":    metric.MemoryUsage,
+			"memory_total":    metric.MemoryTotal,
+			"memory_used":     metric.MemoryUsed,
+			"disk_usage":      metric.DiskUsage,
+			"disk_total":      metric.DiskTotal,
+			"disk_used":       metric.DiskUsed,
+			"network_rx_rate": metric.NetworkRxRate,
+			"network_tx_rate": metric.NetworkTxRate,
+			"tcp_connections": metric.TCPConnections,
+			"udp_connections": metric.UDPConnections,
+			"process_count":   metric.ProcessCount,
+			"recorded_at":     time.Now(),
+		},
 	})
 
 	c.JSON(http.StatusOK, HeartbeatResponse{
