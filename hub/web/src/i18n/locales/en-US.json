@@ -227,6 +227,18 @@
       "delete": "Delete Task",
       "deleteConfirm": "Are you sure you want to delete task {{name}}?",
       "duplicate": "Duplicate"
+    },
+    "browse": {
+      "title": "Browse Agent Directories",
+      "button": "Browse",
+      "agent": "Agent",
+      "up": "Up",
+      "pathPlaceholder": "/path/to/source",
+      "go": "Go",
+      "empty": "No directories",
+      "use": "Use this path",
+      "select_agent_first": "Please select an agent first.",
+      "only_local": "Directory browsing is currently supported only for local agents."
     }
   },
   "remotes": {

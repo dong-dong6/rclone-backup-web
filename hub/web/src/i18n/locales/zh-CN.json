@@ -350,6 +350,18 @@
       "delete": "删除任务",
       "deleteConfirm": "确定要删除任务 {{name}} 吗？",
       "duplicate": "复制任务"
+    },
+    "browse": {
+      "title": "浏览节点目录",
+      "button": "浏览",
+      "agent": "节点",
+      "up": "上级目录",
+      "pathPlaceholder": "/path/to/source",
+      "go": "前往",
+      "empty": "暂无目录",
+      "use": "使用此路径",
+      "select_agent_first": "请先选择至少一个节点。",
+      "only_local": "当前仅支持本地节点的目录浏览。"
     }
   },
   "remotes": {

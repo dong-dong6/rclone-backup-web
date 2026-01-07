@@ -122,6 +122,55 @@ func (h *Handler) ListAgents(c *gin.Context) {
 	c.JSON(http.StatusOK, agents)
 }
 
+// ListAgentDirectory lists directories on the Agent filesystem.
+// Currently supported for local agents only (uses LOCAL_AGENT_URL).
+func (h *Handler) ListAgentDirectory(c *gin.Context) {
+	idStr := c.Param("id")
+	agentID, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid agent ID"})
+		return
+	}
+
+	agentModel := models.NewAgentModel(h.db)
+	agent, err := agentModel.GetByID(c.Request.Context(), agentID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
+		return
+	}
+
+	if !agent.IsLocal {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Unsupported agent",
+			"message": "Directory listing is currently supported only for local agents.",
+		})
+		return
+	}
+
+	path := strings.TrimSpace(c.Query("path"))
+	if path == "" {
+		path = "/"
+	}
+
+	limit := 200
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 2000 {
+			limit = v
+		}
+	}
+
+	result, err := h.rcloneService.ListDirectory(c.Request.Context(), path, limit)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{
+			"error":   "Failed to list directory",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
 // DeleteAgent deletes an agent
 func (h *Handler) DeleteAgent(c *gin.Context) {
 	idStr := c.Param("id")

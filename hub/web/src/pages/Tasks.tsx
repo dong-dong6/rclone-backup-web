@@ -8,7 +8,9 @@ import {
   IconPlayerPause,
   IconCalendar,
   IconClock,
+  IconFolder,
   IconRefresh,
+  IconArrowUp,
 } from '@tabler/icons-react';
 import { apiClient } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -27,6 +29,7 @@ interface Agent {
   name: string;
   status: 'online' | 'offline' | 'running_task';
   last_heartbeat: string;
+  is_local?: boolean;
 }
 
 interface BackupTask {
@@ -46,6 +49,19 @@ interface BackupTask {
   last_run?: string;
 }
 
+type FSListEntry = {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  is_symlink?: boolean;
+};
+
+type FSListResponse = {
+  path: string;
+  parent?: string;
+  entries: FSListEntry[];
+};
+
   const Tasks: React.FC = () => {
   const { t } = useTranslation();
   const { token } = useAuth();
@@ -56,6 +72,13 @@ interface BackupTask {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingTask, setEditingTask] = useState<BackupTask | null>(null);
+  const [sourceBrowserOpen, setSourceBrowserOpen] = useState(false);
+  const [sourceBrowserAgentId, setSourceBrowserAgentId] = useState<string | null>(null);
+  const [sourceBrowserPath, setSourceBrowserPath] = useState('');
+  const [sourceBrowserParent, setSourceBrowserParent] = useState<string>('');
+  const [sourceBrowserEntries, setSourceBrowserEntries] = useState<FSListEntry[]>([]);
+  const [sourceBrowserLoading, setSourceBrowserLoading] = useState(false);
+  const [sourceBrowserError, setSourceBrowserError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     rclone_remote_id: '',
@@ -160,6 +183,13 @@ interface BackupTask {
       is_active: true,
       assigned_agent_ids: [],
     });
+    setSourceBrowserOpen(false);
+    setSourceBrowserAgentId(null);
+    setSourceBrowserPath('');
+    setSourceBrowserParent('');
+    setSourceBrowserEntries([]);
+    setSourceBrowserLoading(false);
+    setSourceBrowserError(null);
     setShowCreateModal(true);
   };
 
@@ -175,6 +205,13 @@ interface BackupTask {
       is_active: task.is_active,
       assigned_agent_ids: task.assigned_agents,
     });
+    setSourceBrowserOpen(false);
+    setSourceBrowserAgentId(null);
+    setSourceBrowserPath('');
+    setSourceBrowserParent('');
+    setSourceBrowserEntries([]);
+    setSourceBrowserLoading(false);
+    setSourceBrowserError(null);
     setShowCreateModal(true);
   };
 
@@ -190,6 +227,82 @@ interface BackupTask {
       console.error('Failed to delete task:', error);
       alert(t('tasks.delete_failed'));
     }
+  };
+
+  const fetchAgentDirectory = async (agentId: string, path: string) => {
+    setSourceBrowserLoading(true);
+    setSourceBrowserError(null);
+
+    try {
+      const response = await apiClient.get<FSListResponse>(`/admin/agents/${agentId}/fs/list`, {
+        params: { path, limit: 200 },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      setSourceBrowserPath(response.data.path || path);
+      setSourceBrowserParent(response.data.parent || '');
+      setSourceBrowserEntries(response.data.entries || []);
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.response?.data?.error || t('errors.server');
+      setSourceBrowserError(message);
+      setSourceBrowserEntries([]);
+      setSourceBrowserParent('');
+    } finally {
+      setSourceBrowserLoading(false);
+    }
+  };
+
+  const openSourceBrowser = () => {
+    setSourceBrowserOpen(true);
+    setSourceBrowserError(null);
+    setSourceBrowserEntries([]);
+    setSourceBrowserParent('');
+
+    const selectedAgentId = formData.assigned_agent_ids[0];
+    if (!selectedAgentId) {
+      setSourceBrowserAgentId(null);
+      setSourceBrowserPath(formData.source_path || '/');
+      setSourceBrowserError(t('tasks.browse.select_agent_first'));
+      return;
+    }
+
+    const agent = agents.find((item) => item.id === selectedAgentId);
+    if (!agent?.is_local) {
+      setSourceBrowserAgentId(selectedAgentId);
+      setSourceBrowserPath(formData.source_path || '/');
+      setSourceBrowserError(t('tasks.browse.only_local'));
+      return;
+    }
+
+    setSourceBrowserAgentId(selectedAgentId);
+    const initialPath = (formData.source_path || '/').trim() || '/';
+    setSourceBrowserPath(initialPath);
+    void fetchAgentDirectory(selectedAgentId, initialPath);
+  };
+
+  const closeSourceBrowser = () => {
+    if (sourceBrowserLoading) return;
+    setSourceBrowserOpen(false);
+    setSourceBrowserAgentId(null);
+    setSourceBrowserPath('');
+    setSourceBrowserParent('');
+    setSourceBrowserEntries([]);
+    setSourceBrowserError(null);
+  };
+
+  const navigateSourceBrowser = (path: string) => {
+    if (!sourceBrowserAgentId || sourceBrowserLoading) return;
+    const next = path.trim();
+    if (!next) return;
+    setSourceBrowserPath(next);
+    void fetchAgentDirectory(sourceBrowserAgentId, next);
+  };
+
+  const applySourceBrowserPath = () => {
+    const next = sourceBrowserPath.trim();
+    if (!next) return;
+    setFormData({ ...formData, source_path: next });
+    closeSourceBrowser();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -288,6 +401,13 @@ interface BackupTask {
   const closeModal = () => {
     setShowCreateModal(false);
     setEditingTask(null);
+    setSourceBrowserOpen(false);
+    setSourceBrowserAgentId(null);
+    setSourceBrowserPath('');
+    setSourceBrowserParent('');
+    setSourceBrowserEntries([]);
+    setSourceBrowserLoading(false);
+    setSourceBrowserError(null);
   };
 
   return (
@@ -480,35 +600,163 @@ interface BackupTask {
                       </select>
                     </div>
 
-                    <div className="col-12 col-md-6">
-                      <label className="form-label">{t('tasks.source_path')}</label>
-                      <input
-                        type="text"
-                        value={formData.source_path}
-                        onChange={(e) => setFormData({ ...formData, source_path: e.target.value })}
-                        placeholder="/path/to/source"
-                        className="form-control font-monospace"
-                        required
-                      />
-                    </div>
+	                    <div className="col-12 col-md-6">
+	                      <label className="form-label">{t('tasks.source_path')}</label>
+	                      <div className="input-group">
+	                        <input
+	                          type="text"
+	                          value={formData.source_path}
+	                          onChange={(e) => setFormData({ ...formData, source_path: e.target.value })}
+	                          placeholder="/path/to/source"
+	                          className="form-control font-monospace"
+	                          required
+	                        />
+	                        <button type="button" className="btn btn-outline-secondary" onClick={openSourceBrowser}>
+	                          <IconFolder size={16} />
+	                          <span className="ms-1">{t('tasks.browse.button')}</span>
+	                        </button>
+	                      </div>
+	                    </div>
 
-                    <div className="col-12 col-md-6">
-                      <label className="form-label">{t('tasks.destination_path')}</label>
-                      <input
-                        type="text"
-                        value={formData.destination_path}
-                        onChange={(e) => setFormData({ ...formData, destination_path: e.target.value })}
-                        placeholder="remote:path/to/dest"
-                        className="form-control font-monospace"
-                        required
-                      />
-                    </div>
+	                    <div className="col-12 col-md-6">
+	                      <label className="form-label">{t('tasks.destination_path')}</label>
+	                      <input
+	                        type="text"
+	                        value={formData.destination_path}
+	                        onChange={(e) => setFormData({ ...formData, destination_path: e.target.value })}
+	                        placeholder="remote:path/to/dest"
+	                        className="form-control font-monospace"
+	                        required
+	                      />
+	                    </div>
 
-                    <div className="col-12">
-                      <label className="form-label">{t('tasks.list.columns.schedule')}</label>
-                      <div className="row g-2">
-                        <div className="col-12 col-md-6">
-                          <select
+	                    {sourceBrowserOpen && (
+	                      <div className="col-12">
+	                        <div className="card">
+	                          <div className="card-header">
+	                            <div>
+	                              <h3 className="card-title mb-1">{t('tasks.browse.title')}</h3>
+	                              {sourceBrowserAgentId && (
+	                                <div className="text-muted small">
+	                                  {t('tasks.browse.agent')}: {getAgentName(sourceBrowserAgentId)}
+	                                </div>
+	                              )}
+	                            </div>
+	                            <div className="ms-auto d-flex gap-2">
+	                              <button
+	                                type="button"
+	                                className="btn btn-outline-secondary btn-sm"
+	                                onClick={() => sourceBrowserParent && navigateSourceBrowser(sourceBrowserParent)}
+	                                disabled={!sourceBrowserParent || sourceBrowserLoading || !sourceBrowserAgentId}
+	                                title={t('tasks.browse.up')}
+	                              >
+	                                <IconArrowUp size={16} />
+	                              </button>
+	                              <button
+	                                type="button"
+	                                className="btn btn-outline-secondary btn-sm"
+	                                onClick={() => sourceBrowserAgentId && navigateSourceBrowser(sourceBrowserPath)}
+	                                disabled={sourceBrowserLoading || !sourceBrowserAgentId}
+	                                title={t('common.refresh')}
+	                              >
+	                                <IconRefresh size={16} />
+	                              </button>
+	                              <button type="button" className="btn btn-outline-secondary btn-sm" onClick={closeSourceBrowser} disabled={sourceBrowserLoading}>
+	                                {t('common.close')}
+	                              </button>
+	                            </div>
+	                          </div>
+	                          <div className="card-body">
+	                            <div className="input-group mb-3">
+	                              <input
+	                                type="text"
+	                                className="form-control font-monospace"
+	                                value={sourceBrowserPath}
+	                                onChange={(e) => setSourceBrowserPath(e.target.value)}
+	                                placeholder={t('tasks.browse.pathPlaceholder')}
+	                                disabled={sourceBrowserLoading}
+	                                onKeyDown={(e) => {
+	                                  if (e.key === 'Enter') {
+	                                    e.preventDefault();
+	                                    navigateSourceBrowser(sourceBrowserPath);
+	                                  }
+	                                }}
+	                              />
+	                              <button
+	                                type="button"
+	                                className="btn btn-outline-secondary"
+	                                onClick={() => navigateSourceBrowser(sourceBrowserPath)}
+	                                disabled={sourceBrowserLoading || !sourceBrowserAgentId}
+	                              >
+	                                {t('tasks.browse.go')}
+	                              </button>
+	                            </div>
+
+	                            {sourceBrowserError && (
+	                              <div className="alert alert-danger" role="alert">
+	                                {sourceBrowserError}
+	                              </div>
+	                            )}
+
+	                            {sourceBrowserLoading ? (
+	                              <div className="text-center py-4">
+	                                <IconRefresh className="spinner text-primary mb-2" size={24} />
+	                                <div className="text-muted small">{t('common.loading')}</div>
+	                              </div>
+	                            ) : (
+	                              <div className="list-group">
+	                                {sourceBrowserParent && (
+	                                  <button
+	                                    type="button"
+	                                    className="list-group-item list-group-item-action d-flex align-items-center gap-2"
+	                                    onClick={() => navigateSourceBrowser(sourceBrowserParent)}
+	                                    disabled={!sourceBrowserAgentId}
+	                                  >
+	                                    <IconArrowUp size={16} />
+	                                    <span className="font-monospace">..</span>
+	                                  </button>
+	                                )}
+	                                {sourceBrowserEntries.map((entry) => (
+	                                  <button
+	                                    key={entry.path}
+	                                    type="button"
+	                                    className="list-group-item list-group-item-action d-flex align-items-center gap-2"
+	                                    onClick={() => navigateSourceBrowser(entry.path)}
+	                                    disabled={!sourceBrowserAgentId}
+	                                  >
+	                                    <IconFolder size={16} />
+	                                    <span className="font-monospace text-break">{entry.name}</span>
+	                                  </button>
+	                                ))}
+	                                {!sourceBrowserParent && sourceBrowserEntries.length === 0 && !sourceBrowserError && (
+	                                  <div className="text-muted small">{t('tasks.browse.empty')}</div>
+	                                )}
+	                              </div>
+	                            )}
+
+	                            <div className="d-flex justify-content-end gap-2 mt-3">
+	                              <button type="button" className="btn btn-outline-secondary" onClick={closeSourceBrowser} disabled={sourceBrowserLoading}>
+	                                {t('common.cancel')}
+	                              </button>
+	                              <button
+	                                type="button"
+	                                className="btn btn-primary"
+	                                onClick={applySourceBrowserPath}
+	                                disabled={sourceBrowserLoading || !sourceBrowserPath.trim()}
+	                              >
+	                                {t('tasks.browse.use')}
+	                              </button>
+	                            </div>
+	                          </div>
+	                        </div>
+	                      </div>
+	                    )}
+
+	                    <div className="col-12">
+	                      <label className="form-label">{t('tasks.list.columns.schedule')}</label>
+	                      <div className="row g-2">
+	                        <div className="col-12 col-md-6">
+	                          <select
                             value={cronPresets.find(p => p.value === formData.schedule) ? formData.schedule : 'custom'}
                             onChange={(e) => {
                               if (e.target.value !== 'custom') {

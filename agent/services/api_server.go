@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -56,6 +58,7 @@ func (s *AgentAPIServer) Start(ctx context.Context) error {
 
 	// Register endpoints
 	mux.HandleFunc("/api/test-remote", s.handleTestRemote)
+	mux.HandleFunc("/api/fs/list", s.handleListDirectory)
 	mux.HandleFunc("/api/health", s.handleHealth)
 	mux.HandleFunc("/api/version", s.handleVersion)
 
@@ -79,6 +82,87 @@ func (s *AgentAPIServer) Start(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return s.server.Shutdown(shutdownCtx)
+}
+
+type FSListEntry struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	IsDir     bool   `json:"is_dir"`
+	IsSymlink bool   `json:"is_symlink,omitempty"`
+}
+
+type FSListResponse struct {
+	Path    string        `json:"path"`
+	Parent  string        `json:"parent,omitempty"`
+	Entries []FSListEntry `json:"entries"`
+}
+
+// handleListDirectory handles GET /api/fs/list
+func (s *AgentAPIServer) handleListDirectory(w http.ResponseWriter, r *http.Request) {
+	if !s.authorize(w, r) {
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimSpace(r.URL.Query().Get("path"))
+	if path == "" {
+		path = string(filepath.Separator)
+	}
+
+	limit := 200
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 2000 {
+			limit = v
+		}
+	}
+
+	clean := filepath.Clean(path)
+	if !filepath.IsAbs(clean) {
+		clean = filepath.Join(s.workDir, clean)
+	}
+
+	entries, err := os.ReadDir(clean)
+	if err != nil {
+		s.jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	resp := FSListResponse{
+		Path:   clean,
+		Parent: filepath.Dir(clean),
+	}
+
+	if resp.Parent == resp.Path {
+		resp.Parent = ""
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		isSymlink := entry.Type()&os.ModeSymlink != 0
+		resp.Entries = append(resp.Entries, FSListEntry{
+			Name:      entry.Name(),
+			Path:      filepath.Join(clean, entry.Name()),
+			IsDir:     true,
+			IsSymlink: isSymlink,
+		})
+	}
+
+	sort.Slice(resp.Entries, func(i, j int) bool {
+		return strings.ToLower(resp.Entries[i].Name) < strings.ToLower(resp.Entries[j].Name)
+	})
+
+	if len(resp.Entries) > limit {
+		resp.Entries = resp.Entries[:limit]
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // handleTestRemote handles POST /api/test-remote
