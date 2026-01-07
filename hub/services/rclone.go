@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -50,11 +51,14 @@ func NewRcloneService() *RcloneService {
 }
 
 // TestConnection tests an rclone remote connection via the local Agent
-func (s *RcloneService) TestConnection(ctx context.Context, remoteName string, configData string) (*TestConnectionResult, error) {
+func (s *RcloneService) TestConnection(ctx context.Context, remoteName string, configData string, testPath string) (*TestConnectionResult, error) {
 	// Prepare request body
 	reqBody := map[string]string{
 		"remote_name": remoteName,
 		"config_data": configData,
+	}
+	if testPath = strings.TrimSpace(testPath); testPath != "" {
+		reqBody["test_path"] = testPath
 	}
 
 	jsonBody, err := json.Marshal(reqBody)

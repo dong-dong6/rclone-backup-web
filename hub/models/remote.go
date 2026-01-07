@@ -9,12 +9,17 @@ import (
 )
 
 type RcloneRemote struct {
-	ID         uuid.UUID `json:"id"`
-	Name       string    `json:"name"`
-	Type       *string   `json:"type,omitempty"`
-	ConfigData string    `json:"-"` // Encrypted, not exposed in JSON
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID               uuid.UUID  `json:"id"`
+	Name             string     `json:"name"`
+	Type             *string    `json:"type,omitempty"`
+	ConfigData       string     `json:"-"` // Encrypted, not exposed in JSON
+	LastTestAt       *time.Time `json:"last_test_at,omitempty"`
+	LastTestSuccess  *bool      `json:"last_test_success,omitempty"`
+	LastTestMessage  *string    `json:"last_test_message,omitempty"`
+	LastTestError    *string    `json:"last_test_error,omitempty"`
+	LastTestDuration *int64     `json:"last_test_duration_ms,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 type RemoteModel struct {
@@ -62,7 +67,7 @@ func (m *RemoteModel) Create(ctx context.Context, name, encryptedConfig string, 
 func (m *RemoteModel) GetByID(ctx context.Context, id uuid.UUID) (*RcloneRemote, error) {
 	remote := &RcloneRemote{}
 	query := `
-		SELECT id, name, config_data, type, created_at, updated_at
+		SELECT id, name, config_data, type, last_test_at, last_test_success, last_test_message, last_test_error, last_test_duration_ms, created_at, updated_at
 		FROM rclone_remotes
 		WHERE id = $1
 	`
@@ -72,6 +77,11 @@ func (m *RemoteModel) GetByID(ctx context.Context, id uuid.UUID) (*RcloneRemote,
 		&remote.Name,
 		&remote.ConfigData,
 		&remote.Type,
+		&remote.LastTestAt,
+		&remote.LastTestSuccess,
+		&remote.LastTestMessage,
+		&remote.LastTestError,
+		&remote.LastTestDuration,
 		&remote.CreatedAt,
 		&remote.UpdatedAt,
 	)
@@ -86,7 +96,7 @@ func (m *RemoteModel) GetByID(ctx context.Context, id uuid.UUID) (*RcloneRemote,
 // List retrieves all remotes
 func (m *RemoteModel) List(ctx context.Context) ([]*RcloneRemote, error) {
 	query := `
-		SELECT id, name, type, created_at, updated_at
+		SELECT id, name, type, last_test_at, last_test_success, last_test_message, last_test_error, last_test_duration_ms, created_at, updated_at
 		FROM rclone_remotes
 		ORDER BY name ASC
 	`
@@ -104,6 +114,11 @@ func (m *RemoteModel) List(ctx context.Context) ([]*RcloneRemote, error) {
 			&remote.ID,
 			&remote.Name,
 			&remote.Type,
+			&remote.LastTestAt,
+			&remote.LastTestSuccess,
+			&remote.LastTestMessage,
+			&remote.LastTestError,
+			&remote.LastTestDuration,
 			&remote.CreatedAt,
 			&remote.UpdatedAt,
 		)
@@ -120,11 +135,43 @@ func (m *RemoteModel) List(ctx context.Context) ([]*RcloneRemote, error) {
 func (m *RemoteModel) Update(ctx context.Context, id uuid.UUID, name, encryptedConfig string, remoteType *string) error {
 	query := `
 		UPDATE rclone_remotes
-		SET name = $2, config_data = $3, type = $4, updated_at = NOW()
+		SET name = $2,
+		    config_data = $3,
+		    type = $4,
+		    last_test_at = NULL,
+		    last_test_success = NULL,
+		    last_test_message = NULL,
+		    last_test_error = NULL,
+		    last_test_duration_ms = NULL,
+		    updated_at = NOW()
 		WHERE id = $1
 	`
 
 	_, err := m.db.Exec(ctx, query, id, name, encryptedConfig, remoteType)
+	return err
+}
+
+func (m *RemoteModel) UpdateLastTestResult(
+	ctx context.Context,
+	id uuid.UUID,
+	testedAt time.Time,
+	success bool,
+	message *string,
+	errorText *string,
+	durationMs *int64,
+) error {
+	query := `
+		UPDATE rclone_remotes
+		SET last_test_at = $2,
+		    last_test_success = $3,
+		    last_test_message = $4,
+		    last_test_error = $5,
+		    last_test_duration_ms = $6,
+		    updated_at = NOW()
+		WHERE id = $1
+	`
+
+	_, err := m.db.Exec(ctx, query, id, testedAt, success, message, errorText, durationMs)
 	return err
 }
 

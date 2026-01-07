@@ -27,6 +27,7 @@ type AgentAPIServer struct {
 type TestRemoteRequest struct {
 	RemoteName string `json:"remote_name"`
 	ConfigData string `json:"config_data"` // Decrypted rclone config content
+	TestPath   string `json:"test_path,omitempty"`
 }
 
 // TestRemoteResponse represents the response from testing a remote
@@ -103,14 +104,14 @@ func (s *AgentAPIServer) handleTestRemote(w http.ResponseWriter, r *http.Request
 	}
 
 	// Perform the test
-	result := s.testRemoteConnection(r.Context(), req.RemoteName, req.ConfigData)
+	result := s.testRemoteConnection(r.Context(), req.RemoteName, req.ConfigData, req.TestPath)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
 
 // testRemoteConnection tests an rclone remote connection
-func (s *AgentAPIServer) testRemoteConnection(ctx context.Context, remoteName, configData string) *TestRemoteResponse {
+func (s *AgentAPIServer) testRemoteConnection(ctx context.Context, remoteName, configData string, testPath string) *TestRemoteResponse {
 	startTime := time.Now()
 
 	// Create temporary config file
@@ -135,11 +136,22 @@ func (s *AgentAPIServer) testRemoteConnection(ctx context.Context, remoteName, c
 	}
 	defer os.Remove(configPath)
 
+	testPath = strings.TrimSpace(testPath)
+	if testPath != "" {
+		testPath = strings.TrimPrefix(testPath, remoteName+":")
+		testPath = strings.TrimLeft(testPath, ":/")
+	}
+
+	target := remoteName + ":"
+	if testPath != "" {
+		target = remoteName + ":" + testPath
+	}
+
 	// Run rclone lsd with timeout
 	testCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(testCtx, s.rclonePath, "lsd", remoteName+":", "--config", configPath)
+	cmd := exec.CommandContext(testCtx, s.rclonePath, "lsd", "--config", configPath, "--", target)
 	output, err := cmd.CombinedOutput()
 
 	duration := time.Since(startTime).Milliseconds()

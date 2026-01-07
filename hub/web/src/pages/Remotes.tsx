@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { IconEdit, IconKey, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react';
+import { IconEdit, IconKey, IconPlugConnected, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react';
 import { apiClient } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -8,6 +8,11 @@ interface RcloneRemoteListItem {
   id: string;
   name: string;
   type?: string;
+  last_test_at?: string;
+  last_test_success?: boolean;
+  last_test_message?: string;
+  last_test_error?: string;
+  last_test_duration_ms?: number;
   created_at: string;
   updated_at: string;
 }
@@ -183,6 +188,7 @@ const Remotes: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [modalLoading, setModalLoading] = useState(false);
   const [oauthPending, setOauthPending] = useState(false);
+  const [testingRemoteId, setTestingRemoteId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingRemote, setEditingRemote] = useState<RcloneRemoteListItem | null>(null);
   const [configMode, setConfigMode] = useState<ConfigMode>('guided');
@@ -284,9 +290,9 @@ const Remotes: React.FC = () => {
       setRemotes(response.data);
     } catch (error) {
       console.error('Failed to fetch remotes:', error);
-      } finally {
-        setLoading(false);
-      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCreateRemote = () => {
@@ -366,6 +372,38 @@ const Remotes: React.FC = () => {
     }
   };
 
+  const handleTestRemote = async (remoteId: string) => {
+    if (testingRemoteId) return;
+
+    const remote = remotes.find((item) => item.id === remoteId);
+    let testPath = '';
+    if (remote?.type === 's3') {
+      const input = window.prompt(t('remotes.test.pathPromptS3'), '');
+      if (input === null) return;
+      testPath = input.trim();
+    }
+
+    setTestingRemoteId(remoteId);
+    try {
+      const response = await apiClient.post(
+        `/admin/remotes/${remoteId}/test`,
+        testPath ? { test_path: testPath } : null,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      const data = response.data as { success?: boolean; message?: string; error?: string };
+      const statusLabel = data.success ? t('common.success') : t('common.failed');
+      alert(`${t('remotes.actions.test')}: ${statusLabel}${data.message ? ` - ${data.message}` : ''}`);
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.response?.data?.error || t('errors.server');
+      alert(message);
+    } finally {
+      setTestingRemoteId(null);
+      fetchRemotes();
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -418,6 +456,7 @@ const Remotes: React.FC = () => {
         name: remoteName,
         config_data: configDataToSave,
         type: remoteTypeToSave,
+        ...(configMode === 'guided' ? { preset_key: presetKey } : {}),
       };
 
       if (editingRemote) {
@@ -754,9 +793,39 @@ const Remotes: React.FC = () => {
               <div className="card-header">
                 <div>
                   <h3 className="card-title mb-1">{remote.name}</h3>
-                  {remote.type && <span className="badge bg-secondary text-white">{remote.type}</span>}
+                  <div className="d-flex flex-wrap gap-1">
+                    {remote.type && <span className="badge bg-secondary text-white">{remote.type}</span>}
+                    <span
+                      className={`badge ${
+                        remote.last_test_success === true
+                          ? 'bg-success text-white'
+                          : remote.last_test_success === false
+                            ? 'bg-danger text-white'
+                            : 'bg-secondary text-white'
+                      }`}
+                      title={remote.last_test_error || remote.last_test_message || t('remotes.actions.test')}
+                    >
+                      {remote.last_test_success === true
+                        ? t('common.success')
+                        : remote.last_test_success === false
+                          ? t('common.failed')
+                          : t('common.never')}
+                    </span>
+                  </div>
                 </div>
                 <div className="ms-auto d-flex gap-2">
+                  <button
+                    onClick={() => handleTestRemote(remote.id)}
+                    className="btn btn-outline-secondary btn-sm"
+                    title={t('remotes.actions.test')}
+                    disabled={testingRemoteId === remote.id}
+                  >
+                    {testingRemoteId === remote.id ? (
+                      <IconRefresh className="spinner" size={16} />
+                    ) : (
+                      <IconPlugConnected size={16} />
+                    )}
+                  </button>
                   <button
                     onClick={() => handleEditRemote(remote)}
                     className="btn btn-outline-primary btn-sm"
@@ -776,6 +845,10 @@ const Remotes: React.FC = () => {
               <div className="card-body">
                 <div className="text-muted small">
                   {t('remotes.list.columns.createdAt')}: {new Date(remote.created_at).toLocaleString()}
+                </div>
+                <div className="text-muted small">
+                  {t('remotes.list.columns.lastTest')}:{' '}
+                  {remote.last_test_at ? new Date(remote.last_test_at).toLocaleString() : t('common.never')}
                 </div>
               </div>
             </div>

@@ -276,32 +276,36 @@
       "config_preview": "Generated rclone.conf snippet (will be encrypted on save).",
       "raw_help": "Paste a single remote config section (with `[name]` and `type = ...`)."
     },
-    "oauth": {
-      "button": "One-click OAuth",
-      "in_progress": "Authorizing…",
-      "missing_client_id": "Please enter Client ID first",
-      "popup_blocked": "Popup blocked. Please allow popups and try again.",
-      "start_failed": "Failed to start authorization. Check settings and network.",
-      "timeout": "Authorization timed out. Please try again.",
-      "failed": "Authorization failed: {{message}}"
-    },
-    "errors": {
-      "invalid_name": "Invalid storage name (no newlines / [] / :, length must be ≤ 128).",
-      "multiple_sections": "Only a single remote section is supported (do not include multiple [section] blocks).",
-      "missing_type": "Missing `type = ...` in the config. Please check what you pasted.",
-      "endpoint_required": "Endpoint is required"
-    },
-    "list": {
-      "title": "Storage List",
-      "empty": "No remote storage found",
-      "columns": {
-        "name": "Storage Name",
-        "type": "Storage Type",
-        "createdAt": "Created At",
-        "usedBy": "Used by Tasks",
-        "actions": "Actions"
-      }
-    },
+  "oauth": {
+    "button": "One-click OAuth",
+    "in_progress": "Authorizing…",
+    "missing_client_id": "Please enter Client ID first",
+    "popup_blocked": "Popup blocked. Please allow popups and try again.",
+    "start_failed": "Failed to start authorization. Check settings and network.",
+    "timeout": "Authorization timed out. Please try again.",
+    "failed": "Authorization failed: {{message}}"
+  },
+  "test": {
+    "pathPromptS3": "For S3-compatible remotes with bucket-limited credentials, listing buckets may fail. Enter a test path (bucket or bucket/prefix). Leave empty to try listing buckets:"
+  },
+  "errors": {
+    "invalid_name": "Invalid storage name (no newlines / [] / :, length must be ≤ 128).",
+    "multiple_sections": "Only a single remote section is supported (do not include multiple [section] blocks).",
+    "missing_type": "Missing `type = ...` in the config. Please check what you pasted.",
+    "endpoint_required": "Endpoint is required"
+  },
+  "list": {
+    "title": "Storage List",
+    "empty": "No remote storage found",
+    "columns": {
+      "name": "Storage Name",
+      "type": "Storage Type",
+      "createdAt": "Created At",
+      "lastTest": "Last Test",
+      "usedBy": "Used by Tasks",
+      "actions": "Actions"
+    }
+  },
     "types": {
       "s3": "Amazon S3",
       "gcs": "Google Cloud Storage",

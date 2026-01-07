@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -373,6 +374,7 @@ func (h *Handler) CreateRemote(c *gin.Context) {
 		Name       string  `json:"name" binding:"required"`
 		ConfigData string  `json:"config_data" binding:"required"`
 		Type       *string `json:"type,omitempty"`
+		PresetKey  *string `json:"preset_key,omitempty"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -395,6 +397,13 @@ func (h *Handler) CreateRemote(c *gin.Context) {
 	if req.Type != nil && strings.TrimSpace(*req.Type) != "" && strings.TrimSpace(*req.Type) != remoteType {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "type does not match config_data"})
 		return
+	}
+
+	if req.PresetKey != nil && strings.TrimSpace(*req.PresetKey) != "" {
+		if err := validateRemotePresetConfig(strings.TrimSpace(*req.PresetKey), remoteName, req.ConfigData); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	// Encrypt config data
@@ -427,6 +436,7 @@ func (h *Handler) UpdateRemote(c *gin.Context) {
 		Name       string  `json:"name" binding:"required"`
 		ConfigData string  `json:"config_data" binding:"required"`
 		Type       *string `json:"type,omitempty"`
+		PresetKey  *string `json:"preset_key,omitempty"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -449,6 +459,13 @@ func (h *Handler) UpdateRemote(c *gin.Context) {
 	if req.Type != nil && strings.TrimSpace(*req.Type) != "" && strings.TrimSpace(*req.Type) != remoteType {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "type does not match config_data"})
 		return
+	}
+
+	if req.PresetKey != nil && strings.TrimSpace(*req.PresetKey) != "" {
+		if err := validateRemotePresetConfig(strings.TrimSpace(*req.PresetKey), remoteName, req.ConfigData); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	// Encrypt config data
@@ -642,12 +659,17 @@ func (h *Handler) GetRemote(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":          remote.ID,
-		"name":        remote.Name,
-		"type":        remote.Type,
-		"config_data": decryptedConfig,
-		"created_at":  remote.CreatedAt,
-		"updated_at":  remote.UpdatedAt,
+		"id":                    remote.ID,
+		"name":                  remote.Name,
+		"type":                  remote.Type,
+		"config_data":           decryptedConfig,
+		"last_test_at":          remote.LastTestAt,
+		"last_test_success":     remote.LastTestSuccess,
+		"last_test_message":     remote.LastTestMessage,
+		"last_test_error":       remote.LastTestError,
+		"last_test_duration_ms": remote.LastTestDuration,
+		"created_at":            remote.CreatedAt,
+		"updated_at":            remote.UpdatedAt,
 	})
 }
 
@@ -662,6 +684,14 @@ func (h *Handler) TestRemote(c *gin.Context) {
 		return
 	}
 
+	var req struct {
+		TestPath string `json:"test_path"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
 	// Decrypt the config
 	decryptedConfig, err := h.cryptoService.Decrypt(remote.ConfigData)
 	if err != nil {
@@ -669,23 +699,41 @@ func (h *Handler) TestRemote(c *gin.Context) {
 		return
 	}
 
-	// Check if local Agent is available
-	if !h.rcloneService.IsAvailable() {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error":   "Local Agent unavailable",
-			"message": "The local Agent is not running. Please ensure Agent is started to test remote connections.",
-		})
-		return
-	}
-
 	// Test connection via local Agent
-	result, err := h.rcloneService.TestConnection(c.Request.Context(), remote.Name, decryptedConfig)
+	result, err := h.rcloneService.TestConnection(c.Request.Context(), remote.Name, decryptedConfig, req.TestPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to test connection: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	testedAt := time.Now()
+	var (
+		messagePtr  *string
+		errorPtr    *string
+		durationPtr *int64
+	)
+	if strings.TrimSpace(result.Message) != "" {
+		msg := result.Message
+		messagePtr = &msg
+	}
+	if strings.TrimSpace(result.Error) != "" {
+		errText := result.Error
+		errorPtr = &errText
+	}
+	duration := result.DurationMs
+	durationPtr = &duration
+
+	if err := remoteModel.UpdateLastTestResult(c.Request.Context(), remote.ID, testedAt, result.Success, messagePtr, errorPtr, durationPtr); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist remote test result"})
+		return
+	}
+
+	status := http.StatusOK
+	if result.Message == "Failed to connect to local Agent" {
+		status = http.StatusServiceUnavailable
+	}
+
+	c.JSON(status, gin.H{
 		"success":     result.Success,
 		"message":     result.Message,
 		"remote_id":   remoteID,

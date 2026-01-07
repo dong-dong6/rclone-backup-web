@@ -408,23 +408,27 @@
     "timeout": "授权超时，请重试",
     "failed": "授权失败：{{message}}"
   },
+  "test": {
+    "pathPromptS3": "S3 兼容存储如果 Key 仅授权到某个 bucket，列出 buckets 可能失败。请输入测试路径（bucket 或 bucket/prefix）；留空将尝试列出 buckets："
+  },
   "errors": {
     "invalid_name": "存储名称不合法（不能包含换行/[]/:，且长度需 ≤ 128）",
     "multiple_sections": "当前仅支持粘贴单个 remote 的配置段（不要包含多个 [section]）",
     "missing_type": "配置中缺少 `type = ...`，请检查粘贴内容",
     "endpoint_required": "请填写 Endpoint"
   },
-    "list": {
-      "title": "存储列表",
-      "empty": "暂无远程存储",
-      "columns": {
-        "name": "存储名称",
-        "type": "存储类型",
-        "createdAt": "创建时间",
-        "usedBy": "使用任务数",
-        "actions": "操作"
-      }
-    },
+  "list": {
+    "title": "存储列表",
+    "empty": "暂无远程存储",
+    "columns": {
+      "name": "存储名称",
+      "type": "存储类型",
+      "createdAt": "创建时间",
+      "lastTest": "最后测试",
+      "usedBy": "使用任务数",
+      "actions": "操作"
+    }
+  },
     "types": {
       "s3": "Amazon S3",
       "gcs": "Google Cloud Storage",

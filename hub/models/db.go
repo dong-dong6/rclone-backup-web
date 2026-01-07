@@ -12,6 +12,25 @@ import (
 
 var dbPool *pgxpool.Pool
 
+func ensureSchema(ctx context.Context, pool *pgxpool.Pool) error {
+	statements := []string{
+		`ALTER TABLE rclone_remotes ADD COLUMN IF NOT EXISTS last_test_at TIMESTAMP WITH TIME ZONE`,
+		`ALTER TABLE rclone_remotes ADD COLUMN IF NOT EXISTS last_test_success BOOLEAN`,
+		`ALTER TABLE rclone_remotes ADD COLUMN IF NOT EXISTS last_test_message TEXT`,
+		`ALTER TABLE rclone_remotes ADD COLUMN IF NOT EXISTS last_test_error TEXT`,
+		`ALTER TABLE rclone_remotes ADD COLUMN IF NOT EXISTS last_test_duration_ms BIGINT`,
+		`CREATE INDEX IF NOT EXISTS idx_rclone_remotes_last_test_at ON rclone_remotes(last_test_at DESC)`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := pool.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("failed to apply database schema (%s): %w", stmt, err)
+		}
+	}
+
+	return nil
+}
+
 // InitDB initializes the database connection pool
 func InitDB() (*pgxpool.Pool, error) {
 	// Build database URL from environment variables
@@ -83,6 +102,12 @@ func InitDB() (*pgxpool.Pool, error) {
 
 	if err := pool.Ping(ctx); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	migrateCtx, migrateCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer migrateCancel()
+	if err := ensureSchema(migrateCtx, pool); err != nil {
+		return nil, err
 	}
 
 	dbPool = pool

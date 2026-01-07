@@ -165,24 +165,49 @@
 /* Modal Styles - Using Tabler Standard */
 .modal {
   z-index: 1050;
+  overflow-y: auto;
 }
 
 .modal-dialog {
   z-index: 1051;
+  margin: 1.75rem auto;
+  max-height: calc(100vh - 3.5rem);
+  display: flex;
+  align-items: center;
+}
+
+.modal-dialog-scrollable {
+  max-height: calc(100vh - 3.5rem);
+}
+
+.modal-dialog-scrollable .modal-content {
+  max-height: calc(100vh - 3.5rem);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-dialog-scrollable .modal-body {
+  overflow-y: auto;
+  flex: 1 1 auto;
+  max-height: calc(100vh - 14rem);
 }
 
 /* Use Tabler's default modal styling - minimal overrides */
 .modal-content {
   border: 1px solid var(--tblr-border-color);
   border-radius: 0.5rem;
+  max-height: calc(100vh - 3.5rem);
 }
 
 .modal-header {
   border-bottom: 1px solid var(--tblr-border-color);
+  flex-shrink: 0;
 }
 
 .modal-footer {
   border-top: 1px solid var(--tblr-border-color);
+  flex-shrink: 0;
 }
 
 .app-logo {

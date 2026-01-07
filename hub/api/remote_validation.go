@@ -97,3 +97,102 @@ func validateRemoteConfig(remoteName string, configData string) (remoteType stri
 
 	return typ, nil
 }
+
+func validateRemotePresetConfig(presetKey string, remoteName string, configData string) error {
+	parsed := parseSingleRemoteConfig(configData)
+	if parsed.SectionCount != 1 {
+		return fmt.Errorf("config_data must contain exactly one [section]")
+	}
+	if parsed.SectionName != remoteName {
+		return fmt.Errorf("config_data section name must match remote name")
+	}
+
+	typ := strings.TrimSpace(parsed.Options["type"])
+	if typ == "" {
+		return fmt.Errorf("config_data is missing type")
+	}
+
+	requireOption := func(key string) error {
+		if strings.TrimSpace(parsed.Options[key]) == "" {
+			return fmt.Errorf("config_data is missing %s", key)
+		}
+		return nil
+	}
+
+	switch strings.TrimSpace(presetKey) {
+	case "drive":
+		if typ != "drive" {
+			return fmt.Errorf("preset_key drive requires type = drive")
+		}
+		if err := requireOption("token"); err != nil {
+			return err
+		}
+		return nil
+
+	case "onedrive":
+		if typ != "onedrive" {
+			return fmt.Errorf("preset_key onedrive requires type = onedrive")
+		}
+		if err := requireOption("token"); err != nil {
+			return err
+		}
+		return nil
+
+	case "s3_cloudflare_r2":
+		if typ != "s3" {
+			return fmt.Errorf("preset_key s3_cloudflare_r2 requires type = s3")
+		}
+		if strings.TrimSpace(parsed.Options["provider"]) != "Cloudflare" {
+			return fmt.Errorf("preset_key s3_cloudflare_r2 requires provider = Cloudflare")
+		}
+		if err := requireOption("access_key_id"); err != nil {
+			return err
+		}
+		if err := requireOption("secret_access_key"); err != nil {
+			return err
+		}
+		if err := requireOption("endpoint"); err != nil {
+			return err
+		}
+		return nil
+
+	case "s3_alibaba_oss":
+		if typ != "s3" {
+			return fmt.Errorf("preset_key s3_alibaba_oss requires type = s3")
+		}
+		if strings.TrimSpace(parsed.Options["provider"]) != "Alibaba" {
+			return fmt.Errorf("preset_key s3_alibaba_oss requires provider = Alibaba")
+		}
+		if err := requireOption("access_key_id"); err != nil {
+			return err
+		}
+		if err := requireOption("secret_access_key"); err != nil {
+			return err
+		}
+		if err := requireOption("endpoint"); err != nil {
+			return err
+		}
+		return nil
+
+	case "s3_tencent_cos":
+		if typ != "s3" {
+			return fmt.Errorf("preset_key s3_tencent_cos requires type = s3")
+		}
+		if strings.TrimSpace(parsed.Options["provider"]) != "TencentCOS" {
+			return fmt.Errorf("preset_key s3_tencent_cos requires provider = TencentCOS")
+		}
+		if err := requireOption("access_key_id"); err != nil {
+			return err
+		}
+		if err := requireOption("secret_access_key"); err != nil {
+			return err
+		}
+		if err := requireOption("endpoint"); err != nil {
+			return err
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unknown preset_key: %s", strings.TrimSpace(presetKey))
+	}
+}
