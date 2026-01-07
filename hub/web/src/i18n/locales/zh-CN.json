@@ -409,7 +409,11 @@
     "failed": "授权失败：{{message}}"
   },
   "test": {
-    "pathPromptS3": "S3 兼容存储如果 Key 仅授权到某个 bucket，列出 buckets 可能失败。请输入测试路径（bucket 或 bucket/prefix）；留空将尝试列出 buckets："
+    "pathLabel": "测试路径（可选）",
+    "pathPlaceholder": "bucket 或 bucket/prefix",
+    "pathPromptS3": "S3 兼容存储如果 Key 仅授权到某个 bucket，列出 buckets 可能失败。请输入测试路径（bucket 或 bucket/prefix）；留空将尝试列出 buckets：",
+    "outputLabel": "输出",
+    "running": "测试中…"
   },
   "errors": {
     "invalid_name": "存储名称不合法（不能包含换行/[]/:，且长度需 ≤ 128）",

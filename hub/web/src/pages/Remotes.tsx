@@ -78,6 +78,14 @@ type OAuthPopupMessage =
       error: string;
     };
 
+type RemoteTestResponse = {
+  success?: boolean;
+  message?: string;
+  error?: string;
+  output?: string;
+  duration_ms?: number;
+};
+
 const parseRcloneConfig = (configData: string): ParsedRcloneConfig => {
   const sectionNames: string[] = [];
   const options: Record<string, string> = {};
@@ -189,6 +197,11 @@ const Remotes: React.FC = () => {
   const [modalLoading, setModalLoading] = useState(false);
   const [oauthPending, setOauthPending] = useState(false);
   const [testingRemoteId, setTestingRemoteId] = useState<string | null>(null);
+  const [testModalOpen, setTestModalOpen] = useState(false);
+  const [testModalRemote, setTestModalRemote] = useState<RcloneRemoteListItem | null>(null);
+  const [testPath, setTestPath] = useState('');
+  const [testSubmitting, setTestSubmitting] = useState(false);
+  const [testResult, setTestResult] = useState<RemoteTestResponse | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingRemote, setEditingRemote] = useState<RcloneRemoteListItem | null>(null);
   const [configMode, setConfigMode] = useState<ConfigMode>('guided');
@@ -372,33 +385,53 @@ const Remotes: React.FC = () => {
     }
   };
 
-  const handleTestRemote = async (remoteId: string) => {
-    if (testingRemoteId) return;
-
+  const openTestModal = (remoteId: string) => {
     const remote = remotes.find((item) => item.id === remoteId);
-    let testPath = '';
-    if (remote?.type === 's3') {
-      const input = window.prompt(t('remotes.test.pathPromptS3'), '');
-      if (input === null) return;
-      testPath = input.trim();
-    }
+    if (!remote) return;
 
+    setTestModalRemote(remote);
+    setTestPath('');
+    setTestResult(null);
+    setTestModalOpen(true);
+  };
+
+  const closeTestModal = () => {
+    if (testSubmitting) return;
+    setTestModalOpen(false);
+    setTestModalRemote(null);
+    setTestResult(null);
+    setTestPath('');
+  };
+
+  const runRemoteTest = async () => {
+    if (!testModalRemote) return;
+    if (testSubmitting) return;
+
+    const remoteId = testModalRemote.id;
+    const normalizedPath = testPath.trim();
+
+    setTestSubmitting(true);
     setTestingRemoteId(remoteId);
+    setTestResult(null);
+
     try {
       const response = await apiClient.post(
         `/admin/remotes/${remoteId}/test`,
-        testPath ? { test_path: testPath } : null,
+        normalizedPath ? { test_path: normalizedPath } : null,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-      const data = response.data as { success?: boolean; message?: string; error?: string };
-      const statusLabel = data.success ? t('common.success') : t('common.failed');
-      alert(`${t('remotes.actions.test')}: ${statusLabel}${data.message ? ` - ${data.message}` : ''}`);
+      setTestResult(response.data as RemoteTestResponse);
     } catch (error: any) {
-      const message = error?.response?.data?.message || error?.response?.data?.error || t('errors.server');
-      alert(message);
+      const data = error?.response?.data;
+      if (data && typeof data === 'object') {
+        setTestResult(data as RemoteTestResponse);
+      } else {
+        setTestResult({ success: false, message: t('errors.server'), error: String(error) });
+      }
     } finally {
+      setTestSubmitting(false);
       setTestingRemoteId(null);
       fetchRemotes();
     }
@@ -814,12 +847,12 @@ const Remotes: React.FC = () => {
                   </div>
                 </div>
                 <div className="ms-auto d-flex gap-2">
-                  <button
-                    onClick={() => handleTestRemote(remote.id)}
-                    className="btn btn-outline-secondary btn-sm"
-                    title={t('remotes.actions.test')}
-                    disabled={testingRemoteId === remote.id}
-                  >
+	                  <button
+	                    onClick={() => openTestModal(remote.id)}
+	                    className="btn btn-outline-secondary btn-sm"
+	                    title={t('remotes.actions.test')}
+	                    disabled={testingRemoteId === remote.id}
+	                  >
                     {testingRemoteId === remote.id ? (
                       <IconRefresh className="spinner" size={16} />
                     ) : (
@@ -854,25 +887,100 @@ const Remotes: React.FC = () => {
             </div>
           </div>
         ))
-      ) : (
-        <div className="col-12">
-          <div className="card">
-            <div className="card-body text-center py-5">
-              <p className="text-muted mb-3">{t('remotes.list.empty')}</p>
-              <button onClick={handleCreateRemote} className="btn btn-primary">
-                <IconPlus size={16} />
-                <span className="ms-1">{t('remotes.create.title')}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+	      ) : (
+	        <div className="col-12">
+	          <div className="card">
+	            <div className="card-body text-center py-5">
+	              <p className="text-muted mb-3">{t('remotes.list.empty')}</p>
+	              <button onClick={handleCreateRemote} className="btn btn-primary">
+	                <IconPlus size={16} />
+	                <span className="ms-1">{t('remotes.create.title')}</span>
+	              </button>
+	            </div>
+	          </div>
+	        </div>
+	      )}
 
-      {showCreateModal && (
-        <div className="modal modal-blur fade show" style={{ display: 'block' }} tabIndex={-1} role="dialog">
-          <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
-            <div className="modal-content">
-              <form onSubmit={handleSubmit}>
+	      {testModalOpen && testModalRemote && (
+	        <div className="modal modal-blur fade show" style={{ display: 'block' }} tabIndex={-1} role="dialog">
+	          <div className="modal-dialog modal-md modal-dialog-centered modal-dialog-scrollable" role="document">
+	            <div className="modal-content">
+	              <div className="modal-header">
+	                <h5 className="modal-title">
+	                  {t('remotes.actions.test')}: {testModalRemote.name}
+	                </h5>
+	                <button type="button" className="btn-close" onClick={closeTestModal} aria-label={t('common.close')}></button>
+	              </div>
+
+	              <div className="modal-body">
+	                {testModalRemote.type === 's3' && (
+	                  <div className="mb-3">
+	                    <label className="form-label">{t('remotes.test.pathLabel')}</label>
+	                    <input
+	                      type="text"
+	                      className="form-control"
+	                      value={testPath}
+	                      onChange={(e) => setTestPath(e.target.value)}
+	                      placeholder={t('remotes.test.pathPlaceholder')}
+	                      disabled={testSubmitting}
+	                    />
+	                    <div className="form-text">{t('remotes.test.pathPromptS3')}</div>
+	                  </div>
+	                )}
+
+	                {testResult && (
+	                  <div className={`alert ${testResult.success ? 'alert-success' : 'alert-danger'}`} role="alert">
+	                    <div className="fw-semibold mb-1">
+	                      {testResult.success ? t('common.success') : t('common.failed')}
+	                      {typeof testResult.duration_ms === 'number' ? ` (${testResult.duration_ms}ms)` : ''}
+	                    </div>
+	                    {testResult.message && <div className="mb-2">{testResult.message}</div>}
+
+	                    {testResult.error && (
+	                      <div className="mb-2">
+	                        <div className="fw-semibold">{t('common.error')}</div>
+	                        <div className="font-monospace small">{testResult.error}</div>
+	                      </div>
+	                    )}
+
+	                    {testResult.output && (
+	                      <div>
+	                        <div className="fw-semibold">{t('remotes.test.outputLabel')}</div>
+	                        <textarea className="form-control font-monospace mt-1" rows={6} value={testResult.output} readOnly />
+	                      </div>
+	                    )}
+	                  </div>
+	                )}
+	              </div>
+
+	              <div className="modal-footer">
+	                <button type="button" className="btn btn-outline-secondary" onClick={closeTestModal} disabled={testSubmitting}>
+	                  {t('common.cancel')}
+	                </button>
+	                <button type="button" className="btn btn-primary" onClick={runRemoteTest} disabled={testSubmitting}>
+	                  {testSubmitting ? (
+	                    <>
+	                      <IconRefresh className="spinner" size={16} />
+	                      <span className="ms-1">{t('remotes.test.running')}</span>
+	                    </>
+	                  ) : (
+	                    <>
+	                      <IconPlugConnected size={16} />
+	                      <span className="ms-1">{t('remotes.actions.test')}</span>
+	                    </>
+	                  )}
+	                </button>
+	              </div>
+	            </div>
+	          </div>
+	        </div>
+	      )}
+
+	      {showCreateModal && (
+	        <div className="modal modal-blur fade show" style={{ display: 'block' }} tabIndex={-1} role="dialog">
+	          <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
+	            <div className="modal-content">
+	              <form onSubmit={handleSubmit}>
                 <div className="modal-header">
                   <h5 className="modal-title">
                     {editingRemote ? t('remotes.edit.title') : t('remotes.create.title')}

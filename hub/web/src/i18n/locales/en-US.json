@@ -286,7 +286,11 @@
     "failed": "Authorization failed: {{message}}"
   },
   "test": {
-    "pathPromptS3": "For S3-compatible remotes with bucket-limited credentials, listing buckets may fail. Enter a test path (bucket or bucket/prefix). Leave empty to try listing buckets:"
+    "pathLabel": "Test path (optional)",
+    "pathPlaceholder": "bucket or bucket/prefix",
+    "pathPromptS3": "For S3-compatible remotes with bucket-limited credentials, listing buckets may fail. Enter a test path (bucket or bucket/prefix). Leave empty to try listing buckets:",
+    "outputLabel": "Output",
+    "running": "Testing…"
   },
   "errors": {
     "invalid_name": "Invalid storage name (no newlines / [] / :, length must be ≤ 128).",
