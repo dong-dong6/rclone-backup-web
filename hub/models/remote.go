@@ -26,10 +26,11 @@ func NewRemoteModel(db *pgxpool.Pool) *RemoteModel {
 }
 
 // Create creates a new rclone remote
-func (m *RemoteModel) Create(ctx context.Context, name, encryptedConfig string) (*RcloneRemote, error) {
+func (m *RemoteModel) Create(ctx context.Context, name, encryptedConfig string, remoteType *string) (*RcloneRemote, error) {
 	remote := &RcloneRemote{
 		ID:         uuid.New(),
 		Name:       name,
+		Type:       remoteType,
 		ConfigData: encryptedConfig,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
@@ -116,14 +117,14 @@ func (m *RemoteModel) List(ctx context.Context) ([]*RcloneRemote, error) {
 }
 
 // Update updates a remote configuration
-func (m *RemoteModel) Update(ctx context.Context, id uuid.UUID, name, encryptedConfig string) error {
+func (m *RemoteModel) Update(ctx context.Context, id uuid.UUID, name, encryptedConfig string, remoteType *string) error {
 	query := `
 		UPDATE rclone_remotes
-		SET name = $2, config_data = $3, updated_at = NOW()
+		SET name = $2, config_data = $3, type = $4, updated_at = NOW()
 		WHERE id = $1
 	`
 
-	_, err := m.db.Exec(ctx, query, id, name, encryptedConfig)
+	_, err := m.db.Exec(ctx, query, id, name, encryptedConfig, remoteType)
 	return err
 }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import {
   IconDashboard,
   IconCloud,
@@ -18,7 +18,7 @@ import Dashboard from './pages/Dashboard';
 import Agents from './pages/Agents';
 import Tasks from './pages/Tasks';
 import Remotes from './pages/Remotes';
-import Executions from './pages/Executions';
+import Executions, { ExecutionDetail } from './pages/Executions';
 import SettingsPage from './pages/Settings';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -28,15 +28,15 @@ import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
 const AppLayout: React.FC = () => {
-  const [collapsed, setCollapsed] = useState(window.innerWidth < 768);
   const { user, logout } = useAuth();
   const { t, i18n } = useTranslation();
   const [selectedKey, setSelectedKey] = useState('dashboard');
+  const location = useLocation();
 
   useEffect(() => {
-    const path = window.location.pathname.substring(1);
-    setSelectedKey(path || 'dashboard');
-  }, []);
+    const pathSegment = location.pathname.split('/')[1];
+    setSelectedKey(pathSegment || 'dashboard');
+  }, [location.pathname]);
 
   const menuItems = [
     { key: 'dashboard', icon: <IconDashboard size={20} />, label: t('menu.dashboard'), path: '/dashboard' },
@@ -125,6 +125,7 @@ const AppLayout: React.FC = () => {
               <Route path="/tasks" element={<Tasks />} />
               <Route path="/remotes" element={<Remotes />} />
               <Route path="/executions" element={<Executions />} />
+              <Route path="/executions/:id" element={<ExecutionDetail />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/" element={<Navigate to="/dashboard" />} />
             </Routes>

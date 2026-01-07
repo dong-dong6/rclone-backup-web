@@ -370,12 +370,30 @@ func (h *Handler) ListRemotes(c *gin.Context) {
 // CreateRemote creates a new remote
 func (h *Handler) CreateRemote(c *gin.Context) {
 	var req struct {
-		Name       string `json:"name" binding:"required"`
-		ConfigData string `json:"config_data" binding:"required"`
+		Name       string  `json:"name" binding:"required"`
+		ConfigData string  `json:"config_data" binding:"required"`
+		Type       *string `json:"type,omitempty"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	remoteName, err := validateRemoteName(req.Name)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	remoteType, err := validateRemoteConfig(remoteName, req.ConfigData)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Type != nil && strings.TrimSpace(*req.Type) != "" && strings.TrimSpace(*req.Type) != remoteType {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "type does not match config_data"})
 		return
 	}
 
@@ -387,7 +405,7 @@ func (h *Handler) CreateRemote(c *gin.Context) {
 	}
 
 	remoteModel := models.NewRemoteModel(h.db)
-	remote, err := remoteModel.Create(c.Request.Context(), req.Name, encryptedConfig)
+	remote, err := remoteModel.Create(c.Request.Context(), remoteName, encryptedConfig, &remoteType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create remote"})
 		return
@@ -406,12 +424,30 @@ func (h *Handler) UpdateRemote(c *gin.Context) {
 	}
 
 	var req struct {
-		Name       string `json:"name" binding:"required"`
-		ConfigData string `json:"config_data" binding:"required"`
+		Name       string  `json:"name" binding:"required"`
+		ConfigData string  `json:"config_data" binding:"required"`
+		Type       *string `json:"type,omitempty"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	remoteName, err := validateRemoteName(req.Name)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	remoteType, err := validateRemoteConfig(remoteName, req.ConfigData)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Type != nil && strings.TrimSpace(*req.Type) != "" && strings.TrimSpace(*req.Type) != remoteType {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "type does not match config_data"})
 		return
 	}
 
@@ -423,7 +459,7 @@ func (h *Handler) UpdateRemote(c *gin.Context) {
 	}
 
 	remoteModel := models.NewRemoteModel(h.db)
-	if err := remoteModel.Update(c.Request.Context(), id, req.Name, encryptedConfig); err != nil {
+	if err := remoteModel.Update(c.Request.Context(), id, remoteName, encryptedConfig, &remoteType); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update remote"})
 		return
 	}
@@ -474,6 +510,40 @@ func (h *Handler) ListExecutions(c *gin.Context) {
 		"items": executions,
 		"page":  page,
 		"limit": limit,
+	})
+}
+
+// GetExecutionsStats returns execution statistics for the executions page.
+func (h *Handler) GetExecutionsStats(c *gin.Context) {
+	monitor := services.NewExecutionMonitor(h.db)
+	raw, err := monitor.GetExecutionStats(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get execution stats"})
+		return
+	}
+
+	pending, _ := raw["pending"].(int)
+	running, _ := raw["running"].(int)
+	success, _ := raw["success"].(int)
+	failed, _ := raw["failed"].(int)
+
+	successRate24h := float64(0)
+	if v, ok := raw["success_rate_24h"].(float64); ok {
+		successRate24h = v
+	}
+
+	avgDurationSeconds := float64(0)
+	if v, ok := raw["avg_duration_seconds"].(float64); ok {
+		avgDurationSeconds = v
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"total":                pending + running + success + failed,
+		"running":              running,
+		"success":              success,
+		"failed":               failed,
+		"success_rate_24h":     successRate24h,
+		"avg_duration_seconds": avgDurationSeconds,
 	})
 }
 
@@ -566,11 +636,19 @@ func (h *Handler) GetRemote(c *gin.Context) {
 
 	// Decrypt the config for display
 	decryptedConfig, err := h.cryptoService.Decrypt(remote.ConfigData)
-	if err == nil {
-		remote.ConfigData = decryptedConfig
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decrypt remote config"})
+		return
 	}
 
-	c.JSON(http.StatusOK, remote)
+	c.JSON(http.StatusOK, gin.H{
+		"id":          remote.ID,
+		"name":        remote.Name,
+		"type":        remote.Type,
+		"config_data": decryptedConfig,
+		"created_at":  remote.CreatedAt,
+		"updated_at":  remote.UpdatedAt,
+	})
 }
 
 // TestRemote tests a remote connection via local Agent

@@ -98,6 +98,15 @@ func main() {
 			}
 		}
 
+		// OAuth helpers for web UI (public callbacks; state is validated server-side)
+		oauth := v1.Group("/oauth")
+		{
+			oauth.GET("/drive/start", apiHandler.OAuthDriveStart)
+			oauth.GET("/drive/callback", apiHandler.OAuthDriveCallback)
+			oauth.GET("/onedrive/start", apiHandler.OAuthOneDriveStart)
+			oauth.GET("/onedrive/callback", apiHandler.OAuthOneDriveCallback)
+		}
+
 		// Admin facing API
 		admin := v1.Group("/admin")
 		{
@@ -125,6 +134,12 @@ func main() {
 				adminAuth.PUT("/tasks/:id", apiHandler.UpdateTask)
 				adminAuth.DELETE("/tasks/:id", apiHandler.DeleteTask)
 
+				// OAuth (one-click auth for drive/onedrive)
+				adminAuth.POST("/oauth/drive/flow", apiHandler.CreateDriveOAuthFlow)
+				adminAuth.POST("/oauth/onedrive/flow", apiHandler.CreateOneDriveOAuthFlow)
+				adminAuth.GET("/oauth/drive/flow/:flowId", apiHandler.GetDriveOAuthFlow)
+				adminAuth.GET("/oauth/onedrive/flow/:flowId", apiHandler.GetOneDriveOAuthFlow)
+
 				// Remotes management
 				adminAuth.GET("/remotes", apiHandler.ListRemotes)
 				adminAuth.GET("/remotes/:id", apiHandler.GetRemote)
@@ -135,6 +150,7 @@ func main() {
 
 				// Executions
 				adminAuth.GET("/executions", apiHandler.ListExecutions)
+				adminAuth.GET("/executions/stats", apiHandler.GetExecutionsStats)
 				adminAuth.GET("/executions/:id", apiHandler.GetExecutionDetail)
 				adminAuth.POST("/executions/trigger", apiHandler.TriggerExecution)
 				adminAuth.POST("/executions/:id/cancel", apiHandler.CancelExecution)

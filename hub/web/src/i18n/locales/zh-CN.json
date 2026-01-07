@@ -354,6 +354,66 @@
   },
   "remotes": {
     "title": "远程存储",
+    "mode": {
+      "label": "配置方式",
+      "guided": "快速配置",
+      "raw": "手动粘贴"
+    },
+    "preset": {
+      "label": "存储类型",
+      "drive": "Google Drive",
+      "onedrive": "OneDrive",
+      "cloudflare_r2": "Cloudflare R2",
+      "aliyun_oss": "阿里云 OSS",
+      "tencent_cos": "腾讯云 COS"
+    },
+    "fields": {
+      "client_id": "Client ID",
+      "client_secret": "Client Secret",
+      "scope": "Scope",
+      "token": "OAuth Token (JSON)",
+      "team_drive": "Shared Drive ID",
+      "root_folder_id": "Root Folder ID",
+      "region": "Region",
+      "drive_type": "Drive Type",
+      "drive_id": "Drive ID",
+      "access_key_id": "Access Key ID",
+      "secret_access_key": "Secret Access Key",
+      "endpoint": "Endpoint"
+    },
+    "placeholders": {
+      "client_id": "留空使用默认",
+      "client_secret": "留空使用默认",
+      "team_drive": "可选：Shared Drive (Team Drive) ID",
+      "root_folder_id": "可选：根目录 ID",
+      "endpoint_custom": "自定义 Endpoint，例如：oss-cn-hangzhou.aliyuncs.com"
+    },
+    "values": {
+      "default": "默认",
+      "custom": "自定义",
+      "current": "当前"
+    },
+  "hints": {
+    "token_drive": "点击“一键授权”自动获取 token，或在本机执行 `rclone authorize drive` 获取 token JSON（建议粘贴单行 JSON）",
+    "token_onedrive": "点击“一键授权”自动获取 token，或在本机执行 `rclone authorize onedrive` 获取 token JSON（建议粘贴单行 JSON）",
+    "config_preview": "生成的 rclone.conf 片段（保存时会加密）",
+    "raw_help": "粘贴单个 remote 的完整配置段（包含 `[name]` 和 `type = ...`）"
+  },
+  "oauth": {
+    "button": "一键授权",
+    "in_progress": "授权中…",
+    "missing_client_id": "请先填写 Client ID",
+    "popup_blocked": "弹窗被拦截，请允许弹窗后重试",
+    "start_failed": "启动授权失败，请检查配置与网络",
+    "timeout": "授权超时，请重试",
+    "failed": "授权失败：{{message}}"
+  },
+  "errors": {
+    "invalid_name": "存储名称不合法（不能包含换行/[]/:，且长度需 ≤ 128）",
+    "multiple_sections": "当前仅支持粘贴单个 remote 的配置段（不要包含多个 [section]）",
+    "missing_type": "配置中缺少 `type = ...`，请检查粘贴内容",
+    "endpoint_required": "请填写 Endpoint"
+  },
     "list": {
       "title": "存储列表",
       "empty": "暂无远程存储",

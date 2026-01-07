@@ -5,6 +5,7 @@
 
 # 缓存/运行时数据
 .cache/
+.gocache/
 cache/
 cache-*/
 .rclone-cache/

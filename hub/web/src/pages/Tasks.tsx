@@ -1,16 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { IconPlus, IconEdit, IconTrash, IconPlayerPlay, IconPlayerPause, IconCalendar, IconClock } from '@tabler/icons-react';
+import {
+  IconPlus,
+  IconEdit,
+  IconTrash,
+  IconPlayerPlay,
+  IconPlayerPause,
+  IconCalendar,
+  IconClock,
+  IconRefresh,
+} from '@tabler/icons-react';
 import { apiClient } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../contexts/SSEContext';
-import classNames from 'classnames';
 
 interface RcloneRemote {
   id: string;
   name: string;
-  config_data: string;
   created_at: string;
+  updated_at: string;
+  type?: string;
 }
 
 interface Agent {
@@ -37,10 +46,10 @@ interface BackupTask {
   last_run?: string;
 }
 
-const Tasks: React.FC = () => {
+  const Tasks: React.FC = () => {
   const { t } = useTranslation();
   const { token } = useAuth();
-  const { events } = useSSE();
+  const { subscribe } = useSSE();
   const [tasks, setTasks] = useState<BackupTask[]>([]);
   const [remotes, setRemotes] = useState<RcloneRemote[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -82,14 +91,16 @@ const Tasks: React.FC = () => {
 
   // Listen to SSE events
   useEffect(() => {
-    const handleTaskEvent = (event: any) => {
-      if (event.type === 'task.created' || event.type === 'task.updated') {
-        fetchTasks();
-      }
-    };
+    const unsubscribers = [
+      subscribe('task.created', () => fetchTasks()),
+      subscribe('task.updated', () => fetchTasks()),
+      subscribe('task.deleted', () => fetchTasks()),
+    ];
 
-    events.forEach(handleTaskEvent);
-  }, [events]);
+    return () => {
+      unsubscribers.forEach(unsubscribe => unsubscribe());
+    };
+  }, []);
 
   const fetchData = async () => {
     setLoading(true);
@@ -245,423 +256,434 @@ const Tasks: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="neu-card p-8">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent"></div>
+      <div className="row">
+        <div className="col-12">
+          <div className="card">
+            <div className="card-body text-center py-5">
+              <IconRefresh className="spinner text-primary mb-3" size={48} />
+              <p className="text-muted">{t('common.loading')}</p>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
+  const getRemoteDisplayName = (task: BackupTask) => {
+    const remoteNameFromList = remotes.find(r => r.id === task.rclone_remote_id)?.name;
+    return task.remote_name || remoteNameFromList || task.rclone_remote_id;
+  };
+
+  const getAgentStatusMeta = (status: Agent['status']) => {
+    switch (status) {
+      case 'online':
+        return { label: t('common.online'), badgeClass: 'bg-success' };
+      case 'running_task':
+        return { label: t('common.running'), badgeClass: 'bg-primary' };
+      default:
+        return { label: t('common.offline'), badgeClass: 'bg-secondary' };
+    }
+  };
+
+  const closeModal = () => {
+    setShowCreateModal(false);
+    setEditingTask(null);
+  };
+
   return (
-    <div className="page-container">
-      {/* Header */}
-      <div className="page-header">
-        <h1 className="page-title">{t('tasks.title')}</h1>
-        <button
-          onClick={handleCreateTask}
-          className="neu-button-primary"
-        >
-          <Plus size={20} />
-          <span>{t('tasks.create_new')}</span>
-        </button>
-      </div>
-
-      {/* Tasks Grid */}
-      <div className="tasks-grid">
-        {tasks.map((task) => (
-          <div key={task.id} className="neu-card task-card">
-            <div className="task-card-header">
-              <div className="flex-1">
-                <h3 className="text-xl font-semibold mb-1">{task.name}</h3>
-                <span className={classNames(
-                  'inline-flex items-center px-2 py-1 rounded text-sm',
-                  task.is_active 
-                    ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' 
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-                )}>
-                  {task.is_active ? t('common.active') : t('common.inactive')}
-                </span>
-              </div>
-              
-              <div className="flex space-x-1">
-                <button
-                  onClick={() => toggleTaskActive(task)}
-                  className="neu-button-icon"
-                  title={task.is_active ? t('tasks.deactivate') : t('tasks.activate')}
-                >
-                  {task.is_active ? <Pause size={16} /> : <Play size={16} />}
-                </button>
-                <button
-                  onClick={() => handleEditTask(task)}
-                  className="neu-button-icon"
-                  title={t('common.edit')}
-                >
-                  <Edit size={16} />
-                </button>
-                <button
-                  onClick={() => handleDeleteTask(task.id)}
-                  className="neu-button-icon text-red-500"
-                  title={t('common.delete')}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-
-            <div className="task-card-content">
-              <div className="task-card-row">
-                <span className="task-card-label">{t('tasks.remote')}:</span>
-                <span className="task-card-value">{task.remote_name || task.rclone_remote_id}</span>
-              </div>
-              
-              <div className="task-card-row">
-                <div className="task-card-label">{t('tasks.source')}:</div>
-                <div className="code-block">
-                  {task.source_path}
-                </div>
-              </div>
-              
-              <div className="task-card-row">
-                <div className="task-card-label">{t('tasks.destination')}:</div>
-                <div className="code-block">
-                  {task.destination_path}
-                </div>
-              </div>
-              
-              <div className="task-card-row">
-                <Calendar size={14} />
-                <span className="task-card-label">{t('tasks.schedule')}:</span>
-                <span className="task-card-value">{task.schedule}</span>
-              </div>
-              
-              <div className="task-card-row">
-                <Clock size={14} />
-                <span className="task-card-label">{t('tasks.next_run')}:</span>
-                <span className="task-card-value">{task.next_run || formatNextRun(task.schedule)}</span>
-              </div>
-            </div>
-
-            {/* Assigned Agents */}
-            <div>
-              <div className="section-title">
-                {t('tasks.assigned_agents')}:
-              </div>
-              {task.assigned_agents.length > 0 ? (
-                <div className="agent-list">
-                  {task.assigned_agents.map(agentId => {
-                    const status = getAgentStatus(agentId);
-                    return (
-                      <div key={agentId} className="agent-list-item">
-                        <span className="agent-name">{getAgentName(agentId)}</span>
-                        <div className="flex items-center space-x-2">
-                          <span className={classNames(
-                            'status-dot',
-                            status === 'online' ? 'online' :
-                            status === 'running_task' ? 'running' :
-                            'offline'
-                          )} />
-                          {status === 'online' && (
-                            <button
-                              onClick={() => handleTriggerTask(task.id, agentId)}
-                              className="run-button"
-                              title={t('tasks.run_now')}
-                            >
-                              <Play size={12} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="no-agents">
-                  {t('tasks.no_agents_assigned')}
-                </div>
-              )}
-            </div>
-
-            {/* Rclone Args */}
-            {task.rclone_args.length > 0 && (
-              <div>
-                <div className="args-title">
-                  {t('tasks.arguments')}:
-                </div>
-                <div className="args-list">
-                  {task.rclone_args.map((arg, idx) => (
-                    <span key={idx} className="arg-tag">
-                      {arg}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+    <div className="row row-deck row-cards">
+      <div className="col-12">
+        <div className="card">
+          <div className="card-body d-flex justify-content-end gap-2">
+            <button onClick={fetchData} className="btn btn-outline-primary">
+              <IconRefresh size={16} />
+              <span className="ms-1">{t('common.refresh')}</span>
+            </button>
+            <button onClick={handleCreateTask} className="btn btn-primary">
+              <IconPlus size={16} />
+              <span className="ms-1">{t('tasks.create_new')}</span>
+            </button>
           </div>
-        ))}
+        </div>
       </div>
 
-      {tasks.length === 0 && (
-        <div className="neu-card p-12 text-center">
-          <p className="text-gray-500 dark:text-gray-400 mb-4">
-            {t('tasks.no_tasks')}
-          </p>
-          <button
-            onClick={handleCreateTask}
-            className="neu-button-primary"
-          >
-            {t('tasks.create_first')}
-          </button>
-        </div>
-      )}
-
-      {/* Create/Edit Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="neu-card p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold mb-6">
-              {editingTask ? t('tasks.edit_task') : t('tasks.create_task')}
-            </h2>
-            
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  {t('tasks.task_name')}
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="neu-input w-full"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  {t('tasks.remote')}
-                </label>
-                <select
-                  value={formData.rclone_remote_id}
-                  onChange={(e) => setFormData({ ...formData, rclone_remote_id: e.target.value })}
-                  className="neu-input w-full"
-                  required
-                >
-                  <option value="">{t('tasks.select_remote')}</option>
-                  {remotes.map((remote) => (
-                    <option key={remote.id} value={remote.id}>
-                      {remote.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+      {tasks.length > 0 ? (
+        tasks.map((task) => (
+          <div key={task.id} className="col-12 col-md-6 col-xl-4">
+            <div className="card">
+              <div className="card-header">
                 <div>
-                  <label className="block text-sm font-medium mb-1">
-                    {t('tasks.source_path')}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.source_path}
-                    onChange={(e) => setFormData({ ...formData, source_path: e.target.value })}
-                    placeholder="/path/to/source"
-                    className="neu-input w-full"
-                    required
-                  />
+                  <h3 className="card-title mb-1">{task.name}</h3>
+                  <div className="text-muted small">{getRemoteDisplayName(task)}</div>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    {t('tasks.destination_path')}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.destination_path}
-                    onChange={(e) => setFormData({ ...formData, destination_path: e.target.value })}
-                    placeholder="remote:path/to/dest"
-                    className="neu-input w-full"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  {t('tasks.schedule')}
-                </label>
-                <div className="space-y-2">
-                  <select
-                    value={cronPresets.find(p => p.value === formData.schedule) ? formData.schedule : 'custom'}
-                    onChange={(e) => {
-                      if (e.target.value !== 'custom') {
-                        setFormData({ ...formData, schedule: e.target.value });
-                      }
-                    }}
-                    className="neu-input w-full"
+                <div className="ms-auto d-flex align-items-start flex-wrap gap-2">
+                  <span className={`badge ${task.is_active ? 'bg-success' : 'bg-secondary'} text-white`}>
+                    {task.is_active ? t('common.active') : t('common.inactive')}
+                  </span>
+                  <button
+                    onClick={() => toggleTaskActive(task)}
+                    className="btn btn-outline-secondary btn-sm"
+                    title={task.is_active ? t('tasks.deactivate') : t('tasks.activate')}
                   >
-                    {cronPresets.map((preset) => (
-                      <option key={preset.value} value={preset.value}>
-                        {preset.label}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={formData.schedule}
-                    onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
-                    placeholder="* * * * *"
-                    className="neu-input w-full font-mono"
-                    required
-                  />
-                  <div className="text-xs text-gray-500">
-                    {t('tasks.cron_help')}
+                    {task.is_active ? <IconPlayerPause size={16} /> : <IconPlayerPlay size={16} />}
+                  </button>
+                  <button
+                    onClick={() => handleEditTask(task)}
+                    className="btn btn-outline-primary btn-sm"
+                    title={t('common.edit')}
+                  >
+                    <IconEdit size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteTask(task.id)}
+                    className="btn btn-outline-danger btn-sm"
+                    title={t('common.delete')}
+                  >
+                    <IconTrash size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="card-body">
+                <div className="mb-3">
+                  <div className="text-muted small mb-1">{t('tasks.source')}</div>
+                  <code className="text-break">{task.source_path}</code>
+                </div>
+
+                <div className="mb-3">
+                  <div className="text-muted small mb-1">{t('tasks.destination')}</div>
+                  <code className="text-break">{task.destination_path}</code>
+                </div>
+
+                <div className="row g-2 mb-3">
+                  <div className="col-12 col-sm-6">
+                    <div className="text-muted small mb-1">
+                      <IconCalendar size={14} className="me-1" />
+                      {t('tasks.list.columns.schedule')}
+                    </div>
+                    <code className="text-break">{task.schedule}</code>
+                  </div>
+                  <div className="col-12 col-sm-6">
+                    <div className="text-muted small mb-1">
+                      <IconClock size={14} className="me-1" />
+                      {t('tasks.next_run')}
+                    </div>
+                    <div className="fw-bold text-break">
+                      {task.next_run || formatNextRun(task.schedule)}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  {t('tasks.assign_agents')}
-                </label>
-                <div className="space-y-2">
-                  {agents.map((agent) => (
-                    <label key={agent.id} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={formData.assigned_agent_ids.includes(agent.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setFormData({
-                              ...formData,
-                              assigned_agent_ids: [...formData.assigned_agent_ids, agent.id],
-                            });
-                          } else {
-                            setFormData({
-                              ...formData,
-                              assigned_agent_ids: formData.assigned_agent_ids.filter(id => id !== agent.id),
-                            });
-                          }
-                        }}
-                        className="neu-checkbox"
-                      />
-                      <span>{agent.name}</span>
-                      <span className={classNames(
-                        'text-xs px-2 py-1 rounded',
-                        agent.status === 'online' ? 'bg-green-100 text-green-800' :
-                        agent.status === 'running_task' ? 'bg-blue-100 text-blue-800' :
-                        'bg-gray-100 text-gray-600'
-                      )}>
-                        {agent.status}
-                      </span>
-                    </label>
-                  ))}
+                <div className="mb-3">
+                  <div className="text-muted small mb-2">{t('tasks.assigned_agents')}</div>
+                  {task.assigned_agents.length > 0 ? (
+                    <div className="d-flex flex-column gap-2">
+                      {task.assigned_agents.map(agentId => {
+                        const status = getAgentStatus(agentId);
+                        const statusMeta = getAgentStatusMeta(status);
+
+                        return (
+                          <div key={agentId} className="d-flex align-items-center justify-content-between gap-2">
+                            <div className="text-break">{getAgentName(agentId)}</div>
+                            <div className="d-flex align-items-center gap-2 flex-shrink-0">
+                              <span className={`badge ${statusMeta.badgeClass} text-white`}>
+                                {statusMeta.label}
+                              </span>
+                              {status === 'online' && (
+                                <button
+                                  onClick={() => handleTriggerTask(task.id, agentId)}
+                                  className="btn btn-outline-primary btn-sm"
+                                  title={t('tasks.run_now')}
+                                >
+                                  <IconPlayerPlay size={16} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-muted">{t('tasks.no_agents_assigned')}</div>
+                  )}
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  {t('tasks.rclone_arguments')}
-                </label>
-                <div className="space-y-2">
-                  {rcloneArgPresets.map((arg) => (
-                    <label key={arg.label} className="flex items-start space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={formData.rclone_args.includes(arg.label)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setFormData({
-                              ...formData,
-                              rclone_args: [...formData.rclone_args, arg.label],
-                            });
-                          } else {
-                            setFormData({
-                              ...formData,
-                              rclone_args: formData.rclone_args.filter(a => a !== arg.label),
-                            });
-                          }
-                        }}
-                        className="neu-checkbox mt-1"
-                      />
-                      <div>
-                        <span className="font-mono text-sm">{arg.label}</span>
-                        <div className="text-xs text-gray-500">{arg.description}</div>
-                      </div>
-                    </label>
-                  ))}
-                  <input
-                    type="text"
-                    placeholder={t('tasks.custom_args')}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        const input = e.currentTarget;
-                        if (input.value && !formData.rclone_args.includes(input.value)) {
-                          setFormData({
-                            ...formData,
-                            rclone_args: [...formData.rclone_args, input.value],
-                          });
-                          input.value = '';
-                        }
-                      }
-                    }}
-                    className="neu-input w-full text-sm"
-                  />
-                  {formData.rclone_args.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {formData.rclone_args.map((arg, idx) => (
-                        <span
-                          key={idx}
-                          className="inline-flex items-center space-x-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-sm"
-                        >
-                          <span className="font-mono">{arg}</span>
-                          <button
-                            type="button"
-                            onClick={() => setFormData({
-                              ...formData,
-                              rclone_args: formData.rclone_args.filter((_, i) => i !== idx),
-                            })}
-                            className="ml-1 hover:text-red-500"
-                          >
-                            ×
-                          </button>
+                {task.rclone_args.length > 0 && (
+                  <div>
+                    <div className="text-muted small mb-2">{t('tasks.arguments')}</div>
+                    <div className="d-flex flex-wrap gap-1">
+                      {task.rclone_args.map((arg, idx) => (
+                        <span key={idx} className="badge bg-secondary text-white">
+                          <code className="text-white">{arg}</code>
                         </span>
                       ))}
                     </div>
-                  )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ))
+      ) : (
+        <div className="col-12">
+          <div className="card">
+            <div className="card-body text-center py-5">
+              <p className="text-muted mb-3">{t('tasks.no_tasks')}</p>
+              <button onClick={handleCreateTask} className="btn btn-primary">
+                <IconPlus size={16} />
+                <span className="ms-1">{t('tasks.create_first')}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCreateModal && (
+        <div className="modal modal-blur fade show" style={{ display: 'block' }} tabIndex={-1} role="dialog">
+          <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
+            <div className="modal-content">
+              <form onSubmit={handleSubmit}>
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    {editingTask ? t('tasks.edit_task') : t('tasks.create_task')}
+                  </h5>
+                  <button type="button" className="btn-close" onClick={closeModal} aria-label={t('common.close')}></button>
                 </div>
-              </div>
 
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="is_active"
-                  checked={formData.is_active}
-                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                  className="neu-checkbox"
-                />
-                <label htmlFor="is_active" className="text-sm font-medium">
-                  {t('tasks.activate_immediately')}
-                </label>
-              </div>
+                <div className="modal-body">
+                  <div className="row g-3">
+                    <div className="col-12">
+                      <label className="form-label">{t('tasks.task_name')}</label>
+                      <input
+                        type="text"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="form-control"
+                        required
+                      />
+                    </div>
 
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="neu-button"
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  className="neu-button-primary"
-                >
-                  {editingTask ? t('common.save') : t('common.create')}
-                </button>
-              </div>
-            </form>
+                    <div className="col-12">
+                      <label className="form-label">{t('tasks.remote')}</label>
+                      <select
+                        value={formData.rclone_remote_id}
+                        onChange={(e) => setFormData({ ...formData, rclone_remote_id: e.target.value })}
+                        className="form-select"
+                        required
+                      >
+                        <option value="">{t('tasks.select_remote')}</option>
+                        {remotes.map((remote) => (
+                          <option key={remote.id} value={remote.id}>
+                            {remote.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">{t('tasks.source_path')}</label>
+                      <input
+                        type="text"
+                        value={formData.source_path}
+                        onChange={(e) => setFormData({ ...formData, source_path: e.target.value })}
+                        placeholder="/path/to/source"
+                        className="form-control font-monospace"
+                        required
+                      />
+                    </div>
+
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">{t('tasks.destination_path')}</label>
+                      <input
+                        type="text"
+                        value={formData.destination_path}
+                        onChange={(e) => setFormData({ ...formData, destination_path: e.target.value })}
+                        placeholder="remote:path/to/dest"
+                        className="form-control font-monospace"
+                        required
+                      />
+                    </div>
+
+                    <div className="col-12">
+                      <label className="form-label">{t('tasks.list.columns.schedule')}</label>
+                      <div className="row g-2">
+                        <div className="col-12 col-md-6">
+                          <select
+                            value={cronPresets.find(p => p.value === formData.schedule) ? formData.schedule : 'custom'}
+                            onChange={(e) => {
+                              if (e.target.value !== 'custom') {
+                                setFormData({ ...formData, schedule: e.target.value });
+                              }
+                            }}
+                            className="form-select"
+                          >
+                            {cronPresets.map((preset) => (
+                              <option key={preset.value} value={preset.value}>
+                                {preset.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="col-12 col-md-6">
+                          <input
+                            type="text"
+                            value={formData.schedule}
+                            onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
+                            placeholder="* * * * *"
+                            className="form-control font-monospace"
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div className="form-text">{t('tasks.cron_help')}</div>
+                    </div>
+
+                    <div className="col-12">
+                      <label className="form-label">{t('tasks.assign_agents')}</label>
+                      <div className="d-flex flex-column gap-2">
+                        {agents.map((agent) => {
+                          const statusMeta = getAgentStatusMeta(agent.status);
+                          return (
+                            <div key={agent.id} className="form-check">
+                              <input
+                                type="checkbox"
+                                className="form-check-input"
+                                id={`task-agent-${agent.id}`}
+                                checked={formData.assigned_agent_ids.includes(agent.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setFormData({
+                                      ...formData,
+                                      assigned_agent_ids: [...formData.assigned_agent_ids, agent.id],
+                                    });
+                                  } else {
+                                    setFormData({
+                                      ...formData,
+                                      assigned_agent_ids: formData.assigned_agent_ids.filter(id => id !== agent.id),
+                                    });
+                                  }
+                                }}
+                              />
+                              <label className="form-check-label" htmlFor={`task-agent-${agent.id}`}>
+                                {agent.name}
+                                <span className={`badge ms-2 ${statusMeta.badgeClass} text-white`}>
+                                  {statusMeta.label}
+                                </span>
+                              </label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="col-12">
+                      <label className="form-label">{t('tasks.rclone_arguments')}</label>
+                      <div className="d-flex flex-column gap-2">
+                        {rcloneArgPresets.map((arg, index) => {
+                          const inputId = `task-arg-${index}`;
+                          return (
+                            <div key={arg.label} className="form-check">
+                              <input
+                                type="checkbox"
+                                className="form-check-input"
+                                id={inputId}
+                                checked={formData.rclone_args.includes(arg.label)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setFormData({
+                                      ...formData,
+                                      rclone_args: [...formData.rclone_args, arg.label],
+                                    });
+                                  } else {
+                                    setFormData({
+                                      ...formData,
+                                      rclone_args: formData.rclone_args.filter(a => a !== arg.label),
+                                    });
+                                  }
+                                }}
+                              />
+                              <label className="form-check-label" htmlFor={inputId}>
+                                <code>{arg.label}</code>
+                                <div className="text-muted small">{arg.description}</div>
+                              </label>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="mt-2">
+                        <input
+                          type="text"
+                          placeholder={t('tasks.custom_args')}
+                          onKeyDown={(e) => {
+                            if (e.key !== 'Enter') return;
+                            e.preventDefault();
+
+                            const input = e.currentTarget;
+                            const value = input.value.trim();
+                            if (!value) return;
+                            if (formData.rclone_args.includes(value)) {
+                              input.value = '';
+                              return;
+                            }
+
+                            setFormData({
+                              ...formData,
+                              rclone_args: [...formData.rclone_args, value],
+                            });
+                            input.value = '';
+                          }}
+                          className="form-control"
+                        />
+                      </div>
+
+                      {formData.rclone_args.length > 0 && (
+                        <div className="d-flex flex-wrap gap-1 mt-2">
+                          {formData.rclone_args.map((arg, idx) => (
+                            <span key={idx} className="badge bg-secondary text-white">
+                              <code className="text-white">{arg}</code>
+                              <button
+                                type="button"
+                                className="btn-close btn-close-white ms-2"
+                                aria-label={t('common.delete')}
+                                onClick={() => setFormData({
+                                  ...formData,
+                                  rclone_args: formData.rclone_args.filter((_, i) => i !== idx),
+                                })}
+                              ></button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="col-12">
+                      <div className="form-check form-switch">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          id="task-is-active"
+                          checked={formData.is_active}
+                          onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                        />
+                        <label className="form-check-label" htmlFor="task-is-active">
+                          {t('tasks.activate_immediately')}
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={closeModal}>
+                    {t('common.cancel')}
+                  </button>
+                  <button type="submit" className="btn btn-primary">
+                    {editingTask ? t('common.save') : t('common.create')}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

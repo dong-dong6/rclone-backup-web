@@ -70,6 +70,8 @@ services:
       
       # Local Agent URL (for TestRemote)
       LOCAL_AGENT_URL: ${LOCAL_AGENT_URL:-http://host.docker.internal:9092}
+      LOCAL_AGENT_TOKEN: ${LOCAL_AGENT_TOKEN:-}
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:-}
     ports:
       - "${WEB_PORT:-3000}:8080"
     volumes:

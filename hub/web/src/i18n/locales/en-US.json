@@ -231,6 +231,66 @@
   },
   "remotes": {
     "title": "Remote Storage",
+    "mode": {
+      "label": "Configuration Mode",
+      "guided": "Guided",
+      "raw": "Raw Paste"
+    },
+    "preset": {
+      "label": "Storage Type",
+      "drive": "Google Drive",
+      "onedrive": "OneDrive",
+      "cloudflare_r2": "Cloudflare R2",
+      "aliyun_oss": "Alibaba OSS",
+      "tencent_cos": "Tencent COS"
+    },
+    "fields": {
+      "client_id": "Client ID",
+      "client_secret": "Client Secret",
+      "scope": "Scope",
+      "token": "OAuth Token (JSON)",
+      "team_drive": "Shared Drive ID",
+      "root_folder_id": "Root Folder ID",
+      "region": "Region",
+      "drive_type": "Drive Type",
+      "drive_id": "Drive ID",
+      "access_key_id": "Access Key ID",
+      "secret_access_key": "Secret Access Key",
+      "endpoint": "Endpoint"
+    },
+    "placeholders": {
+      "client_id": "Leave blank for default",
+      "client_secret": "Leave blank for default",
+      "team_drive": "Optional: Shared Drive (Team Drive) ID",
+      "root_folder_id": "Optional: Root folder ID",
+      "endpoint_custom": "Custom endpoint, e.g. oss-cn-hangzhou.aliyuncs.com"
+    },
+    "values": {
+      "default": "Default",
+      "custom": "Custom",
+      "current": "Current"
+    },
+    "hints": {
+      "token_drive": "Use “One-click OAuth” to fetch the token automatically, or run `rclone authorize drive` to get token JSON (single-line JSON recommended).",
+      "token_onedrive": "Use “One-click OAuth” to fetch the token automatically, or run `rclone authorize onedrive` to get token JSON (single-line JSON recommended).",
+      "config_preview": "Generated rclone.conf snippet (will be encrypted on save).",
+      "raw_help": "Paste a single remote config section (with `[name]` and `type = ...`)."
+    },
+    "oauth": {
+      "button": "One-click OAuth",
+      "in_progress": "Authorizing…",
+      "missing_client_id": "Please enter Client ID first",
+      "popup_blocked": "Popup blocked. Please allow popups and try again.",
+      "start_failed": "Failed to start authorization. Check settings and network.",
+      "timeout": "Authorization timed out. Please try again.",
+      "failed": "Authorization failed: {{message}}"
+    },
+    "errors": {
+      "invalid_name": "Invalid storage name (no newlines / [] / :, length must be ≤ 128).",
+      "multiple_sections": "Only a single remote section is supported (do not include multiple [section] blocks).",
+      "missing_type": "Missing `type = ...` in the config. Please check what you pasted.",
+      "endpoint_required": "Endpoint is required"
+    },
     "list": {
       "title": "Storage List",
       "empty": "No remote storage found",

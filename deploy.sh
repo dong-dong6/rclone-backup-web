@@ -296,6 +296,31 @@ install_agent() {
     source .env 2>/dev/null || true
     
     local HUB_URL="http://localhost:${WEB_PORT:-3000}"
+
+    # 确保本地Agent HTTP API Token 存在（用于Hub调用 /api/test-remote）
+    local LOCAL_API_TOKEN=""
+    if [ -n "${LOCAL_AGENT_TOKEN:-}" ]; then
+        LOCAL_API_TOKEN="$LOCAL_AGENT_TOKEN"
+    elif [ -n "${AGENT_API_TOKEN:-}" ]; then
+        LOCAL_API_TOKEN="$AGENT_API_TOKEN"
+    else
+        LOCAL_API_TOKEN=$(openssl rand -hex 24)
+        print_warning "未检测到 LOCAL_AGENT_TOKEN/AGENT_API_TOKEN，已生成新的本地Agent API Token"
+    fi
+
+    # 尝试回写/补全 .env，确保Hub容器可拿到Token
+    if [ -f .env ]; then
+        if grep -q '^AGENT_API_TOKEN=' .env; then
+            sed -i "s/^AGENT_API_TOKEN=.*/AGENT_API_TOKEN=$LOCAL_API_TOKEN/" .env
+        else
+            echo "AGENT_API_TOKEN=$LOCAL_API_TOKEN" >> .env
+        fi
+        if grep -q '^LOCAL_AGENT_TOKEN=' .env; then
+            sed -i "s/^LOCAL_AGENT_TOKEN=.*/LOCAL_AGENT_TOKEN=$LOCAL_API_TOKEN/" .env
+        else
+            echo "LOCAL_AGENT_TOKEN=$LOCAL_API_TOKEN" >> .env
+        fi
+    fi
     
     # 生成注册 token 并注册 Agent
     print_info "生成Agent注册令牌..."
@@ -328,11 +353,39 @@ install_agent() {
         print_warning "无法自动生成注册令牌，请手动注册Agent"
         print_info "1. 登录Web界面"
         print_info "2. 在节点管理页面生成注册令牌"
-        print_info "3. 运行: $AGENT_BIN register --hub-url $HUB_URL --token <TOKEN> --name local-agent"
-        REG_TOKEN="MANUAL_REGISTRATION_REQUIRED"
-    else
-        print_success "注册令牌已生成"
+        print_info "3. 完成注册（看到 Successfully registered 后 Ctrl+C 退出）："
+        print_info "   sudo $AGENT_BIN --config $AGENT_DIR/agent.json --token <TOKEN>"
+        print_info "4. 启用并启动服务："
+        print_info "   sudo systemctl enable --now rclone-backup-agent"
+
+        $SUDO tee $AGENT_DIR/agent.json > /dev/null << EOF
+{
+    "hub_url": "$HUB_URL",
+    "agent_name": "local-agent",
+    "work_dir": "$AGENT_DIR",
+    "max_concurrent": 3,
+    "heartbeat_interval": 30,
+    "is_local": true,
+    "enable_api": true,
+    "api_bind_addr": "0.0.0.0",
+    "api_port": 9092,
+    "api_token": "$LOCAL_API_TOKEN",
+    "registration_token": ""
+}
+EOF
+
+        print_success "Agent已安装到 $AGENT_DIR（未注册/未启动）"
+
+        # 创建systemd服务（不启动）
+        if command -v systemctl &> /dev/null; then
+            create_agent_service false
+        else
+            print_info "手动启动（完成注册后保持运行即可）: $AGENT_BIN --config $AGENT_DIR/agent.json --token <TOKEN>"
+        fi
+        return 0
     fi
+
+    print_success "注册令牌已生成"
     
     $SUDO tee $AGENT_DIR/agent.json > /dev/null << EOF
 {
@@ -343,7 +396,9 @@ install_agent() {
     "heartbeat_interval": 30,
     "is_local": true,
     "enable_api": true,
+    "api_bind_addr": "0.0.0.0",
     "api_port": 9092,
+    "api_token": "$LOCAL_API_TOKEN",
     "registration_token": "$REG_TOKEN"
 }
 EOF
@@ -352,7 +407,7 @@ EOF
     
     # 创建systemd服务
     if command -v systemctl &> /dev/null; then
-        create_agent_service
+        create_agent_service true
     else
         print_info "启动Agent: $AGENT_BIN --config $AGENT_DIR/agent.json"
     fi
@@ -360,6 +415,7 @@ EOF
 
 # 创建systemd服务
 create_agent_service() {
+    local AUTO_START="${1:-true}"
     local SUDO=""
     if [ "$(id -u)" != "0" ]; then
         SUDO="sudo"
@@ -383,10 +439,14 @@ WantedBy=multi-user.target
 EOF
     
     $SUDO systemctl daemon-reload
-    $SUDO systemctl enable rclone-backup-agent
-    $SUDO systemctl start rclone-backup-agent
-    
-    print_success "Agent服务已启动"
+
+    if [ "$AUTO_START" = "true" ]; then
+        $SUDO systemctl enable rclone-backup-agent
+        $SUDO systemctl start rclone-backup-agent
+        print_success "Agent服务已启动"
+    else
+        print_info "Agent服务已创建（未启动）"
+    fi
 }
 
 # 一键部署

@@ -21,6 +21,7 @@ type Handler struct {
 	schedulerService *services.SchedulerService
 	sseService       *services.SSEService
 	rcloneService    *services.RcloneService
+	oauthFlows       *oauthFlowStore
 	logTokens        bool
 }
 
@@ -39,6 +40,7 @@ func NewHandler(
 		schedulerService: schedulerService,
 		sseService:       sseService,
 		rcloneService:    rcloneService,
+		oauthFlows:       newOAuthFlowStore(),
 		logTokens:        strings.EqualFold(os.Getenv("DEBUG_LOG_TOKENS"), "true"),
 	}
 }

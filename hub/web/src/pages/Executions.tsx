@@ -1,15 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  Play, CheckCircle, XCircle, Clock, Terminal, 
-  Download, RefreshCw, ChevronRight, Filter,
-  Calendar, User, Server, AlertCircle
-} from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import {
+  IconAlertCircle,
+  IconCheck,
+  IconChevronLeft,
+  IconChevronRight,
+  IconClock,
+  IconRefresh,
+  IconX,
+} from '@tabler/icons-react';
 import { apiClient } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../contexts/SSEContext';
-import classNames from 'classnames';
 
 interface TaskExecution {
   id: string;
@@ -24,7 +27,7 @@ interface TaskExecution {
   started_at?: string;
   ended_at?: string;
   created_at: string;
-  duration?: number;
+  duration_seconds?: number;
 }
 
 interface ExecutionStats {
@@ -36,10 +39,23 @@ interface ExecutionStats {
   avg_duration_seconds: number;
 }
 
+const formatDuration = (seconds: number) => {
+  if (!Number.isFinite(seconds) || seconds < 0) return '-';
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  return `${Math.round(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
+};
+
+const formatDate = (dateStr: string) => {
+  const date = new Date(dateStr);
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
+};
+
 const ExecutionList: React.FC = () => {
   const { t } = useTranslation();
   const { token } = useAuth();
   const navigate = useNavigate();
+
   const [executions, setExecutions] = useState<TaskExecution[]>([]);
   const [stats, setStats] = useState<ExecutionStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,10 +87,18 @@ const ExecutionList: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      setExecutions(response.data.executions);
-      setTotalPages(response.data.total_pages);
+      const items = Array.isArray(response.data?.items)
+        ? response.data.items
+        : Array.isArray(response.data?.executions)
+          ? response.data.executions
+          : [];
+
+      setExecutions(items);
+      setTotalPages(Number.isFinite(response.data?.total_pages) ? response.data.total_pages : 1);
     } catch (error) {
       console.error('Failed to fetch executions:', error);
+      setExecutions([]);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
@@ -91,38 +115,29 @@ const ExecutionList: React.FC = () => {
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'success':
-        return <CheckCircle className="text-green-500" size={20} />;
-      case 'failed':
-        return <XCircle className="text-red-500" size={20} />;
-      case 'running':
-        return <RefreshCw className="text-blue-500 animate-spin" size={20} />;
-      case 'pending':
-        return <Clock className="text-yellow-500" size={20} />;
-      default:
-        return <AlertCircle className="text-gray-500" size={20} />;
-    }
+  const getStatusBadge = (status: TaskExecution['status']) => {
+    const config: Record<TaskExecution['status'], { color: string; icon: React.ReactNode }> = {
+      success: { color: 'success', icon: <IconCheck size={16} /> },
+      failed: { color: 'danger', icon: <IconX size={16} /> },
+      running: { color: 'primary', icon: <IconRefresh size={16} className="spinner" /> },
+      pending: { color: 'warning', icon: <IconClock size={16} /> },
+    };
+
+    const { color, icon } = config[status] || { color: 'secondary', icon: <IconAlertCircle size={16} /> };
+    return (
+      <span className={`badge bg-${color} text-white`}>
+        {icon}
+        <span className="ms-1">{t(`executions.status.${status}`) || status}</span>
+      </span>
+    );
   };
 
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-    return `${Math.round(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
-  };
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleString();
-  };
-
-  const getTriggerModeLabel = (mode: string) => {
+  const getTriggerModeLabel = (mode: TaskExecution['trigger_mode']) => {
     switch (mode) {
       case 'manual':
         return t('executions.triggerMode.manual');
       case 'scheduled':
-      case 'central': // legacy value mapped to scheduled
+      case 'central':
         return t('executions.triggerMode.scheduled');
       case 'local_fallback':
         return t('executions.triggerMode.local_fallback');
@@ -131,237 +146,259 @@ const ExecutionList: React.FC = () => {
     }
   };
 
+  const getTriggerModeBadge = (mode: TaskExecution['trigger_mode']) => {
+    const label = getTriggerModeLabel(mode);
+    const { color, textClass } =
+      mode === 'manual'
+        ? { color: 'primary', textClass: 'text-white' }
+        : mode === 'local_fallback'
+          ? { color: 'warning', textClass: 'text-dark' }
+          : { color: 'secondary', textClass: 'text-white' };
+
+    return (
+      <span className={`badge bg-${color} ${textClass}`}>
+        {label}
+      </span>
+    );
+  };
+
   if (loading && executions.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="neu-card p-8">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent"></div>
+      <div className="row">
+        <div className="col-12">
+          <div className="card">
+            <div className="card-body text-center py-5">
+              <IconRefresh className="spinner text-primary mb-3" size={48} />
+              <p className="text-muted">{t('common.loading')}</p>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="page-container">
-      {/* Header with Stats */}
-      <div className="page-header">
-        <h1 className="page-title">{t('executions.title')}</h1>
-        <button
-          onClick={() => {
-            fetchExecutions();
-            fetchStats();
-          }}
-          className="neu-button"
-        >
-          <RefreshCw size={16} />
-          <span>{t('common.refresh')}</span>
-        </button>
-      </div>
-
-      {/* Statistics Cards */}
+    <div className="row row-deck row-cards">
       {stats && (
-        <div className="stats-grid">
-          <div className="stat-card">
-            <div className="stat-value">{stats.total}</div>
-            <div className="stat-label">{t('executions.stats.total')}</div>
+        <>
+          <div className="col-sm-6 col-lg-2">
+            <div className="card">
+              <div className="card-body">
+                <div className="subheader">{t('executions.stats.total')}</div>
+                <div className="h1 mb-0">{stats.total}</div>
+              </div>
+            </div>
           </div>
-          <div className="stat-card">
-            <div className="stat-value online">{stats.success}</div>
-            <div className="stat-label">{t('executions.stats.success')}</div>
+          <div className="col-sm-6 col-lg-2">
+            <div className="card">
+              <div className="card-body">
+                <div className="subheader">{t('executions.stats.success')}</div>
+                <div className="h1 mb-0 text-success">{stats.success}</div>
+              </div>
+            </div>
           </div>
-          <div className="stat-card">
-            <div className="stat-value failed">{stats.failed}</div>
-            <div className="stat-label">{t('executions.stats.failed')}</div>
+          <div className="col-sm-6 col-lg-2">
+            <div className="card">
+              <div className="card-body">
+                <div className="subheader">{t('executions.stats.failed')}</div>
+                <div className="h1 mb-0 text-danger">{stats.failed}</div>
+              </div>
+            </div>
           </div>
-          <div className="stat-card">
-            <div className="stat-value running">{stats.running}</div>
-            <div className="stat-label">{t('executions.stats.running')}</div>
+          <div className="col-sm-6 col-lg-2">
+            <div className="card">
+              <div className="card-body">
+                <div className="subheader">{t('executions.stats.running')}</div>
+                <div className="h1 mb-0 text-primary">{stats.running}</div>
+              </div>
+            </div>
           </div>
-          <div className="stat-card">
-            <div className="stat-value">{stats.success_rate_24h.toFixed(1)}%</div>
-            <div className="stat-label">{t('executions.stats.success_rate')}</div>
+          <div className="col-sm-6 col-lg-2">
+            <div className="card">
+              <div className="card-body">
+                <div className="subheader">{t('executions.stats.success_rate')}</div>
+                <div className="h1 mb-0">{stats.success_rate_24h.toFixed(1)}%</div>
+              </div>
+            </div>
           </div>
-          <div className="stat-card">
-            <div className="stat-value">{formatDuration(stats.avg_duration_seconds)}</div>
-            <div className="stat-label">{t('executions.stats.avg_duration')}</div>
+          <div className="col-sm-6 col-lg-2">
+            <div className="card">
+              <div className="card-body">
+                <div className="subheader">{t('executions.stats.avg_duration')}</div>
+                <div className="h1 mb-0">{formatDuration(stats.avg_duration_seconds)}</div>
+              </div>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
-      {/* Filters */}
-      <div className="neu-card p-4">
-        <div className="flex items-center space-x-4">
-          <Filter size={20} className="text-gray-500" />
-          <select
-            value={filter.status}
-            onChange={(e) => setFilter({ ...filter, status: e.target.value })}
-            className="neu-input"
-          >
-            <option value="">{t('executions.filter.all_status')}</option>
-            <option value="pending">{t('executions.status.pending')}</option>
-            <option value="running">{t('executions.status.running')}</option>
-            <option value="success">{t('executions.status.success')}</option>
-            <option value="failed">{t('executions.status.failed')}</option>
-          </select>
-        </div>
-      </div>
+      <div className="col-12">
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">{t('executions.list.title')}</h3>
+            <div className="ms-auto d-flex gap-2">
+              <button
+                onClick={() => {
+                  fetchExecutions();
+                  fetchStats();
+                }}
+                className="btn btn-outline-primary btn-sm"
+                disabled={loading}
+              >
+                <IconRefresh size={16} className={loading ? 'spinner' : undefined} />
+                <span className="ms-1">{t('common.refresh')}</span>
+              </button>
+            </div>
+          </div>
 
-      {/* Executions Table */}
-      <div className="neu-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-800">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('executions.status')}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('executions.task')}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('executions.agent')}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('executions.list.columns.triggerMode')}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('executions.started')}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('executions.duration')}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('common.actions')}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {executions.map((execution) => (
-                <tr
-                  key={execution.id}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
-                  onClick={() => navigate(`/executions/${execution.id}`)}
+          <div className="card-body border-bottom py-3">
+            <div className="row g-3 align-items-end">
+              <div className="col-md-3">
+                <label className="form-label">{t('executions.list.columns.status')}</label>
+                <select
+                  value={filter.status}
+                  onChange={(e) => {
+                    setPage(1);
+                    setFilter({ ...filter, status: e.target.value });
+                  }}
+                  className="form-select"
                 >
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex items-center space-x-2">
-                      {getStatusIcon(execution.status)}
-                      <span className="text-sm font-medium capitalize">
-                        {execution.status}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="text-sm font-medium">{execution.task_name}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="text-sm">{execution.agent_name}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={classNames(
-                      'px-2 py-1 text-xs rounded',
-                      execution.trigger_mode === 'manual' 
-                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                        : execution.trigger_mode === 'local_fallback'
-                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                        : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
-                    )}>
-                      {getTriggerModeLabel(execution.trigger_mode)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    {execution.started_at ? formatDate(execution.started_at) : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    {execution.duration ? formatDuration(execution.duration) : '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/executions/${execution.id}`);
-                      }}
-                      className="neu-button-icon"
-                      title={t('executions.view_details')}
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  <option value="">{t('executions.filter.all_status')}</option>
+                  <option value="pending">{t('executions.status.pending')}</option>
+                  <option value="running">{t('executions.status.running')}</option>
+                  <option value="success">{t('executions.status.success')}</option>
+                  <option value="failed">{t('executions.status.failed')}</option>
+                </select>
+              </div>
+            </div>
+          </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between">
+          <div className="table-responsive">
+            <table className="table table-vcenter card-table table-hover">
+              <thead>
+                <tr>
+                  <th>{t('executions.list.columns.status')}</th>
+                  <th>{t('executions.list.columns.task')}</th>
+                  <th>{t('executions.list.columns.agent')}</th>
+                  <th>{t('executions.list.columns.triggerMode')}</th>
+                  <th>{t('executions.list.columns.startedAt')}</th>
+                  <th>{t('executions.list.columns.duration')}</th>
+                  <th className="w-1">{t('executions.list.columns.actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {executions.length > 0 ? (
+                  executions.map((execution) => (
+                    <tr
+                      key={execution.id}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => navigate(`/executions/${execution.id}`)}
+                    >
+                      <td>{getStatusBadge(execution.status)}</td>
+                      <td className="text-break">{execution.task_name}</td>
+                      <td className="text-break">{execution.agent_name}</td>
+                      <td>{getTriggerModeBadge(execution.trigger_mode)}</td>
+                      <td className="text-muted">
+                        {execution.started_at ? formatDate(execution.started_at) : '-'}
+                      </td>
+                      <td className="text-muted">
+                        {execution.duration_seconds ? formatDuration(execution.duration_seconds) : '-'}
+                      </td>
+                      <td>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/executions/${execution.id}`);
+                          }}
+                          className="btn btn-outline-primary btn-sm"
+                          title={t('executions.view_details')}
+                        >
+                          <IconChevronRight size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="text-center text-muted py-4">
+                      {t('executions.list.empty')}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="card-footer d-flex align-items-center">
               <button
                 onClick={() => setPage(Math.max(1, page - 1))}
                 disabled={page === 1}
-                className="neu-button disabled:opacity-50"
+                className="btn btn-outline-secondary btn-sm"
               >
                 {t('common.previous')}
               </button>
-              <span className="text-sm text-gray-500">
+              <div className="mx-auto text-muted">
                 {t('common.page_of', { current: page, total: totalPages })}
-              </span>
+              </div>
               <button
                 onClick={() => setPage(Math.min(totalPages, page + 1))}
                 disabled={page === totalPages}
-                className="neu-button disabled:opacity-50"
+                className="btn btn-outline-secondary btn-sm"
               >
                 {t('common.next')}
               </button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
 };
 
-// Execution Detail with Real-time Logs
 const ExecutionDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { t } = useTranslation();
   const { token } = useAuth();
-  const { events } = useSSE();
+  const { subscribe } = useSSE();
   const navigate = useNavigate();
+
   const [execution, setExecution] = useState<TaskExecution | null>(null);
   const [logs, setLogs] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (id) {
-      fetchExecutionDetail();
-    }
+    if (!id) return;
+    fetchExecutionDetail();
   }, [id]);
 
-  // Listen for real-time log updates
   useEffect(() => {
-    const handleLogUpdate = (event: any) => {
-      if (event.type === 'execution.log.update' && event.data.execution_id === id) {
-        setLogs(prev => prev + event.data.log.message + '\n');
-      }
-    };
+    if (!id) return;
 
-    const handleStatusUpdate = (event: any) => {
-      if (event.type === 'execution.status.update' && event.data.execution_id === id) {
-        setExecution(prev => prev ? { ...prev, status: event.data.status } : null);
-      }
-    };
-
-    events.forEach(event => {
-      handleLogUpdate(event);
-      handleStatusUpdate(event);
+    const unsubscribeLog = subscribe('execution.log.update', (event) => {
+      if (event.data?.execution_id !== id) return;
+      const message = event.data?.log?.message;
+      if (!message) return;
+      setLogs(prev => prev + message + '\n');
     });
-  }, [events, id]);
 
-  // Auto-scroll to bottom when new logs arrive
+    const unsubscribeStatus = subscribe('execution.status.update', (event) => {
+      if (event.data?.execution_id !== id) return;
+      const status = event.data?.status as TaskExecution['status'] | undefined;
+      if (!status) return;
+      setExecution(prev => (prev ? { ...prev, status } : prev));
+    });
+
+    return () => {
+      unsubscribeLog();
+      unsubscribeStatus();
+    };
+  }, [id]);
+
   useEffect(() => {
     if (autoScroll && logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -370,25 +407,29 @@ const ExecutionDetail: React.FC = () => {
 
   const fetchExecutionDetail = async () => {
     setLoading(true);
+    setLoadError(false);
+
     try {
       const response = await apiClient.get(`/admin/executions/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setExecution(response.data);
-      setLogs(response.data.log_output || '');
+      setLogs(response.data?.log_output || '');
     } catch (error) {
       console.error('Failed to fetch execution detail:', error);
+      setExecution(null);
+      setLogs('');
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
   };
 
   const handleScroll = () => {
-    if (logsContainerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = logsContainerRef.current;
-      const isAtBottom = scrollHeight - scrollTop - clientHeight < 10;
-      setAutoScroll(isAtBottom);
-    }
+    if (!logsContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = logsContainerRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 10;
+    setAutoScroll(isAtBottom);
   };
 
   const downloadLogs = () => {
@@ -403,141 +444,189 @@ const ExecutionDetail: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  if (loading || !execution) {
+  const getStatusBadge = (status: TaskExecution['status']) => {
+    const config: Record<TaskExecution['status'], { color: string; icon: React.ReactNode }> = {
+      success: { color: 'success', icon: <IconCheck size={16} /> },
+      failed: { color: 'danger', icon: <IconX size={16} /> },
+      running: { color: 'primary', icon: <IconRefresh size={16} className="spinner" /> },
+      pending: { color: 'warning', icon: <IconClock size={16} /> },
+    };
+
+    const { color, icon } = config[status] || { color: 'secondary', icon: <IconAlertCircle size={16} /> };
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="neu-card p-8">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent"></div>
+      <span className={`badge bg-${color} text-white`}>
+        {icon}
+        <span className="ms-1">{t(`executions.status.${status}`) || status}</span>
+      </span>
+    );
+  };
+
+  const getTriggerModeLabel = (mode: TaskExecution['trigger_mode']) => {
+    switch (mode) {
+      case 'manual':
+        return t('executions.triggerMode.manual');
+      case 'scheduled':
+      case 'central':
+        return t('executions.triggerMode.scheduled');
+      case 'local_fallback':
+        return t('executions.triggerMode.local_fallback');
+      default:
+        return mode;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="row">
+        <div className="col-12">
+          <div className="card">
+            <div className="card-body text-center py-5">
+              <IconRefresh className="spinner text-primary mb-3" size={48} />
+              <p className="text-muted">{t('common.loading')}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError || !execution) {
+    return (
+      <div className="row">
+        <div className="col-12">
+          <div className="card">
+            <div className="card-body text-center py-5">
+              <p className="text-muted mb-3">{t('errors.notFound')}</p>
+              <button className="btn btn-outline-secondary" onClick={() => navigate('/executions')}>
+                <IconChevronLeft size={16} />
+                <span className="ms-1">{t('common.back')}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={() => navigate('/executions')}
-            className="neu-button-icon"
-          >
-            ← {t('common.back')}
-          </button>
-          <h1 className="text-2xl font-bold">{t('executions.execution_detail')}</h1>
-        </div>
-        <div className="flex items-center space-x-2">
-          {getStatusIcon(execution.status)}
-          <span className="text-lg font-medium capitalize">{execution.status}</span>
+    <div className="row row-deck row-cards">
+      <div className="col-12">
+        <div className="card">
+          <div className="card-body d-flex align-items-center gap-2">
+            <button className="btn btn-outline-secondary" onClick={() => navigate('/executions')}>
+              <IconChevronLeft size={16} />
+              <span className="ms-1">{t('common.back')}</span>
+            </button>
+            <div className="ms-auto">{getStatusBadge(execution.status)}</div>
+          </div>
         </div>
       </div>
 
-      {/* Execution Info */}
-      <div className="neu-card p-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <div>
-            <div className="text-sm text-gray-500 mb-1">{t('executions.task')}</div>
-            <div className="font-medium">{execution.task_name}</div>
+      <div className="col-12">
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">{t('executions.detail.info')}</h3>
           </div>
-          <div>
-            <div className="text-sm text-gray-500 mb-1">{t('executions.agent')}</div>
-            <div className="font-medium">{execution.agent_name}</div>
-          </div>
-          <div>
-            <div className="text-sm text-gray-500 mb-1">{t('executions.list.columns.triggerMode')}</div>
-            <div className="font-medium">{getTriggerModeLabel(execution.trigger_mode)}</div>
-          </div>
-          <div>
-            <div className="text-sm text-gray-500 mb-1">{t('executions.duration')}</div>
-            <div className="font-medium">
-              {execution.duration ? formatDuration(execution.duration) : t('executions.in_progress')}
+          <div className="card-body">
+            <div className="row g-3">
+              <div className="col-12 col-sm-6 col-lg-4">
+                <div className="text-muted small">{t('executions.task')}</div>
+                <div className="fw-bold text-break">{execution.task_name}</div>
+              </div>
+              <div className="col-12 col-sm-6 col-lg-4">
+                <div className="text-muted small">{t('executions.agent')}</div>
+                <div className="fw-bold text-break">{execution.agent_name}</div>
+              </div>
+              <div className="col-12 col-sm-6 col-lg-4">
+                <div className="text-muted small">{t('executions.list.columns.triggerMode')}</div>
+                <div className="fw-bold text-break">{getTriggerModeLabel(execution.trigger_mode)}</div>
+              </div>
+              <div className="col-12 col-sm-6 col-lg-4">
+                <div className="text-muted small">{t('executions.duration')}</div>
+                <div className="fw-bold">
+                  {execution.duration_seconds ? formatDuration(execution.duration_seconds) : t('executions.in_progress')}
+                </div>
+              </div>
+              <div className="col-12 col-sm-6 col-lg-4">
+                <div className="text-muted small">{t('executions.started_at')}</div>
+                <div className="fw-bold">{execution.started_at ? formatDate(execution.started_at) : '-'}</div>
+              </div>
+              <div className="col-12 col-sm-6 col-lg-4">
+                <div className="text-muted small">{t('executions.ended_at')}</div>
+                <div className="fw-bold">{execution.ended_at ? formatDate(execution.ended_at) : '-'}</div>
+              </div>
             </div>
-          </div>
-          <div>
-            <div className="text-sm text-gray-500 mb-1">{t('executions.started_at')}</div>
-            <div className="font-medium">
-              {execution.started_at ? formatDate(execution.started_at) : '-'}
-            </div>
-          </div>
-          <div>
-            <div className="text-sm text-gray-500 mb-1">{t('executions.ended_at')}</div>
-            <div className="font-medium">
-              {execution.ended_at ? formatDate(execution.ended_at) : '-'}
-            </div>
+
+            {execution.error_message && (
+              <div className="alert alert-danger mt-3 mb-0" role="alert">
+                <div className="fw-bold mb-1">{t('executions.error')}</div>
+                <div className="text-break">{execution.error_message}</div>
+              </div>
+            )}
           </div>
         </div>
-
-        {execution.error_message && (
-          <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-            <div className="text-sm font-medium text-red-800 dark:text-red-200 mb-1">
-              {t('executions.error')}
-            </div>
-            <div className="text-sm text-red-700 dark:text-red-300">
-              {execution.error_message}
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Logs */}
-      <div className="neu-card overflow-hidden">
-        <div className="p-4 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Terminal size={20} />
-              <span className="font-medium">{t('executions.logs')}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <label className="flex items-center space-x-2">
+      <div className="col-12">
+          <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">{t('executions.logs.title')}</h3>
+            <div className="ms-auto d-flex align-items-center gap-3">
+              <div className="form-check form-switch m-0">
                 <input
                   type="checkbox"
+                  className="form-check-input"
+                  id={`auto-scroll-${id}`}
                   checked={autoScroll}
                   onChange={(e) => setAutoScroll(e.target.checked)}
-                  className="neu-checkbox"
                 />
-                <span className="text-sm">{t('executions.auto_scroll')}</span>
-              </label>
+                <label className="form-check-label" htmlFor={`auto-scroll-${id}`}>
+                  {t('executions.auto_scroll')}
+                </label>
+              </div>
               <button
                 onClick={downloadLogs}
-                className="neu-button flex items-center space-x-1"
+                className="btn btn-outline-primary btn-sm"
+                disabled={!logs}
               >
-                <Download size={16} />
-                <span>{t('common.download')}</span>
+                {t('common.download')}
               </button>
             </div>
           </div>
-        </div>
 
-        <div
-          ref={logsContainerRef}
-          onScroll={handleScroll}
-          className="bg-gray-900 text-gray-100 p-4 font-mono text-sm overflow-auto"
-          style={{ height: '500px', maxHeight: '60vh' }}
-        >
-          {logs ? (
-            <>
-              <pre className="whitespace-pre-wrap">{logs}</pre>
-              <div ref={logsEndRef} />
-            </>
-          ) : (
-            <div className="text-gray-500 italic">
-              {execution.status === 'pending' 
-                ? t('executions.waiting_to_start')
-                : t('executions.no_logs')}
+          <div className="card-body p-0">
+            <div
+              ref={logsContainerRef}
+              onScroll={handleScroll}
+              className="bg-dark text-white font-monospace p-3"
+              style={{ height: '500px', maxHeight: '60vh', overflow: 'auto' }}
+            >
+              {logs ? (
+                <>
+                  <pre className="mb-0" style={{ whiteSpace: 'pre-wrap' }}>{logs}</pre>
+                  <div ref={logsEndRef} />
+                </>
+              ) : (
+                <div className="text-secondary fst-italic">
+                  {execution.status === 'pending'
+                    ? t('executions.waiting_to_start')
+                    : t('executions.no_logs')}
+                </div>
+              )}
+
+              {execution.status === 'running' && (
+                <div className="mt-3 d-flex align-items-center gap-2">
+                  <IconRefresh className="spinner text-success" size={16} />
+                  <span className="text-success">{t('executions.running_live')}</span>
+                </div>
+              )}
             </div>
-          )}
-          {execution.status === 'running' && (
-            <div className="inline-flex items-center space-x-2 mt-2">
-              <RefreshCw className="animate-spin" size={16} />
-              <span className="text-green-400">{t('executions.running_live')}</span>
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-// Export both components
 export { ExecutionList, ExecutionDetail };
 export default ExecutionList;
