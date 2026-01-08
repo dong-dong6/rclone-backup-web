@@ -381,16 +381,27 @@ const ExecutionDetail: React.FC = () => {
 
     const unsubscribeLog = subscribe('execution.log.update', (event) => {
       if (event.data?.execution_id !== id) return;
+      const timestamp = event.data?.log?.timestamp;
       const message = event.data?.log?.message;
       if (!message) return;
-      setLogs(prev => prev + message + '\n');
+      const line = timestamp ? `[${timestamp}] ${message}` : message;
+      setLogs(prev => prev + line + '\n');
     });
 
     const unsubscribeStatus = subscribe('execution.status.update', (event) => {
       if (event.data?.execution_id !== id) return;
       const status = event.data?.status as TaskExecution['status'] | undefined;
       if (!status) return;
-      setExecution(prev => (prev ? { ...prev, status } : prev));
+      const errorMessage = event.data?.error_message as string | undefined;
+      setExecution(prev =>
+        prev
+          ? {
+              ...prev,
+              status,
+              ...(errorMessage ? { error_message: errorMessage } : {}),
+            }
+          : prev
+      );
     });
 
     return () => {

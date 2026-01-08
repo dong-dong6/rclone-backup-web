@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -309,15 +310,29 @@ func (m *ExecutionModel) AppendLogs(ctx context.Context, id uuid.UUID, newLogs s
 	return err
 }
 
+// UpdateErrorMessage updates the error message for an execution (replaces existing value).
+func (m *ExecutionModel) UpdateErrorMessage(ctx context.Context, id uuid.UUID, message string) error {
+	query := `
+		UPDATE task_executions
+		SET error_message = $2
+		WHERE id = $1
+	`
+
+	_, err := m.db.Exec(ctx, query, id, strings.TrimSpace(message))
+	return err
+}
+
 // StreamLogs adds timestamped log entries to execution
 func (m *ExecutionModel) StreamLogs(ctx context.Context, id uuid.UUID, logEntries []LogEntry) error {
-	// Format log entries with timestamps
-	var formattedLogs string
+	var builder strings.Builder
 	for _, entry := range logEntries {
-		formattedLogs += fmt.Sprintf("[%s] %s\n", entry.Timestamp, entry.Message)
+		_, _ = fmt.Fprintf(&builder, "[%s] %s\n", entry.Timestamp, entry.Message)
 	}
 
-	return m.AppendLogs(ctx, id, formattedLogs)
+	if builder.Len() == 0 {
+		return nil
+	}
+	return m.AppendLogs(ctx, id, builder.String())
 }
 
 // LogEntry represents a single log entry with timestamp

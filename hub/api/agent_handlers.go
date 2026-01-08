@@ -387,9 +387,10 @@ func (h *Handler) buildLegacyAgentTasks(ctx context.Context, agentID uuid.UUID) 
 }
 
 type UpdateExecutionRequest struct {
-	Status    string `json:"status" binding:"required"`
-	LogOutput string `json:"log_output"`
-	EndedAt   string `json:"ended_at"`
+	Status       string `json:"status" binding:"required"`
+	LogOutput    string `json:"log_output"`
+	ErrorMessage string `json:"error_message,omitempty"`
+	EndedAt      string `json:"ended_at"`
 }
 
 type StreamLogsRequest struct {
@@ -421,14 +422,23 @@ func (h *Handler) processExecutionUpdate(ctx context.Context, agentID uuid.UUID,
 		return &APIError{Status: http.StatusInternalServerError, Message: "Failed to update execution"}
 	}
 
+	if msg := strings.TrimSpace(req.ErrorMessage); msg != "" {
+		_ = executionModel.UpdateErrorMessage(ctx, executionID, msg)
+	}
 	if req.LogOutput != "" {
-		_ = executionModel.UpdateLogs(ctx, executionID, req.LogOutput)
+		// Never overwrite existing streamed logs.
+		appendText := req.LogOutput
+		if !strings.HasSuffix(appendText, "\n") {
+			appendText += "\n"
+		}
+		_ = executionModel.AppendLogs(ctx, executionID, appendText)
 	}
 
 	h.sseService.SendEvent("execution.status.update", map[string]interface{}{
-		"execution_id": executionID,
-		"status":       req.Status,
-		"agent_id":     agentID,
+		"execution_id":  executionID,
+		"status":        req.Status,
+		"agent_id":      agentID,
+		"error_message": strings.TrimSpace(req.ErrorMessage),
 	})
 
 	return nil

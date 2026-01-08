@@ -521,16 +521,16 @@ func (a *Agent) logForwarder() {
 	}
 }
 
-func (a *Agent) sendExecutionUpdate(executionID, status string, logOutput string) {
+func (a *Agent) sendExecutionUpdate(executionID, status string, errorMessage string) {
 	status = strings.ToLower(strings.TrimSpace(status))
 	if executionID == "" || status == "" {
 		return
 	}
 
 	payload := services.WSExecutionUpdate{
-		ExecutionID: executionID,
-		Status:      status,
-		LogOutput:   logOutput,
+		ExecutionID:  executionID,
+		Status:       status,
+		ErrorMessage: strings.TrimSpace(errorMessage),
 	}
 	if status == "success" || status == "failed" || status == "cancelled" || status == "canceled" {
 		payload.EndedAt = time.Now().Format(time.RFC3339)

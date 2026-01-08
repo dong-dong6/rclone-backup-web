@@ -115,9 +115,14 @@ func (h *Handler) handleAgentWSMessage(ctx context.Context, agentID uuid.UUID, m
 		}
 
 		updateReq := UpdateExecutionRequest{
-			Status:    strings.TrimSpace(req.Status),
-			LogOutput: req.LogOutput,
-			EndedAt:   req.EndedAt,
+			Status:       strings.TrimSpace(req.Status),
+			LogOutput:    req.LogOutput,
+			ErrorMessage: req.ErrorMessage,
+			EndedAt:      req.EndedAt,
+		}
+		if strings.TrimSpace(updateReq.ErrorMessage) == "" && strings.TrimSpace(updateReq.LogOutput) != "" {
+			updateReq.ErrorMessage = updateReq.LogOutput
+			updateReq.LogOutput = ""
 		}
 		return h.processExecutionUpdate(ctx, agentID, execID, updateReq)
 	case WSMessageTypeExecutionLogs:

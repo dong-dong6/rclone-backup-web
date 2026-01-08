@@ -30,10 +30,11 @@ type WSAgentHello struct {
 }
 
 type WSExecutionUpdate struct {
-	ExecutionID string `json:"execution_id" binding:"required"`
-	Status      string `json:"status" binding:"required"`
-	LogOutput   string `json:"log_output,omitempty"`
-	EndedAt     string `json:"ended_at,omitempty"`
+	ExecutionID  string `json:"execution_id" binding:"required"`
+	Status       string `json:"status" binding:"required"`
+	LogOutput    string `json:"log_output,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+	EndedAt      string `json:"ended_at,omitempty"`
 }
 
 type WSLogEntry struct {
