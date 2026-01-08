@@ -1,8 +1,12 @@
+//go:build !agent_legacy && !agent_with_logger && !agent_sidecar
+// +build !agent_legacy,!agent_with_logger,!agent_sidecar
+
 package main
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -10,6 +14,9 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -66,6 +73,39 @@ type Agent struct {
 	apiServer *services.AgentAPIServer
 	ctx       context.Context
 	cancel    context.CancelFunc
+
+	wsMu   sync.RWMutex
+	wsConn *services.HubWSConn
+
+	logQueue chan queuedLogEntry
+
+	pendingUpdatesMu sync.Mutex
+	pendingUpdates   map[string]services.WSExecutionUpdate
+}
+
+type queuedLogEntry struct {
+	ExecutionID string
+	Entry       services.WSLogEntry
+}
+
+type hubTaskDetails struct {
+	ExecutionID         string   `json:"execution_id"`
+	TaskID              string   `json:"task_id"`
+	SourcePath          string   `json:"source_path"`
+	DestinationPath     string   `json:"destination_path"`
+	RcloneConfigB64     string   `json:"rclone_config_b64"`
+	RcloneArgs          []string `json:"rclone_args"`
+	BackupMode          string   `json:"backup_mode"`
+	ArchiveFormat       string   `json:"archive_format"`
+	EncryptionEnabled   bool     `json:"encryption_enabled"`
+	EncryptionPassword  string   `json:"encryption_password"`
+	EncryptionPassword2 string   `json:"encryption_password2"`
+}
+
+type fsListActionPayload struct {
+	RequestID string `json:"request_id"`
+	Path      string `json:"path"`
+	Limit     int    `json:"limit"`
 }
 
 func main() {
@@ -170,12 +210,17 @@ func NewAgent(config *Config) (*Agent, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	agent := &Agent{
-		config:    config,
-		executor:  taskExecutor,
-		ctx:       ctx,
-		cancel:    cancel,
-		hubClient: services.NewHubClient(config.HubURL, "", "", Version),
+		config:         config,
+		executor:       taskExecutor,
+		ctx:            ctx,
+		cancel:         cancel,
+		hubClient:      services.NewHubClient(config.HubURL, "", "", Version),
+		logQueue:       make(chan queuedLogEntry, 8192),
+		pendingUpdates: make(map[string]services.WSExecutionUpdate),
 	}
+
+	// Stream rclone output lines into a queue that can be forwarded to the Hub over WebSocket.
+	taskExecutor.SetLogHook(agent.enqueueLogLine)
 
 	// Register with hub if not already registered
 	if err := agent.ensureRegistered(); err != nil {
@@ -216,83 +261,428 @@ func (a *Agent) Run() {
 		go a.scheduler.Start(a.ctx)
 	}
 
-	// Main heartbeat loop
-	ticker := time.NewTicker(time.Duration(a.config.HeartbeatInterval) * time.Second)
-	defer ticker.Stop()
+	go a.logForwarder()
+
+	a.hubLoop()
+}
+
+func (a *Agent) setWSConn(conn *services.HubWSConn) {
+	a.wsMu.Lock()
+	a.wsConn = conn
+	a.wsMu.Unlock()
+}
+
+func (a *Agent) getWSConn() *services.HubWSConn {
+	a.wsMu.RLock()
+	conn := a.wsConn
+	a.wsMu.RUnlock()
+	if conn != nil && conn.IsClosed() {
+		return nil
+	}
+	return conn
+}
+
+func (a *Agent) hubLoop() {
+	interval := time.Duration(a.config.HeartbeatInterval) * time.Second
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+
+	heartbeatTicker := time.NewTicker(interval)
+	defer heartbeatTicker.Stop()
+
+	retryBackoff := 1 * time.Second
+	nextWSAttempt := time.Now()
 
 	for {
+		ws := a.getWSConn()
+
+		var incoming <-chan services.WSMessage
+		if ws != nil {
+			incoming = ws.Incoming()
+		}
+
+		var reconnect <-chan time.Time
+		if ws == nil {
+			delay := time.Until(nextWSAttempt)
+			if delay < 0 {
+				delay = 0
+			}
+			reconnect = time.After(delay)
+		}
+
 		select {
 		case <-a.ctx.Done():
+			if ws != nil {
+				ws.Close()
+			}
 			return
-		case <-ticker.C:
-			a.sendHeartbeat()
+		case <-reconnect:
+			conn, err := services.DialHubWebSocket(a.config.HubURL, a.config.AgentID, a.config.APIKey)
+			if err != nil {
+				log.Printf("WebSocket connect failed: %v", err)
+				if retryBackoff < 30*time.Second {
+					retryBackoff *= 2
+				}
+				nextWSAttempt = time.Now().Add(retryBackoff)
+				if a.config.EnableLocalFallback {
+					a.handleLocalFallback()
+				}
+				continue
+			}
+
+			ws = conn
+			a.setWSConn(ws)
+			retryBackoff = 1 * time.Second
+			nextWSAttempt = time.Now()
+
+			hb := a.hubClient.BuildHeartbeat("online", nil)
+			hello := services.WSAgentHello{
+				AgentVersion: Version,
+				Hostname:     hb.SystemInfo.Hostname,
+				Platform:     hb.SystemInfo.Platform,
+			}
+			_ = ws.SendJSON(services.WSMessageTypeAgentHello, hello, 2*time.Second)
+			a.requestConfigSync()
+			a.flushPendingExecutionUpdates(ws)
+			a.sendHeartbeatWS(ws)
+		case msg, ok := <-incoming:
+			if !ok {
+				if ws != nil {
+					ws.Close()
+				}
+				a.setWSConn(nil)
+				nextWSAttempt = time.Now().Add(retryBackoff)
+				continue
+			}
+			a.handleWSMessage(ws, msg)
+		case <-heartbeatTicker.C:
+			ws = a.getWSConn()
+			if ws == nil || ws.IsClosed() {
+				a.setWSConn(nil)
+				nextWSAttempt = time.Now()
+				if a.config.EnableLocalFallback {
+					a.handleLocalFallback()
+				}
+				continue
+			}
+
+			a.flushPendingExecutionUpdates(ws)
+			a.sendHeartbeatWS(ws)
 		}
 	}
 }
 
-// sendHeartbeat sends heartbeat to hub and processes responses
-func (a *Agent) sendHeartbeat() {
-	// Get current status
+func (a *Agent) sendHeartbeatWS(ws *services.HubWSConn) {
+	if ws == nil || ws.IsClosed() {
+		return
+	}
+
 	activeTasks := a.executor.GetActiveTasks()
 	status := "online"
 	if len(activeTasks) > 0 {
 		status = "running_task"
 	}
 
-	// Send heartbeat
-	response, err := a.hubClient.SendHeartbeat(a.ctx, status, activeTasks)
-	if err != nil {
-		log.Printf("Failed to send heartbeat: %v", err)
-
-		// Handle local fallback
-		if a.config.EnableLocalFallback {
-			a.handleLocalFallback()
-		}
-		return
+	payload := a.hubClient.BuildHeartbeat(status, activeTasks)
+	if err := ws.SendJSON(services.WSMessageTypeAgentHeartbeat, payload, 3*time.Second); err != nil {
+		log.Printf("WebSocket heartbeat send failed: %v", err)
 	}
+}
 
-	// Process actions from hub
-	for _, action := range response.Actions {
-		switch action.Type {
+func (a *Agent) handleWSMessage(ws *services.HubWSConn, msg services.WSMessage) {
+	switch msg.Type {
+	case services.WSMessageTypeHubPing:
+		if ws != nil && !ws.IsClosed() {
+			_ = ws.Send(services.WSMessage{Type: services.WSMessageTypeAgentPong}, 2*time.Second)
+			a.flushPendingExecutionUpdates(ws)
+			a.sendHeartbeatWS(ws)
+		}
+	case services.WSMessageTypeHubActions:
+		var resp services.HeartbeatResponse
+		if err := json.Unmarshal(msg.Data, &resp); err != nil {
+			log.Printf("Failed to parse hub.actions payload: %v", err)
+			return
+		}
+		a.handleActions(resp.Actions)
+	case services.WSMessageTypeConfigSyncResponse:
+		a.handleConfigSyncResponse(msg.Data)
+	case services.WSMessageTypeHubError:
+		log.Printf("Hub error: %s", strings.TrimSpace(string(msg.Data)))
+	default:
+		// Ignore unknown frames for forward compatibility.
+	}
+}
+
+func (a *Agent) handleActions(actions []services.Action) {
+	for _, action := range actions {
+		switch strings.ToUpper(strings.TrimSpace(action.Type)) {
 		case "EXECUTE_TASK":
 			go a.executeTask(action.Task)
 		case "CANCEL_TASK":
-			a.executor.CancelTask(action.ExecutionID)
+			if action.ExecutionID != "" {
+				a.executor.CancelTask(action.ExecutionID)
+			}
+		case "FS_LIST":
+			go a.handleFSList(action.Task)
+		case "SYNC_CONFIG", "SYNC_TASKS":
+			a.requestConfigSync()
 		case "UPDATE_CONFIG":
 			a.updateConfig(action.Config)
-		case "SYNC_TASKS":
-			a.syncTasks()
 		}
 	}
 }
 
+func (a *Agent) requestConfigSync() {
+	ws := a.getWSConn()
+	if ws == nil || ws.IsClosed() {
+		return
+	}
+
+	if err := ws.SendJSON(services.WSMessageTypeConfigSyncRequest, services.WSConfigSyncRequest{}, 3*time.Second); err != nil {
+		log.Printf("Failed to request config sync: %v", err)
+	}
+}
+
+func (a *Agent) handleConfigSyncResponse(data json.RawMessage) {
+	var resp services.WSConfigSyncResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		// Backward/forward compatible: allow bare []Task payload.
+		var tasks []services.Task
+		if err2 := json.Unmarshal(data, &tasks); err2 != nil {
+			log.Printf("Failed to parse config.sync.response: %v", err)
+			return
+		}
+		resp.Tasks = tasks
+	}
+
+	if a.scheduler == nil {
+		return
+	}
+
+	a.scheduler.UpdateTasks(resp.Tasks)
+	log.Printf("Synced %d tasks from hub", len(resp.Tasks))
+}
+
+func (a *Agent) enqueueLogLine(executionID string, line string) {
+	entry := queuedLogEntry{
+		ExecutionID: executionID,
+		Entry: services.WSLogEntry{
+			Timestamp: time.Now().Format(time.RFC3339),
+			Message:   line,
+		},
+	}
+
+	select {
+	case a.logQueue <- entry:
+	default:
+		// Drop if the queue is full to avoid blocking task execution.
+	}
+}
+
+func (a *Agent) logForwarder() {
+	flushTicker := time.NewTicker(1 * time.Second)
+	defer flushTicker.Stop()
+
+	const maxBufferedLogsPerExecution = 2000
+
+	pending := make(map[string][]services.WSLogEntry)
+
+	flushAll := func() {
+		for executionID, entries := range pending {
+			if len(entries) == 0 {
+				delete(pending, executionID)
+				continue
+			}
+
+			if err := a.sendExecutionLogEntries(executionID, entries); err != nil {
+				continue
+			}
+			delete(pending, executionID)
+		}
+	}
+
+	for {
+		select {
+		case <-a.ctx.Done():
+			flushAll()
+			return
+		case entry := <-a.logQueue:
+			pending[entry.ExecutionID] = append(pending[entry.ExecutionID], entry.Entry)
+			if len(pending[entry.ExecutionID]) > maxBufferedLogsPerExecution {
+				pending[entry.ExecutionID] = pending[entry.ExecutionID][len(pending[entry.ExecutionID])-maxBufferedLogsPerExecution:]
+			}
+			if len(pending[entry.ExecutionID]) >= 200 {
+				flushAll()
+			}
+		case <-flushTicker.C:
+			flushAll()
+		}
+	}
+}
+
+func (a *Agent) sendExecutionUpdate(executionID, status string, logOutput string) {
+	status = strings.ToLower(strings.TrimSpace(status))
+	if executionID == "" || status == "" {
+		return
+	}
+
+	payload := services.WSExecutionUpdate{
+		ExecutionID: executionID,
+		Status:      status,
+		LogOutput:   logOutput,
+	}
+	if status == "success" || status == "failed" || status == "cancelled" || status == "canceled" {
+		payload.EndedAt = time.Now().Format(time.RFC3339)
+	}
+
+	ws := a.getWSConn()
+	if ws != nil && !ws.IsClosed() {
+		if err := ws.SendJSON(services.WSMessageTypeExecutionUpdate, payload, 3*time.Second); err == nil {
+			return
+		}
+	}
+
+	a.queuePendingExecutionUpdate(payload)
+}
+
+func (a *Agent) sendExecutionLogEntries(executionID string, entries []services.WSLogEntry) error {
+	if executionID == "" || len(entries) == 0 {
+		return nil
+	}
+
+	ws := a.getWSConn()
+	if ws != nil && !ws.IsClosed() {
+		payload := services.WSExecutionLogs{
+			ExecutionID: executionID,
+			Logs:        entries,
+		}
+		return ws.SendJSON(services.WSMessageTypeExecutionLogs, payload, 3*time.Second)
+	}
+
+	return services.ErrWebSocketNotReady
+}
+
+func (a *Agent) handleFSList(taskData json.RawMessage) {
+	var payload fsListActionPayload
+	if err := json.Unmarshal(taskData, &payload); err != nil {
+		return
+	}
+
+	path := strings.TrimSpace(payload.Path)
+	if path == "" {
+		path = string(filepath.Separator)
+	}
+
+	limit := payload.Limit
+	if limit <= 0 || limit > 2000 {
+		limit = 200
+	}
+
+	clean := filepath.Clean(path)
+	if !filepath.IsAbs(clean) {
+		clean = filepath.Join(a.config.WorkDir, clean)
+	}
+
+	result := services.FSListResult{
+		RequestID: payload.RequestID,
+		Path:      clean,
+		Parent:    filepath.Dir(clean),
+	}
+	if result.Parent == result.Path {
+		result.Parent = ""
+	}
+
+	entries, err := os.ReadDir(clean)
+	if err != nil {
+		result.Error = err.Error()
+		a.sendFSListResult(result)
+		return
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		isSymlink := entry.Type()&os.ModeSymlink != 0
+		result.Entries = append(result.Entries, services.FSListEntry{
+			Name:      entry.Name(),
+			Path:      filepath.Join(clean, entry.Name()),
+			IsDir:     true,
+			IsSymlink: isSymlink,
+		})
+	}
+
+	sort.Slice(result.Entries, func(i, j int) bool {
+		return strings.ToLower(result.Entries[i].Name) < strings.ToLower(result.Entries[j].Name)
+	})
+	if len(result.Entries) > limit {
+		result.Entries = result.Entries[:limit]
+	}
+
+	a.sendFSListResult(result)
+}
+
+func (a *Agent) sendFSListResult(result services.FSListResult) {
+	ws := a.getWSConn()
+	if ws == nil || ws.IsClosed() {
+		return
+	}
+	_ = ws.SendJSON(services.WSMessageTypeFSListResult, result, 5*time.Second)
+}
+
 // executeTask executes a task from hub
 func (a *Agent) executeTask(taskData json.RawMessage) {
-	var task executor.TaskInfo
-	if err := json.Unmarshal(taskData, &task); err != nil {
+	var details hubTaskDetails
+	if err := json.Unmarshal(taskData, &details); err != nil {
 		log.Printf("Failed to unmarshal task: %v", err)
 		return
 	}
 
+	if details.ExecutionID == "" {
+		log.Printf("Task payload missing execution_id")
+		return
+	}
+
+	destPath := strings.TrimSpace(details.DestinationPath)
+	if destPath != "" && !strings.HasPrefix(destPath, "remote:") && !strings.HasPrefix(destPath, "crypt:") {
+		prefix := "remote:"
+		if details.EncryptionEnabled {
+			prefix = "crypt:"
+		}
+		destPath = prefix + destPath
+	}
+
+	task := executor.TaskInfo{
+		ID:                  details.TaskID,
+		ExecutionID:         details.ExecutionID,
+		TaskID:              details.TaskID,
+		RemoteConfig:        details.RcloneConfigB64,
+		SourcePath:          details.SourcePath,
+		DestPath:            destPath,
+		RcloneArgs:          details.RcloneArgs,
+		BackupMode:          details.BackupMode,
+		ArchiveFormat:       details.ArchiveFormat,
+		EncryptionEnabled:   details.EncryptionEnabled,
+		EncryptionPassword:  details.EncryptionPassword,
+		EncryptionPassword2: details.EncryptionPassword2,
+	}
+
 	log.Printf("Executing task %s from hub", task.ExecutionID)
 
-	// Report start
-	a.hubClient.UpdateExecutionStatus(task.ExecutionID, "running", nil)
+	a.sendExecutionUpdate(task.ExecutionID, "running", "")
 
-	// Execute task
 	err := a.executor.ExecuteTask(a.ctx, &task)
-
-	// Report completion
 	if err != nil {
-		a.hubClient.UpdateExecutionStatus(task.ExecutionID, "failed", err)
-	} else {
-		a.hubClient.UpdateExecutionStatus(task.ExecutionID, "completed", nil)
+		status := "failed"
+		if errors.Is(err, context.Canceled) || errors.Is(a.ctx.Err(), context.Canceled) {
+			status = "cancelled"
+		}
+		a.sendExecutionUpdate(task.ExecutionID, status, err.Error())
+		return
 	}
 
-	// Send logs
-	if len(task.Logs) > 0 {
-		a.hubClient.SendLogs(task.ExecutionID, task.Logs)
-	}
+	a.sendExecutionUpdate(task.ExecutionID, "success", "")
 }
 
 // handleLocalFallback handles tasks when hub is unreachable
@@ -309,14 +699,27 @@ func (a *Agent) handleLocalFallback() {
 		log.Printf("Executing local fallback task: %s", task.ID)
 
 		// Convert to executor task
+		destPath := strings.TrimSpace(task.DestPath)
+		if destPath != "" && !strings.HasPrefix(destPath, "remote:") && !strings.HasPrefix(destPath, "crypt:") {
+			prefix := "remote:"
+			if task.EncryptionEnabled {
+				prefix = "crypt:"
+			}
+			destPath = prefix + destPath
+		}
 		execTask := &executor.TaskInfo{
-			ID:           task.ID,
-			ExecutionID:  uuid.New().String(),
-			TaskID:       task.ID,
-			RemoteConfig: task.RemoteConfig,
-			SourcePath:   task.SourcePath,
-			DestPath:     task.DestPath,
-			RcloneArgs:   task.RcloneArgs,
+			ID:                  task.ID,
+			ExecutionID:         uuid.New().String(),
+			TaskID:              task.ID,
+			RemoteConfig:        task.RemoteConfig,
+			SourcePath:          task.SourcePath,
+			DestPath:            destPath,
+			RcloneArgs:          task.RcloneArgs,
+			BackupMode:          task.BackupMode,
+			ArchiveFormat:       task.ArchiveFormat,
+			EncryptionEnabled:   task.EncryptionEnabled,
+			EncryptionPassword:  task.EncryptionPassword,
+			EncryptionPassword2: task.EncryptionPassword2,
 		}
 
 		// Execute task
@@ -328,20 +731,6 @@ func (a *Agent) handleLocalFallback() {
 
 		// Update last run time
 		a.scheduler.UpdateLastRun(task.ID)
-	}
-}
-
-// syncTasks syncs task configurations from hub
-func (a *Agent) syncTasks() {
-	tasks, err := a.hubClient.GetTasks(a.ctx)
-	if err != nil {
-		log.Printf("Failed to sync tasks: %v", err)
-		return
-	}
-
-	if a.scheduler != nil {
-		a.scheduler.UpdateTasks(tasks)
-		log.Printf("Synced %d tasks from hub", len(tasks))
 	}
 }
 
@@ -437,8 +826,55 @@ func (a *Agent) Shutdown() {
 	// Wait a bit for tasks to finish
 	time.Sleep(2 * time.Second)
 
-	// Final heartbeat to notify hub
-	a.hubClient.SendHeartbeat(context.Background(), "offline", nil)
+	// Final heartbeat to notify hub (best-effort over WebSocket).
+	if ws := a.getWSConn(); ws != nil {
+		_ = ws.SendJSON(services.WSMessageTypeAgentHeartbeat, a.hubClient.BuildHeartbeat("offline", nil), 2*time.Second)
+		ws.Close()
+	}
+}
+
+func (a *Agent) queuePendingExecutionUpdate(update services.WSExecutionUpdate) {
+	if strings.TrimSpace(update.ExecutionID) == "" {
+		return
+	}
+
+	a.pendingUpdatesMu.Lock()
+	if a.pendingUpdates == nil {
+		a.pendingUpdates = make(map[string]services.WSExecutionUpdate)
+	}
+	a.pendingUpdates[update.ExecutionID] = update
+	a.pendingUpdatesMu.Unlock()
+}
+
+func (a *Agent) flushPendingExecutionUpdates(ws *services.HubWSConn) {
+	if ws == nil || ws.IsClosed() {
+		return
+	}
+
+	a.pendingUpdatesMu.Lock()
+	if len(a.pendingUpdates) == 0 {
+		a.pendingUpdatesMu.Unlock()
+		return
+	}
+
+	updates := make([]services.WSExecutionUpdate, 0, len(a.pendingUpdates))
+	for _, update := range a.pendingUpdates {
+		updates = append(updates, update)
+	}
+	a.pendingUpdates = make(map[string]services.WSExecutionUpdate)
+	a.pendingUpdatesMu.Unlock()
+
+	for i, update := range updates {
+		if err := ws.SendJSON(services.WSMessageTypeExecutionUpdate, update, 3*time.Second); err != nil {
+			a.pendingUpdatesMu.Lock()
+			a.pendingUpdates[update.ExecutionID] = update
+			for _, rest := range updates[i+1:] {
+				a.pendingUpdates[rest.ExecutionID] = rest
+			}
+			a.pendingUpdatesMu.Unlock()
+			return
+		}
+	}
 }
 
 func writePIDFile(pidFile string) error {

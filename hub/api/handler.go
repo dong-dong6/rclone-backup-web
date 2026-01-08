@@ -21,6 +21,8 @@ type Handler struct {
 	schedulerService *services.SchedulerService
 	sseService       *services.SSEService
 	rcloneService    *services.RcloneService
+	wsService        *services.AgentWSService
+	fsBroker         *services.AgentFSRequestBroker
 	oauthFlows       *oauthFlowStore
 	logTokens        bool
 }
@@ -40,6 +42,8 @@ func NewHandler(
 		schedulerService: schedulerService,
 		sseService:       sseService,
 		rcloneService:    rcloneService,
+		wsService:        services.NewAgentWSService(),
+		fsBroker:         services.NewAgentFSRequestBroker(),
 		oauthFlows:       newOAuthFlowStore(),
 		logTokens:        strings.EqualFold(os.Getenv("DEBUG_LOG_TOKENS"), "true"),
 	}

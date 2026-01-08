@@ -113,7 +113,7 @@ func AgentAuthMiddleware(authService *services.AuthService, db *pgxpool.Pool) gi
 			return
 		}
 
-		// Extract credentials from "Bearer <api-key>" or "Bearer <agent-id>:<api-key>" format
+		// Extract credentials from "Bearer <agent-id>:<api-key>" format
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
@@ -122,34 +122,26 @@ func AgentAuthMiddleware(authService *services.AuthService, db *pgxpool.Pool) gi
 		}
 
 		credentials := parts[1]
+		if !strings.Contains(credentials, ":") {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization credentials"})
+			c.Abort()
+			return
+		}
+
 		ctx := c.Request.Context()
 		agentModel := models.NewAgentModel(db)
 		var authenticatedAgent *models.Agent
 
-		if strings.Contains(credentials, ":") {
-			// Optimized lookup: "Bearer <agent-id>:<api-key>"
-			credParts := strings.SplitN(credentials, ":", 2)
-			agentIDStr, apiKey := credParts[0], credParts[1]
+		// Optimized lookup: "Bearer <agent-id>:<api-key>"
+		credParts := strings.SplitN(credentials, ":", 2)
+		agentIDStr := strings.TrimSpace(credParts[0])
+		apiKey := strings.TrimSpace(credParts[1])
 
-			agentID, err := uuid.Parse(agentIDStr)
-			if err == nil {
-				agent, err := agentModel.GetByID(ctx, agentID)
-				if err == nil && authService.ValidateAPIKey(apiKey, agent.APIKeyHash) {
-					authenticatedAgent = agent
-				}
-			}
-		} else {
-			// Legacy fallback: "Bearer <api-key>" (O(N) search)
-			apiKey := credentials
-			agents, err := agentModel.List(ctx)
-			if err == nil {
-				for _, agent := range agents {
-					fullAgent, err := agentModel.GetByID(ctx, agent.ID)
-					if err == nil && authService.ValidateAPIKey(apiKey, fullAgent.APIKeyHash) {
-						authenticatedAgent = fullAgent
-						break
-					}
-				}
+		agentID, err := uuid.Parse(agentIDStr)
+		if err == nil && agentID != uuid.Nil && apiKey != "" {
+			agent, err := agentModel.GetByID(ctx, agentID)
+			if err == nil && authService.ValidateAPIKey(apiKey, agent.APIKeyHash) {
+				authenticatedAgent = agent
 			}
 		}
 

@@ -42,6 +42,9 @@ interface BackupTask {
   schedule: string;
   rclone_args: string[];
   is_active: boolean;
+  backup_mode: 'sync' | 'archive';
+  archive_format?: 'tar.gz' | 'zip';
+  encryption_enabled?: boolean;
   created_at: string;
   updated_at: string;
   assigned_agents: string[];
@@ -87,6 +90,10 @@ type FSListResponse = {
     schedule: '0 2 * * *', // Default: daily at 2 AM
     rclone_args: [] as string[],
     is_active: true,
+    backup_mode: 'sync' as 'sync' | 'archive',
+    archive_format: 'tar.gz' as 'tar.gz' | 'zip',
+    encryption_enabled: false,
+    encryption_password: '',
     assigned_agent_ids: [] as string[],
   });
 
@@ -181,6 +188,10 @@ type FSListResponse = {
       schedule: '0 2 * * *',
       rclone_args: [],
       is_active: true,
+      backup_mode: 'sync',
+      archive_format: 'tar.gz',
+      encryption_enabled: false,
+      encryption_password: '',
       assigned_agent_ids: [],
     });
     setSourceBrowserOpen(false);
@@ -203,6 +214,10 @@ type FSListResponse = {
       schedule: task.schedule,
       rclone_args: task.rclone_args,
       is_active: task.is_active,
+      backup_mode: task.backup_mode || 'sync',
+      archive_format: task.archive_format || 'tar.gz',
+      encryption_enabled: !!task.encryption_enabled,
+      encryption_password: '',
       assigned_agent_ids: task.assigned_agents,
     });
     setSourceBrowserOpen(false);
@@ -266,14 +281,6 @@ type FSListResponse = {
       return;
     }
 
-    const agent = agents.find((item) => item.id === selectedAgentId);
-    if (!agent?.is_local) {
-      setSourceBrowserAgentId(selectedAgentId);
-      setSourceBrowserPath(formData.source_path || '/');
-      setSourceBrowserError(t('tasks.browse.only_local'));
-      return;
-    }
-
     setSourceBrowserAgentId(selectedAgentId);
     const initialPath = (formData.source_path || '/').trim() || '/';
     setSourceBrowserPath(initialPath);
@@ -309,12 +316,45 @@ type FSListResponse = {
     e.preventDefault();
     
     try {
+      if (!formData.destination_path.trim()) {
+        alert(t('tasks.destination_path_required'));
+        return;
+      }
+      const dest = formData.destination_path.trim();
+      const looksLikeRemotePrefix =
+        /^[^\\/]+:/.test(dest) && !/^[A-Za-z]:[\\/]/.test(dest);
+      if (looksLikeRemotePrefix) {
+        alert(t('tasks.destination_path_no_remote'));
+        return;
+      }
+      if (formData.encryption_enabled && !editingTask && !formData.encryption_password.trim()) {
+        alert(t('tasks.encryption_password_required'));
+        return;
+      }
+
+      const payload: any = {
+        name: formData.name,
+        rclone_remote_id: formData.rclone_remote_id,
+        source_path: formData.source_path,
+        destination_path: formData.destination_path,
+        schedule: formData.schedule,
+        rclone_args: formData.rclone_args,
+        is_active: formData.is_active,
+        assigned_agent_ids: formData.assigned_agent_ids,
+        backup_mode: formData.backup_mode,
+        archive_format: formData.archive_format,
+        encryption_enabled: formData.encryption_enabled,
+      };
+      if (formData.encryption_enabled && formData.encryption_password.trim()) {
+        payload.encryption_password = formData.encryption_password.trim();
+      }
+
       if (editingTask) {
-        await apiClient.put(`/admin/tasks/${editingTask.id}`, formData, {
+        await apiClient.put(`/admin/tasks/${editingTask.id}`, payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
       } else {
-        await apiClient.post('/admin/tasks', formData, {
+        await apiClient.post('/admin/tasks', payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
       }
@@ -624,7 +664,7 @@ type FSListResponse = {
 	                        type="text"
 	                        value={formData.destination_path}
 	                        onChange={(e) => setFormData({ ...formData, destination_path: e.target.value })}
-	                        placeholder="remote:path/to/dest"
+	                        placeholder={t('tasks.destination_path_placeholder')}
 	                        className="form-control font-monospace"
 	                        required
 	                      />
@@ -823,6 +863,72 @@ type FSListResponse = {
                         })}
                       </div>
                     </div>
+
+                    <div className="col-12">
+                      <label className="form-label">{t('tasks.backup_mode')}</label>
+                      <select
+                        value={formData.backup_mode}
+                        onChange={(e) => {
+                          const mode = e.target.value as 'sync' | 'archive';
+                          setFormData({
+                            ...formData,
+                            backup_mode: mode,
+                            archive_format: mode === 'archive' ? formData.archive_format : 'tar.gz',
+                          });
+                        }}
+                        className="form-select"
+                      >
+                        <option value="sync">{t('tasks.backup_mode_sync')}</option>
+                        <option value="archive">{t('tasks.backup_mode_archive')}</option>
+                      </select>
+                    </div>
+
+                    {formData.backup_mode === 'archive' && (
+                      <div className="col-12 col-md-6">
+                        <label className="form-label">{t('tasks.archive_format')}</label>
+                        <select
+                          value={formData.archive_format}
+                          onChange={(e) => setFormData({ ...formData, archive_format: e.target.value as any })}
+                          className="form-select"
+                        >
+                          <option value="tar.gz">tar.gz</option>
+                          <option value="zip">zip</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="col-12">
+                      <label className="form-check form-switch">
+                        <input
+                          className="form-check-input"
+                          type="checkbox"
+                          checked={formData.encryption_enabled}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              encryption_enabled: e.target.checked,
+                              encryption_password: e.target.checked ? formData.encryption_password : '',
+                            })
+                          }
+                        />
+                        <span className="form-check-label">{t('tasks.enable_encryption')}</span>
+                      </label>
+                      <div className="form-text">{t('tasks.encryption_help')}</div>
+                    </div>
+
+                    {formData.encryption_enabled && (
+                      <div className="col-12 col-md-6">
+                        <label className="form-label">{t('tasks.encryption_password')}</label>
+                        <input
+                          type="password"
+                          value={formData.encryption_password}
+                          onChange={(e) => setFormData({ ...formData, encryption_password: e.target.value })}
+                          className="form-control"
+                          placeholder={editingTask ? t('tasks.encryption_password_keep') : ''}
+                          required={!editingTask}
+                        />
+                      </div>
+                    )}
 
                     <div className="col-12">
                       <label className="form-label">{t('tasks.rclone_arguments')}</label>

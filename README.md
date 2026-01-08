@@ -31,6 +31,10 @@
 └────────┘                    └────────┘
 ```
 
+Agent 与 Hub 默认通过 WebSocket（`/api/v1/agent/ws`）建立双向长连接，用于任务下发/取消、日志与状态回传、远程目录浏览；HTTP 仅用于下载/注册等必要引导流程。
+
+如果 Hub 部署在 Nginx 等反向代理后，需要开启 WebSocket Upgrade（示例已包含在 `hub/web/nginx.conf`、`hub/web/nginx.conf.template`、`docker/hub/nginx.conf`）。
+
 ## 🚀 快速开始
 
 ### 使用部署脚本（推荐）

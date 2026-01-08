@@ -263,6 +263,18 @@
     "source_path": "源路径",
     "destination": "目标路径",
     "destination_path": "目标路径",
+    "destination_path_placeholder": "backups/website",
+    "destination_path_required": "目标路径不能为空",
+    "destination_path_no_remote": "目标路径不要填写远程前缀（例如 's3:'），只填远程内的路径。",
+    "backup_mode": "备份模式",
+    "backup_mode_sync": "同步（镜像）",
+    "backup_mode_archive": "归档（压缩包）",
+    "archive_format": "归档格式",
+    "enable_encryption": "启用加密（rclone crypt）",
+    "encryption_help": "加密使用任务级口令 + rclone crypt。请妥善保存口令，丢失将无法解密恢复。",
+    "encryption_password": "加密口令",
+    "encryption_password_keep": "留空则保持原口令",
+    "encryption_password_required": "加密口令不能为空",
     "schedule": "执行计划",
     "next_run": "下次执行",
     "calculating": "计算中...",
@@ -361,7 +373,7 @@
       "empty": "暂无目录",
       "use": "使用此路径",
       "select_agent_first": "请先选择至少一个节点。",
-      "only_local": "当前仅支持本地节点的目录浏览。"
+      "only_local": "目录浏览需要节点在线并已连接到 Hub。"
     }
   },
   "remotes": {

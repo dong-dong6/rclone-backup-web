@@ -1,3 +1,6 @@
+//go:build agent_legacy
+// +build agent_legacy
+
 package main
 
 import (

@@ -1,11 +1,13 @@
 package api
 
 import (
-	"encoding/base64"
+	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -87,6 +89,7 @@ type HeartbeatRequest struct {
 
 type HeartbeatAction struct {
 	Action      string          `json:"action"`
+	Type        string          `json:"type,omitempty"`
 	ExecutionID string          `json:"execution_id,omitempty"`
 	TriggerMode string          `json:"trigger_mode,omitempty"`
 	Task        json.RawMessage `json:"task,omitempty"`
@@ -124,21 +127,10 @@ type SystemInfoRequest struct {
 	ProcessCount int `json:"process_count"`
 }
 
-// AgentHeartbeat handles agent heartbeat and returns pending actions
-func (h *Handler) AgentHeartbeat(c *gin.Context) {
-	agentID := c.MustGet("agent_id").(uuid.UUID)
-
-	var req HeartbeatRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Update agent heartbeat
+func (h *Handler) processAgentHeartbeat(ctx context.Context, agentID uuid.UUID, req HeartbeatRequest) (HeartbeatResponse, error) {
 	agentModel := models.NewAgentModel(h.db)
-	if err := agentModel.UpdateHeartbeat(c.Request.Context(), agentID, req.Status); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update heartbeat"})
-		return
+	if err := agentModel.UpdateHeartbeat(ctx, agentID, req.Status); err != nil {
+		return HeartbeatResponse{}, &APIError{Status: http.StatusInternalServerError, Message: "Failed to update heartbeat"}
 	}
 
 	metricsModel := models.NewMetricsModel(h.db)
@@ -164,6 +156,7 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 		UDPConnections: req.SystemInfo.UDPConnections,
 		ProcessCount:   req.SystemInfo.ProcessCount,
 	}
+
 	// Ensure values stay within signed range
 	if metric.NetworkRxBytes > math.MaxInt64 {
 		metric.NetworkRxBytes = math.MaxInt64
@@ -172,114 +165,110 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 		metric.NetworkTxBytes = math.MaxInt64
 	}
 
-	if err := metricsModel.Create(c.Request.Context(), metric); err != nil {
+	if err := metricsModel.Create(ctx, metric); err != nil {
 		log.Printf("Failed to persist metrics for agent %s: %v", agentID, err)
 	}
 
-	// Initialize actions array
 	actions := []HeartbeatAction{}
 
 	// Check for cancelled tasks that were running on this agent
 	executionModel := models.NewExecutionModel(h.db)
-	cancelledExecutions, err := executionModel.GetCancelledForAgent(c.Request.Context(), agentID)
+	cancelledExecutions, err := executionModel.GetCancelledForAgent(ctx, agentID)
 	if err == nil {
 		for _, exec := range cancelledExecutions {
 			log.Printf("Signaling cancellation for execution %s to agent %s", exec.ID, agentID)
 			actions = append(actions, HeartbeatAction{
 				Action:      "CANCEL_TASK",
+				Type:        "CANCEL_TASK",
 				ExecutionID: exec.ID.String(),
 			})
+		}
+	}
 
-			// Mark as fully stopped/acknowledged by moving to 'cancelled' status (actually it stays in cancelled,
-			// but we might need a way to stop signaling it.
-			// For now, let's assume the agent will stop it and then report its final status.)
+	// Dispatch pending FS list request (used by admin UI "browse source path" for remote agents).
+	if h.fsBroker != nil {
+		if req := h.fsBroker.PopNext(agentID); req != nil {
+			payload, _ := json.Marshal(map[string]interface{}{
+				"request_id": req.ID,
+				"path":       req.Path,
+				"limit":      req.Limit,
+			})
+			actions = append(actions, HeartbeatAction{
+				Action: "FS_LIST",
+				Type:   "FS_LIST",
+				Task:   payload,
+			})
 		}
 	}
 
 	// If agent is already running a task, don't dispatch new ones
-	if req.Status == "running_task" {
-		log.Printf("Agent %s is busy, skipping task dispatch", agentID)
-		c.JSON(http.StatusOK, HeartbeatResponse{Actions: actions})
-		return
-	}
+	if req.Status != "running_task" {
+		taskService := services.NewTaskService(h.db)
+		pendingTask, err := taskService.FindPendingTaskForAgent(ctx, agentID)
 
-	// Use TaskService to find pending tasks
-	taskService := services.NewTaskService(h.db)
-	pendingTask, err := taskService.FindPendingTaskForAgent(c.Request.Context(), agentID)
-
-	if err != nil {
-		log.Printf("Error finding pending task for agent %s: %v", agentID, err)
-	} else if pendingTask != nil {
-		// We have a task to execute!
-		log.Printf("Found pending task %s (%s) for agent %s",
-			pendingTask.ID, pendingTask.Name, agentID)
-
-		// Determine trigger mode
-		triggerMode := models.TriggerModeScheduled
-
-		// Check if there's already a pending execution (manual trigger)
-		executionModel := models.NewExecutionModel(h.db)
-		pendingExecutions, _ := executionModel.GetPendingForAgent(c.Request.Context(), agentID)
-
-		var execution *models.TaskExecution
-		if len(pendingExecutions) > 0 && pendingExecutions[0].TaskID == pendingTask.ID {
-			// Use existing pending execution
-			execution = pendingExecutions[0]
-			triggerMode = execution.TriggerMode
-		} else {
-			// Create new execution for scheduled task
-			execution, err = taskService.CreateExecution(c.Request.Context(),
-				pendingTask.ID, agentID, triggerMode)
-			if err != nil {
-				log.Printf("Failed to create execution: %v", err)
-				c.JSON(http.StatusOK, HeartbeatResponse{Actions: actions})
-				return
-			}
-		}
-
-		// Build task details for agent
-		taskDetails, err := taskService.BuildTaskDetailsForAgent(c.Request.Context(),
-			pendingTask, execution.ID, h.cryptoService)
 		if err != nil {
-			log.Printf("Failed to build task details: %v", err)
-			// Mark execution as failed
-			executionModel.UpdateStatus(c.Request.Context(), execution.ID, "failed", nil)
-			c.JSON(http.StatusOK, HeartbeatResponse{Actions: actions})
-			return
+			log.Printf("Error finding pending task for agent %s: %v", agentID, err)
+		} else if pendingTask != nil {
+			log.Printf("Found pending task %s (%s) for agent %s", pendingTask.ID, pendingTask.Name, agentID)
+
+			// Determine trigger mode
+			triggerMode := models.TriggerModeScheduled
+
+			// Check if there's already a pending execution (manual trigger)
+			pendingExecutions, _ := executionModel.GetPendingForAgent(ctx, agentID)
+
+			var execution *models.TaskExecution
+			if len(pendingExecutions) > 0 && pendingExecutions[0].TaskID == pendingTask.ID {
+				execution = pendingExecutions[0]
+				triggerMode = execution.TriggerMode
+			} else {
+				var createErr error
+				execution, createErr = taskService.CreateExecution(ctx, pendingTask.ID, agentID, triggerMode)
+				if createErr != nil {
+					log.Printf("Failed to create execution: %v", createErr)
+					return HeartbeatResponse{Actions: actions}, nil
+				}
+			}
+
+			// Build task details for agent
+			taskDetails, buildErr := taskService.BuildTaskDetailsForAgent(ctx, pendingTask, execution.ID, h.cryptoService)
+			if buildErr != nil {
+				log.Printf("Failed to build task details: %v", buildErr)
+				_ = executionModel.UpdateStatus(ctx, execution.ID, "failed", nil)
+				return HeartbeatResponse{Actions: actions}, nil
+			}
+
+			taskJSON, _ := json.Marshal(taskDetails)
+			actions = append(actions, HeartbeatAction{
+				Action:      "EXECUTE_TASK",
+				Type:        "EXECUTE_TASK",
+				ExecutionID: execution.ID.String(),
+				TriggerMode: triggerMode,
+				Task:        taskJSON,
+			})
+
+			// Mark execution as running
+			now := time.Now()
+			_ = executionModel.UpdateStatus(ctx, execution.ID, "running", &now)
+
+			log.Printf("✅ Dispatching task %s to agent %s (execution: %s, trigger: %s)",
+				pendingTask.Name, agentID.String(), execution.ID.String(), triggerMode)
+
+			h.sseService.SendEvent("task.dispatched", map[string]interface{}{
+				"task_id":      pendingTask.ID.String(),
+				"task_name":    pendingTask.Name,
+				"agent_id":     agentID.String(),
+				"execution_id": execution.ID.String(),
+				"trigger_mode": triggerMode,
+			})
 		}
-
-		// Convert to JSON for HeartbeatAction
-		taskJSON, _ := json.Marshal(taskDetails)
-
-		// Create EXECUTE_TASK action
-		actions = append(actions, HeartbeatAction{
-			Action:      "EXECUTE_TASK",
-			ExecutionID: execution.ID.String(),
-			TriggerMode: triggerMode,
-			Task:        taskJSON,
-		})
-
-		// Mark execution as running
-		now := time.Now()
-		executionModel.UpdateStatus(c.Request.Context(), execution.ID, "running", &now)
-
-		log.Printf("✅ Dispatching task %s to agent %s (execution: %s, trigger: %s)",
-			pendingTask.Name, agentID.String(), execution.ID.String(), triggerMode)
-
-		// Send SSE event for real-time UI update
-		h.sseService.SendEvent("task.dispatched", map[string]interface{}{
-			"task_id":      pendingTask.ID.String(),
-			"task_name":    pendingTask.Name,
-			"agent_id":     agentID.String(),
-			"execution_id": execution.ID.String(),
-			"trigger_mode": triggerMode,
-		})
 	}
 
 	// Check if agent needs to sync config
 	if h.schedulerService.NeedsConfigSync(agentID) {
 		actions = append(actions, HeartbeatAction{
 			Action: "SYNC_CONFIG",
+			Type:   "SYNC_CONFIG",
 		})
 	}
 
@@ -306,119 +295,101 @@ func (h *Handler) AgentHeartbeat(c *gin.Context) {
 		},
 	})
 
-	c.JSON(http.StatusOK, HeartbeatResponse{
-		Actions: actions,
-	})
+	return HeartbeatResponse{Actions: actions}, nil
 }
 
-// GetAgentTasks returns all tasks assigned to the agent
-func (h *Handler) GetAgentTasks(c *gin.Context) {
-	agentID := c.MustGet("agent_id").(uuid.UUID)
+type AgentFSListResultRequest struct {
+	RequestID string                 `json:"request_id" binding:"required"`
+	Path      string                 `json:"path"`
+	Parent    string                 `json:"parent,omitempty"`
+	Entries   []services.FSListEntry `json:"entries"`
+	Error     string                 `json:"error,omitempty"`
+}
 
-	taskModel := models.NewTaskModel(h.db)
-	tasks, err := taskModel.GetAgentTasks(c.Request.Context(), agentID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get tasks"})
-		return
+func (h *Handler) processAgentFSListResult(agentID uuid.UUID, req AgentFSListResultRequest) error {
+	if h.fsBroker == nil {
+		return &APIError{Status: http.StatusServiceUnavailable, Message: "FS broker not available"}
 	}
 
-	// Get remotes for each task
+	resp := &services.FSListResponse{
+		Path:    req.Path,
+		Parent:  req.Parent,
+		Entries: req.Entries,
+	}
+
+	if ok := h.fsBroker.Resolve(agentID, req.RequestID, resp, strings.TrimSpace(req.Error)); !ok {
+		return &APIError{Status: http.StatusNotFound, Message: "Request not found"}
+	}
+
+	return nil
+}
+
+func (h *Handler) buildLegacyAgentTasks(ctx context.Context, agentID uuid.UUID) ([]AgentLegacyTask, error) {
+	taskModel := models.NewTaskModel(h.db)
+	tasks, err := taskModel.GetAgentTasks(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+
 	remoteModel := models.NewRemoteModel(h.db)
-	remotes := make(map[uuid.UUID]map[string]interface{})
+	remoteConfigs := make(map[uuid.UUID]string)
 
+	legacy := make([]AgentLegacyTask, 0, len(tasks))
 	for _, task := range tasks {
-		if _, exists := remotes[task.RcloneRemoteID]; !exists {
-			remote, err := remoteModel.GetByID(c.Request.Context(), task.RcloneRemoteID)
-			if err != nil {
-				continue
-			}
-
-			// Decrypt config
-			decryptedConfig, err := h.cryptoService.Decrypt(remote.ConfigData)
-			if err != nil {
-				continue
-			}
-
-			remotes[remote.ID] = map[string]interface{}{
-				"remote_id":  remote.ID,
-				"config_b64": base64.StdEncoding.EncodeToString([]byte(decryptedConfig)),
+		if _, exists := remoteConfigs[task.RcloneRemoteID]; !exists {
+			remote, err := remoteModel.GetByID(ctx, task.RcloneRemoteID)
+			if err == nil {
+				if decrypted, err := h.cryptoService.Decrypt(remote.ConfigData); err == nil {
+					remoteConfigs[remote.ID] = services.NormalizeRcloneConfigForSingleRemote(decrypted)
+				}
 			}
 		}
+
+		var args []string
+		if task.RcloneArgs != nil {
+			_ = json.Unmarshal(task.RcloneArgs, &args)
+		}
+
+		item := AgentLegacyTask{
+			ID:                task.ID.String(),
+			Name:              task.Name,
+			Schedule:          task.Schedule,
+			RemoteConfig:      remoteConfigs[task.RcloneRemoteID],
+			SourcePath:        task.SourcePath,
+			DestPath:          task.DestinationPath,
+			RcloneArgs:        args,
+			Enabled:           task.IsActive,
+			BackupMode:        task.BackupMode,
+			ArchiveFormat:     task.ArchiveFormat,
+			EncryptionEnabled: task.EncryptionEnabled,
+		}
+
+		if task.EncryptionEnabled {
+			if task.EncryptionPasswordEnc == nil || task.EncryptionPassword2Enc == nil {
+				return nil, fmt.Errorf("task %s encryption enabled but passwords missing", task.ID)
+			}
+			password, err := h.cryptoService.Decrypt(*task.EncryptionPasswordEnc)
+			if err != nil {
+				return nil, err
+			}
+			password2, err := h.cryptoService.Decrypt(*task.EncryptionPassword2Enc)
+			if err != nil {
+				return nil, err
+			}
+			item.EncryptionPassword = password
+			item.EncryptionPassword2 = password2
+		}
+
+		legacy = append(legacy, item)
 	}
 
-	response := map[string]interface{}{
-		"tasks":   tasks,
-		"remotes": remotes,
-	}
-
-	c.JSON(http.StatusOK, response)
+	return legacy, nil
 }
 
 type UpdateExecutionRequest struct {
 	Status    string `json:"status" binding:"required"`
 	LogOutput string `json:"log_output"`
 	EndedAt   string `json:"ended_at"`
-}
-
-// UpdateExecution updates the status of a task execution
-func (h *Handler) UpdateExecution(c *gin.Context) {
-	agentID := c.MustGet("agent_id").(uuid.UUID)
-	executionIDStr := c.Param("executionId")
-
-	executionID, err := uuid.Parse(executionIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid execution ID"})
-		return
-	}
-
-	var req UpdateExecutionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Verify execution belongs to agent
-	executionModel := models.NewExecutionModel(h.db)
-	execution, err := executionModel.GetByID(c.Request.Context(), executionID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Execution not found"})
-		return
-	}
-
-	if execution.AgentID != agentID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Execution does not belong to agent"})
-		return
-	}
-
-	// Parse ended_at time if provided
-	var endedAt *time.Time
-	if req.EndedAt != "" {
-		t, err := time.Parse(time.RFC3339, req.EndedAt)
-		if err == nil {
-			endedAt = &t
-		}
-	}
-
-	// Update execution
-	if err := executionModel.UpdateStatus(c.Request.Context(), executionID, req.Status, endedAt); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update execution"})
-		return
-	}
-
-	if req.LogOutput != "" {
-		if err := executionModel.UpdateLogs(c.Request.Context(), executionID, req.LogOutput); err != nil {
-			// Log error but don't fail the request
-		}
-	}
-
-	// Send SSE event
-	h.sseService.SendEvent("execution.status.update", map[string]interface{}{
-		"execution_id": executionID,
-		"status":       req.Status,
-		"agent_id":     agentID,
-	})
-
-	c.JSON(http.StatusOK, gin.H{"status": "updated"})
 }
 
 type StreamLogsRequest struct {
@@ -428,52 +399,63 @@ type StreamLogsRequest struct {
 	} `json:"logs"`
 }
 
-// StreamExecutionLogs handles real-time log streaming from agent
-func (h *Handler) StreamExecutionLogs(c *gin.Context) {
-	agentID := c.MustGet("agent_id").(uuid.UUID)
-	executionIDStr := c.Param("executionId")
-
-	executionID, err := uuid.Parse(executionIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid execution ID"})
-		return
-	}
-
-	var req StreamLogsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Verify execution belongs to agent
+func (h *Handler) processExecutionUpdate(ctx context.Context, agentID uuid.UUID, executionID uuid.UUID, req UpdateExecutionRequest) error {
 	executionModel := models.NewExecutionModel(h.db)
-	execution, err := executionModel.GetByID(c.Request.Context(), executionID)
+	execution, err := executionModel.GetByID(ctx, executionID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Execution not found"})
-		return
+		return &APIError{Status: http.StatusNotFound, Message: "Execution not found"}
 	}
-
 	if execution.AgentID != agentID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Execution does not belong to agent"})
-		return
+		return &APIError{Status: http.StatusForbidden, Message: "Execution does not belong to agent"}
 	}
 
-	// Convert to LogEntry format for database storage
-	logEntries := make([]models.LogEntry, len(req.Logs))
-	for i, log := range req.Logs {
-		logEntries[i] = models.LogEntry{
-			Timestamp: log.Timestamp,
-			Message:   log.Message,
+	var endedAt *time.Time
+	if req.EndedAt != "" {
+		t, parseErr := time.Parse(time.RFC3339, req.EndedAt)
+		if parseErr == nil {
+			endedAt = &t
 		}
 	}
 
-	// Store logs in database
-	if err := executionModel.StreamLogs(c.Request.Context(), executionID, logEntries); err != nil {
-		log.Printf("Failed to store execution logs: %v", err)
-		// Don't fail the request, logs are best-effort
+	if err := executionModel.UpdateStatus(ctx, executionID, req.Status, endedAt); err != nil {
+		return &APIError{Status: http.StatusInternalServerError, Message: "Failed to update execution"}
 	}
 
-	// Forward logs to SSE for real-time updates
+	if req.LogOutput != "" {
+		_ = executionModel.UpdateLogs(ctx, executionID, req.LogOutput)
+	}
+
+	h.sseService.SendEvent("execution.status.update", map[string]interface{}{
+		"execution_id": executionID,
+		"status":       req.Status,
+		"agent_id":     agentID,
+	})
+
+	return nil
+}
+
+func (h *Handler) processExecutionLogs(ctx context.Context, agentID uuid.UUID, executionID uuid.UUID, req StreamLogsRequest) error {
+	executionModel := models.NewExecutionModel(h.db)
+	execution, err := executionModel.GetByID(ctx, executionID)
+	if err != nil {
+		return &APIError{Status: http.StatusNotFound, Message: "Execution not found"}
+	}
+	if execution.AgentID != agentID {
+		return &APIError{Status: http.StatusForbidden, Message: "Execution does not belong to agent"}
+	}
+
+	logEntries := make([]models.LogEntry, len(req.Logs))
+	for i, logEntry := range req.Logs {
+		logEntries[i] = models.LogEntry{
+			Timestamp: logEntry.Timestamp,
+			Message:   logEntry.Message,
+		}
+	}
+
+	if err := executionModel.StreamLogs(ctx, executionID, logEntries); err != nil {
+		log.Printf("Failed to store execution logs: %v", err)
+	}
+
 	for _, logEntry := range req.Logs {
 		h.sseService.SendEvent("execution.log.update", map[string]interface{}{
 			"execution_id": executionID,
@@ -485,5 +467,5 @@ func (h *Handler) StreamExecutionLogs(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusAccepted, gin.H{"message": "Logs received"})
+	return nil
 }

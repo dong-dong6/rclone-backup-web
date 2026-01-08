@@ -86,6 +86,13 @@ CREATE TABLE IF NOT EXISTS backup_tasks (
     schedule VARCHAR(100) NOT NULL,                              -- Cron 表达式（定时调度）
     rclone_args JSONB DEFAULT '[]'::JSONB,                       -- 额外的 rclone 命令参数
     is_active BOOLEAN NOT NULL DEFAULT true,                     -- 任务是否启用
+    backup_mode VARCHAR(20) NOT NULL DEFAULT 'sync' 
+        CHECK (backup_mode IN ('sync', 'archive')),              -- 备份模式：sync=镜像同步，archive=压缩归档
+    archive_format VARCHAR(20) NOT NULL DEFAULT 'tar.gz'
+        CHECK (archive_format IN ('tar.gz', 'zip')),             -- archive 模式压缩格式
+    encryption_enabled BOOLEAN NOT NULL DEFAULT false,           -- 是否启用加密（rclone crypt）
+    encryption_password TEXT,                                    -- 任务加密口令（Hub 端加密存储）
+    encryption_password2 TEXT,                                   -- 任务加密盐口令（Hub 端加密存储）
     retention_days INTEGER DEFAULT 30,                           -- 备份数据保留天数
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),  -- 记录创建时间
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()   -- 记录更新时间

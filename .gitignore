@@ -31,8 +31,12 @@ logs/
 *.so
 *.dylib
 vendor/
-go.sum
 agent/rclone-backup-agent-*
+hub/hub-api
+hub/main
+agent/main_standalone
+agent/rclone-agent
+agent/rclone-agent-dev
 
 # Node.js
 node_modules/

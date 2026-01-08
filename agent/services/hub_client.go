@@ -54,6 +54,20 @@ type Task struct {
 	DestPath     string   `json:"dest_path"`
 	RcloneArgs   []string `json:"rclone_args"`
 	Enabled      bool     `json:"enabled"`
+
+	BackupMode          string `json:"backup_mode,omitempty"`
+	ArchiveFormat       string `json:"archive_format,omitempty"`
+	EncryptionEnabled   bool   `json:"encryption_enabled"`
+	EncryptionPassword  string `json:"encryption_password,omitempty"`
+	EncryptionPassword2 string `json:"encryption_password2,omitempty"`
+}
+
+type FSListResult struct {
+	RequestID string        `json:"request_id"`
+	Path      string        `json:"path"`
+	Parent    string        `json:"parent,omitempty"`
+	Entries   []FSListEntry `json:"entries"`
+	Error     string        `json:"error,omitempty"`
 }
 
 // NewHubClient creates a new hub client
@@ -96,57 +110,14 @@ func (c *HubClient) Register(ctx context.Context, token, name string, isLocal bo
 	return resp.AgentID, resp.APIKey, nil
 }
 
-// SendHeartbeat sends a heartbeat to the hub
-func (c *HubClient) SendHeartbeat(ctx context.Context, status string, tasks interface{}) (*HeartbeatResponse, error) {
-	req := HeartbeatRequest{
+func (c *HubClient) BuildHeartbeat(status string, tasks interface{}) HeartbeatRequest {
+	return HeartbeatRequest{
 		AgentID:    c.agentID,
 		Status:     status,
 		Tasks:      tasks,
 		SystemInfo: c.collector.Collect(c.version),
 		Timestamp:  time.Now(),
 	}
-
-	var resp HeartbeatResponse
-	if err := c.doRequest(ctx, "POST", "/api/v1/agent/heartbeat", req, &resp); err != nil {
-		return nil, err
-	}
-
-	return &resp, nil
-}
-
-// UpdateExecutionStatus updates the status of a task execution
-func (c *HubClient) UpdateExecutionStatus(executionID, status string, err error) error {
-	req := map[string]interface{}{
-		"execution_id": executionID,
-		"status":       status,
-		"timestamp":    time.Now(),
-	}
-
-	if err != nil {
-		req["error"] = err.Error()
-	}
-
-	return c.doRequest(context.Background(), "POST", "/api/v1/agent/execution/status", req, nil)
-}
-
-// SendLogs sends execution logs to the hub
-func (c *HubClient) SendLogs(executionID string, logs []string) error {
-	req := map[string]interface{}{
-		"execution_id": executionID,
-		"logs":         logs,
-		"timestamp":    time.Now(),
-	}
-
-	return c.doRequest(context.Background(), "POST", "/api/v1/agent/execution/logs", req, nil)
-}
-
-// GetTasks retrieves tasks assigned to this agent
-func (c *HubClient) GetTasks(ctx context.Context) ([]Task, error) {
-	var tasks []Task
-	if err := c.doRequest(ctx, "GET", "/api/v1/agent/tasks", nil, &tasks); err != nil {
-		return nil, err
-	}
-	return tasks, nil
 }
 
 // doRequest performs an HTTP request to the hub
@@ -170,8 +141,6 @@ func (c *HubClient) doRequest(ctx context.Context, method, path string, body int
 	req.Header.Set("Content-Type", "application/json")
 	if c.apiKey != "" && c.agentID != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s:%s", c.agentID, c.apiKey))
-	} else if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 
 	resp, err := c.httpClient.Do(req)

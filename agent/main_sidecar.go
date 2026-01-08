@@ -1,4 +1,5 @@
-package main
+//go:build agent_sidecar
+// +build agent_sidecar
 
 package main
 
@@ -19,7 +20,7 @@ import (
 
 // executeTaskWithSidecar executes a task using rclone sidecar
 func (a *Agent) executeTaskWithSidecar(executionID string, task *Task, triggerMode string) {
-	log.Printf("Executing task %s via sidecar (execution: %s, trigger: %s)", 
+	log.Printf("Executing task %s via sidecar (execution: %s, trigger: %s)",
 		task.TaskID, executionID, triggerMode)
 
 	a.runningMux.Lock()
@@ -46,7 +47,7 @@ func (a *Agent) executeTaskWithSidecar(executionID string, task *Task, triggerMo
 		configData, err := base64.StdEncoding.DecodeString(task.RcloneConfigB64)
 		if err != nil {
 			log.Printf("Failed to decode rclone config: %v", err)
-			a.reportExecutionResult(executionID, "failed", 
+			a.reportExecutionResult(executionID, "failed",
 				fmt.Sprintf("Config decode error: %v", err), startTime)
 			return
 		}
@@ -55,7 +56,7 @@ func (a *Agent) executeTaskWithSidecar(executionID string, task *Task, triggerMo
 		configMap := parseRcloneConfig(string(configData))
 		if err := rcloneClient.CreateRemote(ctx, "backup-remote", configMap); err != nil {
 			log.Printf("Failed to create remote: %v", err)
-			a.reportExecutionResult(executionID, "failed", 
+			a.reportExecutionResult(executionID, "failed",
 				fmt.Sprintf("Remote creation error: %v", err), startTime)
 			return
 		}
@@ -75,15 +76,15 @@ func (a *Agent) executeTaskWithSidecar(executionID string, task *Task, triggerMo
 
 	// Execute sync operation
 	logChan <- fmt.Sprintf("Starting backup: %s -> %s", source, destination)
-	
+
 	jobStatus, err := rcloneClient.Sync(ctx, source, destination, task.RcloneArgs)
-	
+
 	if err != nil {
 		status := "failed"
 		errorMsg := fmt.Sprintf("Sync failed: %v", err)
 		logChan <- errorMsg
 		close(logChan)
-		
+
 		log.Printf("Task execution failed: %v", err)
 		a.reportExecutionResult(executionID, status, errorMsg, startTime)
 		return
@@ -92,15 +93,15 @@ func (a *Agent) executeTaskWithSidecar(executionID string, task *Task, triggerMo
 	// Check job results
 	status := "success"
 	var finalOutput string
-	
+
 	if jobStatus.Success {
 		finalOutput = fmt.Sprintf(
 			"Backup completed successfully\n"+
-			"Files transferred: %d\n"+
-			"Bytes transferred: %d\n"+
-			"Errors: %d\n"+
-			"Duration: %.2f seconds\n"+
-			"Average speed: %.2f MB/s",
+				"Files transferred: %d\n"+
+				"Bytes transferred: %d\n"+
+				"Errors: %d\n"+
+				"Duration: %.2f seconds\n"+
+				"Average speed: %.2f MB/s",
 			jobStatus.Transfers,
 			jobStatus.Bytes,
 			jobStatus.Errors,
@@ -112,18 +113,18 @@ func (a *Agent) executeTaskWithSidecar(executionID string, task *Task, triggerMo
 		status = "failed"
 		finalOutput = fmt.Sprintf(
 			"Backup failed\n"+
-			"Error: %s\n"+
-			"Files transferred: %d\n"+
-			"Errors: %d",
+				"Error: %s\n"+
+				"Files transferred: %d\n"+
+				"Errors: %d",
 			jobStatus.Error,
 			jobStatus.Transfers,
 			jobStatus.Errors,
 		)
 		logChan <- fmt.Sprintf("Backup failed: %s", jobStatus.Error)
 	}
-	
+
 	close(logChan)
-	
+
 	// Add output lines if available
 	if len(jobStatus.Output) > 0 {
 		finalOutput += "\n\nDetailed output:\n"
@@ -167,13 +168,13 @@ func (a *Agent) monitorTransferStats(ctx context.Context, client *rclone.Client,
 					stats.Errors,
 				)
 				logChan <- logMsg
-				
+
 				// Add to batch for hub reporting
 				logBatch = append(logBatch, map[string]string{
 					"timestamp": time.Now().Format(time.RFC3339),
 					"message":   logMsg,
 				})
-				
+
 				// Send batch if it's been 10 seconds or we have 10+ logs
 				if time.Since(lastLogBatch) > 10*time.Second || len(logBatch) >= 10 {
 					a.sendLogBatch(executionID, logBatch)
@@ -215,7 +216,7 @@ func (a *Agent) streamLogsFromChannel(executionID string, logChan <-chan string)
 				}
 				return
 			}
-			
+
 			batch = append(batch, map[string]string{
 				"timestamp": time.Now().Format(time.RFC3339),
 				"message":   log,
@@ -244,7 +245,7 @@ func (a *Agent) sendLogBatch(executionID string, logs []map[string]string) {
 	}
 
 	bodyBytes, _ := json.Marshal(reqBody)
-	
+
 	req, err := http.NewRequest("POST",
 		fmt.Sprintf("%s/api/v1/agent/executions/%s/logs", a.config.HubURL, executionID),
 		bytes.NewReader(bodyBytes))
@@ -266,13 +267,13 @@ func (a *Agent) sendLogBatch(executionID string, logs []map[string]string) {
 func parseRcloneConfig(config string) map[string]string {
 	result := make(map[string]string)
 	lines := strings.Split(config, "\n")
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "[") {
 			continue
 		}
-		
+
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) == 2 {
 			key := strings.TrimSpace(parts[0])
@@ -280,7 +281,7 @@ func parseRcloneConfig(config string) map[string]string {
 			result[key] = value
 		}
 	}
-	
+
 	return result
 }
 
@@ -290,17 +291,17 @@ func (a *Agent) UseSidecar() bool {
 	if a.config.RcloneEndpoint == "" {
 		return false
 	}
-	
+
 	// Try to connect to sidecar
 	client := rclone.NewClient(
 		a.config.RcloneEndpoint,
 		os.Getenv("RCLONE_RC_USER"),
 		os.Getenv("RCLONE_RC_PASS"),
 	)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	
+
 	_, err := client.Version(ctx)
 	return err == nil
 }

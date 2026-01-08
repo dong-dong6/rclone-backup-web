@@ -173,6 +173,18 @@
   },
   "tasks": {
     "title": "Task Management",
+    "backup_mode": "Backup Mode",
+    "backup_mode_sync": "Sync (Mirror)",
+    "backup_mode_archive": "Archive (Compressed File)",
+    "archive_format": "Archive Format",
+    "enable_encryption": "Enable Encryption (rclone crypt)",
+    "encryption_help": "Encryption uses per-task password + rclone crypt. Keep the password safe; losing it means the data cannot be decrypted.",
+    "encryption_password": "Encryption Password",
+    "encryption_password_keep": "Leave empty to keep existing password",
+    "encryption_password_required": "Encryption password is required.",
+    "destination_path_placeholder": "backups/website",
+    "destination_path_required": "Destination path is required.",
+    "destination_path_no_remote": "Destination path should not include a remote prefix (e.g. 's3:').",
     "list": {
       "title": "Task List",
       "empty": "No tasks found",
@@ -238,7 +250,7 @@
       "empty": "No directories",
       "use": "Use this path",
       "select_agent_first": "Please select an agent first.",
-      "only_local": "Directory browsing is currently supported only for local agents."
+      "only_local": "Directory browsing requires the agent to be online and connected."
     }
   },
   "remotes": {

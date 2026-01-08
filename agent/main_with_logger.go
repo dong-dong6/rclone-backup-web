@@ -1,3 +1,6 @@
+//go:build agent_with_logger
+// +build agent_with_logger
+
 package main
 
 import (
@@ -27,40 +30,40 @@ var log *logger.Logger
 
 func init() {
 	// Initialize logger
-	logFile, err := os.OpenFile("/var/log/rclone-agent/agent.log", 
+	logFile, err := os.OpenFile("/var/log/rclone-agent/agent.log",
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		logFile = os.Stdout
 	}
-	
+
 	log = logger.New(logger.INFO, logFile)
-	
+
 	// Load message templates
 	locale := os.Getenv("LOG_LOCALE")
 	if locale == "" {
 		locale = "zh" // Default to Chinese
 	}
-	
+
 	// Try to load message files
 	messagesDir := "/usr/share/rclone-agent/messages"
 	if _, err := os.Stat(messagesDir); os.IsNotExist(err) {
 		messagesDir = "./messages" // Fallback to local directory
 	}
-	
+
 	zhFile := filepath.Join(messagesDir, "zh.json")
 	enFile := filepath.Join(messagesDir, "en.json")
-	
+
 	// Load Chinese messages
 	if err := log.LoadMessagesFromFile("zh", zhFile); err != nil {
 		// If file not found, use embedded messages
 		log.LoadMessages("zh", getEmbeddedChineseMessages())
 	}
-	
+
 	// Load English messages
 	if err := log.LoadMessagesFromFile("en", enFile); err != nil {
 		log.LoadMessages("en", getEmbeddedEnglishMessages())
 	}
-	
+
 	log.SetLocale(locale)
 }
 
@@ -141,7 +144,7 @@ func NewAgent(config *Config) *Agent {
 	contextLogger := log.WithDetails(map[string]interface{}{
 		"agent_id": config.AgentID,
 	})
-	
+
 	return &Agent{
 		config: config,
 		httpClient: &http.Client{
@@ -423,7 +426,7 @@ func (a *Agent) executeTask(executionID string, task *Task, triggerMode string) 
 	})
 
 	cmd := exec.Command("rclone", args...)
-	
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -436,7 +439,7 @@ func (a *Agent) executeTask(executionID string, task *Task, triggerMode string) 
 	// Stream logs periodically
 	logTicker := time.NewTicker(5 * time.Second)
 	defer logTicker.Stop()
-	
+
 	go func() {
 		for range logTicker.C {
 			if stdout.Len() > 0 || stderr.Len() > 0 {
@@ -447,7 +450,7 @@ func (a *Agent) executeTask(executionID string, task *Task, triggerMode string) 
 
 	// Execute command
 	err = cmd.Run()
-	
+
 	// Final log stream
 	finalOutput := stdout.String() + stderr.String()
 	a.streamLogs(executionID, finalOutput)
@@ -463,9 +466,9 @@ func (a *Agent) executeTask(executionID string, task *Task, triggerMode string) 
 	} else {
 		duration := time.Since(startTime).Seconds()
 		a.logger.Info("TaskExecutionCompleted", map[string]interface{}{
-			"task_name":   task.TaskID,
-			"status":      status,
-			"duration_s":  duration,
+			"task_name":  task.TaskID,
+			"status":     status,
+			"duration_s": duration,
 		})
 	}
 

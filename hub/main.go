@@ -91,10 +91,7 @@ func main() {
 			agentAuth := agent.Group("")
 			agentAuth.Use(api.AgentAuthMiddleware(authService, db))
 			{
-				agentAuth.POST("/heartbeat", apiHandler.AgentHeartbeat)
-				agentAuth.GET("/tasks", apiHandler.GetAgentTasks)
-				agentAuth.PUT("/executions/:executionId", apiHandler.UpdateExecution)
-				agentAuth.POST("/executions/:executionId/logs", apiHandler.StreamExecutionLogs)
+				agentAuth.GET("/ws", apiHandler.AgentWebSocket)
 			}
 		}
 

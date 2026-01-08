@@ -1,6 +1,10 @@
 package api
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -122,8 +126,8 @@ func (h *Handler) ListAgents(c *gin.Context) {
 	c.JSON(http.StatusOK, agents)
 }
 
-// ListAgentDirectory lists directories on the Agent filesystem.
-// Currently supported for local agents only (uses LOCAL_AGENT_URL).
+// ListAgentDirectory lists directories on an Agent filesystem.
+// Local agents use LOCAL_AGENT_URL; remote agents use the Agent WebSocket connection.
 func (h *Handler) ListAgentDirectory(c *gin.Context) {
 	idStr := c.Param("id")
 	agentID, err := uuid.Parse(idStr)
@@ -139,14 +143,6 @@ func (h *Handler) ListAgentDirectory(c *gin.Context) {
 		return
 	}
 
-	if !agent.IsLocal {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Unsupported agent",
-			"message": "Directory listing is currently supported only for local agents.",
-		})
-		return
-	}
-
 	path := strings.TrimSpace(c.Query("path"))
 	if path == "" {
 		path = "/"
@@ -159,16 +155,82 @@ func (h *Handler) ListAgentDirectory(c *gin.Context) {
 		}
 	}
 
-	result, err := h.rcloneService.ListDirectory(c.Request.Context(), path, limit)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{
-			"error":   "Failed to list directory",
-			"message": err.Error(),
+	if agent.IsLocal {
+		result, err := h.rcloneService.ListDirectory(c.Request.Context(), path, limit)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{
+				"error":   "Failed to list directory",
+				"message": err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, result)
+		return
+	}
+
+	if agent.Status == "offline" {
+		c.JSON(http.StatusConflict, gin.H{
+			"error":   "Agent offline",
+			"message": "Directory listing requires an online agent.",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	if h.fsBroker == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "FS broker not available"})
+		return
+	}
+
+	req, resultCh := h.fsBroker.Enqueue(agentID, path, limit)
+	if h.wsService != nil && h.wsService.IsConnected(agentID) {
+		payload, _ := json.Marshal(map[string]interface{}{
+			"request_id": req.ID,
+			"path":       req.Path,
+			"limit":      req.Limit,
+		})
+		actionsData, _ := json.Marshal(HeartbeatResponse{
+			Actions: []HeartbeatAction{{
+				Action: "FS_LIST",
+				Type:   "FS_LIST",
+				Task:   payload,
+			}},
+		})
+		_ = h.wsService.SendJSON(agentID, WSMessage{
+			Type: WSMessageTypeHubActions,
+			Data: actionsData,
+		})
+	}
+
+	waitCtx, cancel := context.WithTimeout(c.Request.Context(), 40*time.Second)
+	defer cancel()
+
+	select {
+	case result, ok := <-resultCh:
+		if !ok || result.Response == nil {
+			c.JSON(http.StatusGatewayTimeout, gin.H{
+				"error":   "Directory listing timed out",
+				"message": "Agent did not respond in time.",
+			})
+			return
+		}
+		if strings.TrimSpace(result.Error) != "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Failed to list directory",
+				"message": result.Error,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, result.Response)
+		return
+	case <-waitCtx.Done():
+		h.fsBroker.Cancel(agentID, req.ID)
+		c.JSON(http.StatusGatewayTimeout, gin.H{
+			"error":   "Directory listing timed out",
+			"message": "Agent did not respond in time.",
+		})
+		return
+	}
 }
 
 // DeleteAgent deletes an agent
@@ -316,12 +378,214 @@ func (h *Handler) ListTasks(c *gin.Context) {
 	c.JSON(http.StatusOK, tasks)
 }
 
+type TaskUpsertRequest struct {
+	Name            string   `json:"name" binding:"required"`
+	RcloneRemoteID  string   `json:"rclone_remote_id" binding:"required"`
+	SourcePath      string   `json:"source_path" binding:"required"`
+	DestinationPath string   `json:"destination_path" binding:"required"`
+	Schedule        string   `json:"schedule" binding:"required"`
+	RcloneArgs      []string `json:"rclone_args"`
+	IsActive        bool     `json:"is_active"`
+
+	BackupMode    string `json:"backup_mode,omitempty"`
+	ArchiveFormat string `json:"archive_format,omitempty"`
+
+	EncryptionEnabled  bool   `json:"encryption_enabled"`
+	EncryptionPassword string `json:"encryption_password,omitempty"`
+
+	RetentionDays *int `json:"retention_days,omitempty"`
+
+	AssignedAgentIDs []string `json:"assigned_agent_ids,omitempty"`
+	AssignedAgents   []string `json:"assigned_agents,omitempty"`
+}
+
+func normalizeBackupMode(mode string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", "sync":
+		return "sync", true
+	case "archive":
+		return "archive", true
+	default:
+		return "", false
+	}
+}
+
+func normalizeArchiveFormat(format string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "", "tar.gz", "tgz":
+		return "tar.gz", true
+	case "zip":
+		return "zip", true
+	default:
+		return "", false
+	}
+}
+
+// looksLikeRcloneRemotePrefix returns true if the path starts with "<name>:" where
+// "<name>" has no path separators. It intentionally allows Windows absolute paths
+// like "C:\\foo" or "C:/foo" (drive letter).
+func looksLikeRcloneRemotePrefix(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+
+	colon := strings.IndexByte(path, ':')
+	if colon <= 0 {
+		return false
+	}
+
+	// Allow Windows drive letter absolute paths (e.g. C:\ or C:/).
+	if colon == 1 && len(path) >= 3 {
+		drive := path[0]
+		next := path[2]
+		if (drive >= 'A' && drive <= 'Z') || (drive >= 'a' && drive <= 'z') {
+			if next == '\\' || next == '/' {
+				return false
+			}
+		}
+	}
+
+	prefix := path[:colon]
+	if strings.ContainsAny(prefix, "/\\") {
+		return false
+	}
+
+	return true
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, raw := range values {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if _, ok := seen[raw]; ok {
+			continue
+		}
+		seen[raw] = struct{}{}
+		out = append(out, raw)
+	}
+	return out
+}
+
+func uniqueUUIDs(values []uuid.UUID) []uuid.UUID {
+	seen := make(map[uuid.UUID]struct{}, len(values))
+	out := make([]uuid.UUID, 0, len(values))
+	for _, v := range values {
+		if v == uuid.Nil {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}
+
+func parseUUIDList(values []string) ([]uuid.UUID, error) {
+	out := make([]uuid.UUID, 0, len(values))
+	for _, raw := range values {
+		id, err := uuid.Parse(strings.TrimSpace(raw))
+		if err != nil {
+			return nil, fmt.Errorf("invalid uuid: %s", raw)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+func deriveTaskPassword2() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
 // CreateTask creates a new backup task
 func (h *Handler) CreateTask(c *gin.Context) {
-	var task models.BackupTask
-	if err := c.ShouldBindJSON(&task); err != nil {
+	var req TaskUpsertRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	if looksLikeRcloneRemotePrefix(req.DestinationPath) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "destination_path must not include remote prefix (e.g. 's3:')"})
+		return
+	}
+
+	remoteID, err := uuid.Parse(req.RcloneRemoteID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid rclone_remote_id"})
+		return
+	}
+
+	backupMode, ok := normalizeBackupMode(req.BackupMode)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid backup_mode"})
+		return
+	}
+
+	archiveFormat, ok := normalizeArchiveFormat(req.ArchiveFormat)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid archive_format"})
+		return
+	}
+
+	rcloneArgs, err := json.Marshal(req.RcloneArgs)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid rclone_args"})
+		return
+	}
+
+	var passwordEnc *string
+	var password2Enc *string
+	if req.EncryptionEnabled {
+		if strings.TrimSpace(req.EncryptionPassword) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "encryption_password is required when encryption_enabled is true"})
+			return
+		}
+
+		password2, err := deriveTaskPassword2()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate encryption_password2"})
+			return
+		}
+
+		encryptedPassword, err := h.cryptoService.Encrypt(strings.TrimSpace(req.EncryptionPassword))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt encryption_password"})
+			return
+		}
+		encryptedPassword2, err := h.cryptoService.Encrypt(password2)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt encryption_password2"})
+			return
+		}
+		passwordEnc = &encryptedPassword
+		password2Enc = &encryptedPassword2
+	}
+
+	task := models.BackupTask{
+		Name:                   req.Name,
+		RcloneRemoteID:         remoteID,
+		SourcePath:             req.SourcePath,
+		DestinationPath:        req.DestinationPath,
+		Schedule:               req.Schedule,
+		RcloneArgs:             rcloneArgs,
+		IsActive:               req.IsActive,
+		BackupMode:             backupMode,
+		ArchiveFormat:          archiveFormat,
+		EncryptionEnabled:      req.EncryptionEnabled,
+		EncryptionPasswordEnc:  passwordEnc,
+		EncryptionPassword2Enc: password2Enc,
+		RetentionDays:          req.RetentionDays,
 	}
 
 	taskModel := models.NewTaskModel(h.db)
@@ -331,12 +595,22 @@ func (h *Handler) CreateTask(c *gin.Context) {
 	}
 
 	// Assign to agents if provided
-	if len(task.AssignedAgents) > 0 {
-		for _, agentID := range task.AssignedAgents {
-			taskModel.AssignAgent(c.Request.Context(), task.ID, agentID)
+	assignedRaw := uniqueStrings(append(req.AssignedAgentIDs, req.AssignedAgents...))
+	if len(assignedRaw) > 0 {
+		agentIDs, err := parseUUIDList(assignedRaw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		task.AssignedAgents = agentIDs
+		for _, agentID := range agentIDs {
+			_ = taskModel.AssignAgent(c.Request.Context(), task.ID, agentID)
 
 			// Mark agent for config sync
 			h.schedulerService.MarkAgentForSync(agentID)
+			if h.wsService != nil && h.wsService.IsConnected(agentID) {
+				_ = h.wsService.SendJSON(agentID, WSMessage{Type: WSMessageTypeHubPing})
+			}
 		}
 	}
 
@@ -352,26 +626,164 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 		return
 	}
 
-	var task models.BackupTask
-	if err := c.ShouldBindJSON(&task); err != nil {
+	var req TaskUpsertRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	task.ID = id
+	if looksLikeRcloneRemotePrefix(req.DestinationPath) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "destination_path must not include remote prefix (e.g. 's3:')"})
+		return
+	}
+
 	taskModel := models.NewTaskModel(h.db)
-	if err := taskModel.Update(c.Request.Context(), &task); err != nil {
+
+	current, err := taskModel.GetByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+		return
+	}
+
+	remoteID, err := uuid.Parse(req.RcloneRemoteID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid rclone_remote_id"})
+		return
+	}
+
+	backupMode, ok := normalizeBackupMode(req.BackupMode)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid backup_mode"})
+		return
+	}
+
+	archiveFormat, ok := normalizeArchiveFormat(req.ArchiveFormat)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid archive_format"})
+		return
+	}
+
+	rcloneArgs, err := json.Marshal(req.RcloneArgs)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid rclone_args"})
+		return
+	}
+
+	next := models.BackupTask{
+		ID:              id,
+		Name:            req.Name,
+		RcloneRemoteID:  remoteID,
+		SourcePath:      req.SourcePath,
+		DestinationPath: req.DestinationPath,
+		Schedule:        req.Schedule,
+		RcloneArgs:      rcloneArgs,
+		IsActive:        req.IsActive,
+		BackupMode:      backupMode,
+		ArchiveFormat:   archiveFormat,
+		RetentionDays:   current.RetentionDays,
+	}
+	if req.RetentionDays != nil {
+		next.RetentionDays = req.RetentionDays
+	}
+
+	if req.EncryptionEnabled {
+		next.EncryptionEnabled = true
+		if strings.TrimSpace(req.EncryptionPassword) != "" {
+			password2, err := deriveTaskPassword2()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate encryption_password2"})
+				return
+			}
+
+			encryptedPassword, err := h.cryptoService.Encrypt(strings.TrimSpace(req.EncryptionPassword))
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt encryption_password"})
+				return
+			}
+			encryptedPassword2, err := h.cryptoService.Encrypt(password2)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt encryption_password2"})
+				return
+			}
+			next.EncryptionPasswordEnc = &encryptedPassword
+			next.EncryptionPassword2Enc = &encryptedPassword2
+		} else {
+			if current.EncryptionPasswordEnc == nil || current.EncryptionPassword2Enc == nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "encryption_password is required when enabling encryption for the first time"})
+				return
+			}
+			next.EncryptionPasswordEnc = current.EncryptionPasswordEnc
+			next.EncryptionPassword2Enc = current.EncryptionPassword2Enc
+		}
+	} else {
+		next.EncryptionEnabled = false
+		next.EncryptionPasswordEnc = nil
+		next.EncryptionPassword2Enc = nil
+	}
+
+	if err := taskModel.Update(c.Request.Context(), &next); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update task"})
 		return
 	}
 
-	// Mark assigned agents for config sync
-	agents := task.AssignedAgents
-	for _, agentID := range agents {
-		h.schedulerService.MarkAgentForSync(agentID)
+	// Update agent assignments if the request provided them (nil slice means not provided).
+	var desiredRaw []string
+	if req.AssignedAgentIDs != nil {
+		desiredRaw = req.AssignedAgentIDs
+	} else if req.AssignedAgents != nil {
+		desiredRaw = req.AssignedAgents
 	}
 
-	c.JSON(http.StatusOK, task)
+	oldAgentIDs := current.AssignedAgents
+	newAgentIDs := oldAgentIDs
+
+	if desiredRaw != nil {
+		desiredRaw = uniqueStrings(desiredRaw)
+		parsed, err := parseUUIDList(desiredRaw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		newAgentIDs = parsed
+
+		desiredSet := make(map[uuid.UUID]struct{}, len(newAgentIDs))
+		for _, id := range newAgentIDs {
+			desiredSet[id] = struct{}{}
+		}
+		currentSet := make(map[uuid.UUID]struct{}, len(oldAgentIDs))
+		for _, id := range oldAgentIDs {
+			currentSet[id] = struct{}{}
+		}
+
+		for _, agentID := range oldAgentIDs {
+			if _, ok := desiredSet[agentID]; ok {
+				continue
+			}
+			_ = taskModel.UnassignAgent(c.Request.Context(), id, agentID)
+		}
+		for _, agentID := range newAgentIDs {
+			if _, ok := currentSet[agentID]; ok {
+				continue
+			}
+			_ = taskModel.AssignAgent(c.Request.Context(), id, agentID)
+		}
+	}
+
+	// Mark affected agents for config sync (both removed and added agents).
+	for _, agentID := range uniqueUUIDs(append(oldAgentIDs, newAgentIDs...)) {
+		h.schedulerService.MarkAgentForSync(agentID)
+		if h.wsService != nil && h.wsService.IsConnected(agentID) {
+			_ = h.wsService.SendJSON(agentID, WSMessage{Type: WSMessageTypeHubPing})
+		}
+	}
+
+	updated, err := taskModel.GetByID(c.Request.Context(), id)
+	if err != nil {
+		next.AssignedAgents = newAgentIDs
+		c.JSON(http.StatusOK, next)
+		return
+	}
+	c.JSON(http.StatusOK, updated)
 }
 
 // DeleteTask deletes a backup task
@@ -664,6 +1076,11 @@ func (h *Handler) TriggerExecution(c *gin.Context) {
 		return
 	}
 
+	// Nudge connected agents to heartbeat immediately so manual triggers dispatch with low latency.
+	if h.wsService != nil && h.wsService.IsConnected(agentID) {
+		_ = h.wsService.SendJSON(agentID, WSMessage{Type: WSMessageTypeHubPing})
+	}
+
 	c.JSON(http.StatusCreated, execution)
 }
 
@@ -824,6 +1241,21 @@ func (h *Handler) CancelExecution(c *gin.Context) {
 		"status":       "cancelled",
 		"timestamp":    time.Now().Format(time.RFC3339),
 	})
+
+	// If the agent is connected over WebSocket, signal cancellation immediately.
+	if h.wsService != nil && h.wsService.IsConnected(execution.AgentID) {
+		actionsData, _ := json.Marshal(HeartbeatResponse{
+			Actions: []HeartbeatAction{{
+				Action:      "CANCEL_TASK",
+				Type:        "CANCEL_TASK",
+				ExecutionID: execution.ID.String(),
+			}},
+		})
+		_ = h.wsService.SendJSON(execution.AgentID, WSMessage{
+			Type: WSMessageTypeHubActions,
+			Data: actionsData,
+		})
+	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Execution cancelled"})
 }

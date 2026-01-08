@@ -168,16 +168,37 @@ func (s *TaskService) BuildTaskDetailsForAgent(ctx context.Context, task *models
 		return nil, fmt.Errorf("failed to decrypt remote config: %w", err)
 	}
 
+	normalizedConfig := NormalizeRcloneConfigForSingleRemote(decryptedConfig)
+
 	// Build task details
 	taskDetails := map[string]interface{}{
-		"execution_id":      executionID.String(),
-		"task_id":           task.ID.String(),
-		"task_name":         task.Name,
-		"remote_id":         remote.ID.String(),
-		"source_path":       task.SourcePath,
-		"destination_path":  task.DestinationPath,
-		"schedule":          task.Schedule,
-		"rclone_config_b64": base64.StdEncoding.EncodeToString([]byte(decryptedConfig)),
+		"execution_id":       executionID.String(),
+		"task_id":            task.ID.String(),
+		"task_name":          task.Name,
+		"remote_id":          remote.ID.String(),
+		"source_path":        task.SourcePath,
+		"destination_path":   task.DestinationPath,
+		"schedule":           task.Schedule,
+		"rclone_config_b64":  base64.StdEncoding.EncodeToString([]byte(normalizedConfig)),
+		"backup_mode":        task.BackupMode,
+		"archive_format":     task.ArchiveFormat,
+		"encryption_enabled": task.EncryptionEnabled,
+	}
+
+	if task.EncryptionEnabled {
+		if task.EncryptionPasswordEnc == nil || task.EncryptionPassword2Enc == nil {
+			return nil, fmt.Errorf("task encryption is enabled but passwords are missing")
+		}
+		password, err := cryptoService.Decrypt(*task.EncryptionPasswordEnc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt encryption_password: %w", err)
+		}
+		password2, err := cryptoService.Decrypt(*task.EncryptionPassword2Enc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt encryption_password2: %w", err)
+		}
+		taskDetails["encryption_password"] = password
+		taskDetails["encryption_password2"] = password2
 	}
 
 	// Add rclone arguments if present
