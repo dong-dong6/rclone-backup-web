@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -13,19 +14,23 @@ import (
 	"time"
 )
 
-func CreateArchive(sourcePath string, destPath string, format string) error {
+func CreateArchive(ctx context.Context, sourcePath string, destPath string, format string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	format = strings.ToLower(strings.TrimSpace(format))
 	switch format {
 	case "tar.gz", "tgz":
-		return createTarGzArchive(sourcePath, destPath)
+		return createTarGzArchive(ctx, sourcePath, destPath)
 	case "zip":
-		return createZipArchive(sourcePath, destPath)
+		return createZipArchive(ctx, sourcePath, destPath)
 	default:
 		return fmt.Errorf("unsupported archive format: %s", format)
 	}
 }
 
-func createTarGzArchive(sourcePath string, destPath string) error {
+func createTarGzArchive(ctx context.Context, sourcePath string, destPath string) error {
 	sourcePath = filepath.Clean(sourcePath)
 	destPath = filepath.Clean(destPath)
 
@@ -50,6 +55,9 @@ func createTarGzArchive(sourcePath string, destPath string) error {
 	baseDir := filepath.Dir(sourcePath)
 
 	return filepath.WalkDir(sourcePath, func(path string, entry fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}
@@ -107,12 +115,11 @@ func createTarGzArchive(sourcePath string, destPath string) error {
 		}
 		defer f.Close()
 
-		_, err = io.Copy(tw, f)
-		return err
+		return copyWithContext(ctx, tw, f)
 	})
 }
 
-func createZipArchive(sourcePath string, destPath string) error {
+func createZipArchive(ctx context.Context, sourcePath string, destPath string) error {
 	sourcePath = filepath.Clean(sourcePath)
 	destPath = filepath.Clean(destPath)
 
@@ -132,6 +139,9 @@ func createZipArchive(sourcePath string, destPath string) error {
 	baseDir := filepath.Dir(sourcePath)
 
 	return filepath.WalkDir(sourcePath, func(path string, entry fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}
@@ -187,7 +197,29 @@ func createZipArchive(sourcePath string, destPath string) error {
 		}
 		defer f.Close()
 
-		_, err = io.Copy(w, f)
-		return err
+		return copyWithContext(ctx, w, f)
 	})
+}
+
+func copyWithContext(ctx context.Context, dst io.Writer, src io.Reader) error {
+	buf := make([]byte, 32*1024)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		n, readErr := src.Read(buf)
+		if n > 0 {
+			if _, writeErr := dst.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+		}
+
+		if readErr != nil {
+			if readErr == io.EOF {
+				return nil
+			}
+			return readErr
+		}
+	}
 }

@@ -47,7 +47,6 @@ type TaskInfo struct {
 	StartedAt           time.Time          `json:"started_at"`
 	Status              string             `json:"status"`
 	Progress            *TransferProgress  `json:"progress,omitempty"`
-	Logs                []string           `json:"-"` // Don't include in JSON
 	Context             context.Context    `json:"-"`
 	Cancel              context.CancelFunc `json:"-"`
 }
@@ -135,8 +134,14 @@ func (te *TaskExecutor) ExecuteTask(ctx context.Context, task *TaskInfo) error {
 		}
 		archiveName := fmt.Sprintf("backup-%s-%s.%s", task.TaskID, time.Now().UTC().Format("20060102T150405Z"), archiveFormat)
 		archivePath := filepath.Join(taskWorkDir, archiveName)
-		if err := CreateArchive(task.SourcePath, archivePath, archiveFormat); err != nil {
+		if te.logHook != nil {
+			te.logHook(task.ExecutionID, fmt.Sprintf("[archive] creating %s from %s", archiveName, task.SourcePath))
+		}
+		if err := CreateArchive(taskCtx, task.SourcePath, archivePath, archiveFormat); err != nil {
 			return fmt.Errorf("failed to create archive: %w", err)
+		}
+		if te.logHook != nil {
+			te.logHook(task.ExecutionID, fmt.Sprintf("[archive] created %s", archiveName))
 		}
 		task.SourcePath = archivePath
 	}
@@ -328,15 +333,17 @@ func (te *TaskExecutor) obscureSecret(ctx context.Context, secret string) (strin
 // processRcloneOutput processes rclone output for progress and logs
 func (te *TaskExecutor) processRcloneOutput(task *TaskInfo, reader io.Reader, isError bool) {
 	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	scanner.Split(scanLinesCRLF)
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
 
 		if te.logHook != nil {
 			te.logHook(task.ExecutionID, line)
 		}
-
-		// Store log line
-		task.Logs = append(task.Logs, line)
 
 		// Try to parse as JSON log
 		var jsonLog map[string]interface{}
@@ -354,6 +361,32 @@ func (te *TaskExecutor) processRcloneOutput(task *TaskInfo, reader io.Reader, is
 			log.Printf("[Executor] %s", line)
 		}
 	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("[Executor] rclone output reader error (execution=%s): %v", task.ExecutionID, err)
+		// Best-effort drain to avoid blocking the rclone process on a full pipe.
+		_, _ = io.Copy(io.Discard, reader)
+	}
+}
+
+func scanLinesCRLF(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	for i := 0; i < len(data); i++ {
+		if data[i] == '\n' || data[i] == '\r' {
+			end := i
+			advance = i + 1
+			if data[i] == '\r' && i+1 < len(data) && data[i+1] == '\n' {
+				advance = i + 2
+			}
+			return advance, data[:end], nil
+		}
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
 }
 
 // parseRcloneJSON parses JSON formatted rclone output
