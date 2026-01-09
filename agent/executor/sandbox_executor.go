@@ -162,6 +162,18 @@ func (te *TaskExecutor) ExecuteTask(ctx context.Context, task *TaskInfo) error {
 			return fmt.Errorf("failed to decode remote config: %w", err)
 		}
 
+		cryptRemote := "remote:"
+		if isS3RemoteConfig(baseConfig) {
+			if nextRemote, nextDest, ok := rewriteS3CryptDestination(task.DestPath); ok {
+				previousDest := task.DestPath
+				cryptRemote = nextRemote
+				task.DestPath = nextDest
+				if te.logHook != nil {
+					te.logHook(task.ExecutionID, fmt.Sprintf("[crypt] s3 destination rewritten: %s -> %s", previousDest, nextDest))
+				}
+			}
+		}
+
 		obscuredPassword, err := te.obscureSecret(taskCtx, task.EncryptionPassword)
 		if err != nil {
 			return err
@@ -178,7 +190,9 @@ func (te *TaskExecutor) ExecuteTask(ctx context.Context, task *TaskInfo) error {
 		}
 		buf.WriteString("\n[crypt]\n")
 		buf.WriteString("type = crypt\n")
-		buf.WriteString("remote = remote:\n")
+		buf.WriteString("remote = ")
+		buf.WriteString(cryptRemote)
+		buf.WriteString("\n")
 		buf.WriteString("filename_encryption = standard\n")
 		buf.WriteString("directory_name_encryption = true\n")
 		buf.WriteString("password = ")
@@ -317,6 +331,83 @@ func decodeMaybeBase64(input string) ([]byte, error) {
 		return decoded, nil
 	}
 	return []byte(input), nil
+}
+
+func isS3RemoteConfig(config []byte) bool {
+	section := ""
+	hasSection := false
+
+	scanner := bufio.NewScanner(bytes.NewReader(config))
+	for scanner.Scan() {
+		line := strings.TrimSpace(strings.TrimRight(scanner.Text(), "\r"))
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			hasSection = true
+			section = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "["), "]"))
+			continue
+		}
+
+		if hasSection && section != "remote" {
+			continue
+		}
+
+		eq := strings.Index(line, "=")
+		if eq < 0 {
+			continue
+		}
+
+		key := strings.ToLower(strings.TrimSpace(line[:eq]))
+		if key != "type" {
+			continue
+		}
+
+		value := strings.ToLower(strings.TrimSpace(line[eq+1:]))
+		return value == "s3"
+	}
+
+	return false
+}
+
+func rewriteS3CryptDestination(destPath string) (string, string, bool) {
+	destPath = strings.TrimSpace(destPath)
+	if destPath == "" {
+		return "", "", false
+	}
+
+	withoutPrefix := destPath
+	if strings.HasPrefix(withoutPrefix, "crypt:") {
+		withoutPrefix = strings.TrimPrefix(withoutPrefix, "crypt:")
+	}
+	if strings.HasPrefix(withoutPrefix, "remote:") {
+		withoutPrefix = strings.TrimPrefix(withoutPrefix, "remote:")
+	}
+	withoutPrefix = strings.TrimLeft(withoutPrefix, "/")
+	withoutPrefix = strings.TrimSpace(withoutPrefix)
+	if withoutPrefix == "" {
+		return "", "", false
+	}
+
+	parts := strings.SplitN(withoutPrefix, "/", 2)
+	bucket := strings.TrimSpace(parts[0])
+	if bucket == "" {
+		return "", "", false
+	}
+
+	rest := ""
+	if len(parts) == 2 {
+		rest = strings.TrimLeft(strings.TrimSpace(parts[1]), "/")
+	}
+
+	remote := "remote:" + bucket
+	dest := "crypt:"
+	if rest != "" {
+		dest += rest
+	}
+
+	return remote, dest, true
 }
 
 func (te *TaskExecutor) obscureSecret(ctx context.Context, secret string) (string, error) {
