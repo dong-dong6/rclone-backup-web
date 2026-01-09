@@ -131,17 +131,42 @@ func (te *TaskExecutor) ExecuteTask(ctx context.Context, task *TaskInfo) error {
 	if backupMode == "" {
 		backupMode = "sync"
 	}
+	if backupMode == "archive" && strings.HasPrefix(task.DestPath, "crypt:") {
+		task.DestPath = "remote:" + strings.TrimPrefix(task.DestPath, "crypt:")
+	}
 	if backupMode == "archive" {
 		archiveFormat := strings.ToLower(strings.TrimSpace(task.ArchiveFormat))
 		if archiveFormat == "" {
 			archiveFormat = "tar.gz"
+		}
+		encryptArchive := task.EncryptionEnabled
+		if encryptArchive {
+			archiveFormat = "7z"
 		}
 		archiveName := buildArchiveName(task, archiveFormat, time.Now())
 		archivePath := filepath.Join(taskWorkDir, archiveName)
 		if te.logHook != nil {
 			te.logHook(task.ExecutionID, fmt.Sprintf("[archive] creating %s from %s", archiveName, task.SourcePath))
 		}
-		if err := CreateArchive(taskCtx, task.SourcePath, archivePath, archiveFormat); err != nil {
+		var archiveOpts *ArchiveOptions
+		if te.logHook != nil {
+			archiveOpts = &ArchiveOptions{
+				Log: func(line string) {
+					te.logHook(task.ExecutionID, line)
+				},
+			}
+		}
+		if encryptArchive {
+			if strings.TrimSpace(task.EncryptionPassword) == "" {
+				return fmt.Errorf("archive encryption enabled but missing password")
+			}
+			if archiveOpts == nil {
+				archiveOpts = &ArchiveOptions{}
+			}
+			archiveOpts.Password = task.EncryptionPassword
+		}
+
+		if err := CreateArchive(taskCtx, task.SourcePath, archivePath, archiveFormat, archiveOpts); err != nil {
 			return fmt.Errorf("failed to create archive: %w", err)
 		}
 		if te.logHook != nil {
@@ -152,7 +177,8 @@ func (te *TaskExecutor) ExecuteTask(ctx context.Context, task *TaskInfo) error {
 
 	// Prepare rclone config (optionally adding a per-task crypt remote).
 	configContent := task.RemoteConfig
-	if task.EncryptionEnabled {
+	encryptRemote := task.EncryptionEnabled && backupMode != "archive"
+	if encryptRemote {
 		if strings.TrimSpace(task.EncryptionPassword) == "" || strings.TrimSpace(task.EncryptionPassword2) == "" {
 			return fmt.Errorf("encryption enabled but missing password(s)")
 		}
@@ -814,6 +840,14 @@ func sanitizeArgsForLog(args []string) []string {
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+		if arg == "-p" && i+1 < len(args) {
+			args[i+1] = "***"
+			continue
+		}
+		if strings.HasPrefix(arg, "-p") && len(arg) > 2 {
+			args[i] = "-p***"
+			continue
+		}
 		if !strings.HasPrefix(arg, "--") {
 			continue
 		}
@@ -1047,7 +1081,7 @@ func parseArchiveTimestamp(filename string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 
-	suffixes := []string{".tar.gz", ".zip", ".tgz"}
+	suffixes := []string{".tar.gz", ".zip", ".tgz", ".7z"}
 	var suffix string
 	for _, s := range suffixes {
 		if strings.HasSuffix(lower, s) {

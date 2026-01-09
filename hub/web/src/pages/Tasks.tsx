@@ -43,7 +43,7 @@ interface BackupTask {
   rclone_args: string[];
   is_active: boolean;
   backup_mode: 'sync' | 'archive';
-  archive_format?: 'tar.gz' | 'zip';
+  archive_format?: 'tar.gz' | 'zip' | '7z';
   encryption_enabled?: boolean;
   max_retention?: number | null;
   created_at: string;
@@ -92,7 +92,7 @@ type FSListResponse = {
     rclone_args: [] as string[],
     is_active: true,
     backup_mode: 'sync' as 'sync' | 'archive',
-    archive_format: 'tar.gz' as 'tar.gz' | 'zip',
+    archive_format: 'tar.gz' as 'tar.gz' | 'zip' | '7z',
     encryption_enabled: false,
     encryption_password: '',
     max_retention: '',
@@ -141,6 +141,13 @@ type FSListResponse = {
       return { ...current, rclone_args: [...current.rclone_args, flag] };
     });
   }, [isS3Remote]);
+
+  useEffect(() => {
+    if (formData.backup_mode !== 'archive') return;
+    if (!formData.encryption_enabled) return;
+    if (formData.archive_format === '7z') return;
+    setFormData(current => ({ ...current, archive_format: '7z' }));
+  }, [formData.backup_mode, formData.encryption_enabled]);
 
   useEffect(() => {
     fetchData();
@@ -715,17 +722,19 @@ type FSListResponse = {
 
                     {formData.backup_mode === 'archive' && (
                       <>
-                        <div className="col-12 col-md-6">
-                          <label className="form-label">{t('tasks.archive_format')}</label>
-                          <select
-                            value={formData.archive_format}
-                            onChange={(e) => setFormData({ ...formData, archive_format: e.target.value as any })}
-                            className="form-select"
-                          >
-                            <option value="tar.gz">tar.gz</option>
-                            <option value="zip">zip</option>
-                          </select>
-                        </div>
+	                        <div className="col-12 col-md-6">
+	                          <label className="form-label">{t('tasks.archive_format')}</label>
+	                          <select
+	                            value={formData.archive_format}
+	                            onChange={(e) => setFormData({ ...formData, archive_format: e.target.value as any })}
+	                            className="form-select"
+	                            disabled={formData.encryption_enabled}
+	                          >
+	                            <option value="tar.gz">tar.gz</option>
+	                            <option value="zip">zip</option>
+	                            <option value="7z">7z</option>
+	                          </select>
+	                        </div>
 
                         <div className="col-12 col-md-6">
                           <label className="form-label">{t('tasks.max_retention')}</label>

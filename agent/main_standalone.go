@@ -675,7 +675,8 @@ func (a *Agent) executeTask(actionExecutionID string, taskData json.RawMessage) 
 	destPath := strings.TrimSpace(details.DestinationPath)
 	if destPath != "" && !strings.HasPrefix(destPath, "remote:") && !strings.HasPrefix(destPath, "crypt:") {
 		prefix := "remote:"
-		if details.EncryptionEnabled {
+		isArchive := strings.EqualFold(strings.TrimSpace(details.BackupMode), "archive")
+		if details.EncryptionEnabled && !isArchive {
 			prefix = "crypt:"
 		}
 		destPath = prefix + destPath
@@ -732,7 +733,8 @@ func (a *Agent) handleLocalFallback() {
 		destPath := strings.TrimSpace(task.DestPath)
 		if destPath != "" && !strings.HasPrefix(destPath, "remote:") && !strings.HasPrefix(destPath, "crypt:") {
 			prefix := "remote:"
-			if task.EncryptionEnabled {
+			isArchive := strings.EqualFold(strings.TrimSpace(task.BackupMode), "archive")
+			if task.EncryptionEnabled && !isArchive {
 				prefix = "crypt:"
 			}
 			destPath = prefix + destPath

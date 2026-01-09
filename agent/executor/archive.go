@@ -3,18 +3,26 @@ package executor
 import (
 	"archive/tar"
 	"archive/zip"
+	"bufio"
 	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
-func CreateArchive(ctx context.Context, sourcePath string, destPath string, format string) error {
+type ArchiveOptions struct {
+	Password string
+	Log      func(line string)
+}
+
+func CreateArchive(ctx context.Context, sourcePath string, destPath string, format string, opts *ArchiveOptions) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -25,6 +33,8 @@ func CreateArchive(ctx context.Context, sourcePath string, destPath string, form
 		return createTarGzArchive(ctx, sourcePath, destPath)
 	case "zip":
 		return createZipArchive(ctx, sourcePath, destPath)
+	case "7z":
+		return create7zArchive(ctx, sourcePath, destPath, opts)
 	default:
 		return fmt.Errorf("unsupported archive format: %s", format)
 	}
@@ -222,4 +232,108 @@ func copyWithContext(ctx context.Context, dst io.Writer, src io.Reader) error {
 			return readErr
 		}
 	}
+}
+
+func create7zArchive(ctx context.Context, sourcePath string, destPath string, opts *ArchiveOptions) error {
+	sourcePath = filepath.Clean(sourcePath)
+	destPath = filepath.Clean(destPath)
+
+	if _, err := os.Stat(sourcePath); err != nil {
+		return err
+	}
+
+	exe, err := exec.LookPath("7z")
+	if err != nil {
+		if exeAlt, errAlt := exec.LookPath("7zz"); errAlt == nil {
+			exe = exeAlt
+		} else {
+			return fmt.Errorf("7z not found: please install 7-Zip/p7zip on the agent host")
+		}
+	}
+
+	baseDir := filepath.Dir(sourcePath)
+	target := filepath.Base(sourcePath)
+	if target == "" || target == "." {
+		target = "."
+	}
+
+	args := []string{"a", "-t7z", "-y", destPath, target}
+	if opts != nil {
+		password := strings.TrimSpace(opts.Password)
+		if password != "" {
+			args = append(args, "-p"+password, "-mhe=on")
+		}
+	}
+
+	if opts != nil && opts.Log != nil {
+		opts.Log(formatCommandForLog(exe, args))
+		opts.Log("[archive] 7z starting...")
+	}
+
+	cmd := exec.CommandContext(ctx, exe, args...)
+	cmd.Dir = baseDir
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	logFn := func(string) {}
+	if opts != nil && opts.Log != nil {
+		logFn = opts.Log
+	}
+
+	stream := func(r io.Reader, prefix string) {
+		defer func() {
+			_, _ = io.Copy(io.Discard, r)
+		}()
+
+		scanner := bufio.NewScanner(r)
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+		scanner.Split(scanLinesCRLF)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+			if logFn != nil {
+				logFn(prefix + line)
+			}
+		}
+		if err := scanner.Err(); err != nil && logFn != nil {
+			logFn(prefix + "output reader error: " + err.Error())
+		}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		stream(stdout, "[7z] ")
+	}()
+	go func() {
+		defer wg.Done()
+		stream(stderr, "[7z][stderr] ")
+	}()
+
+	waitErr := cmd.Wait()
+	wg.Wait()
+
+	if waitErr != nil {
+		return fmt.Errorf("7z archive failed: %w", waitErr)
+	}
+
+	if opts != nil && opts.Log != nil {
+		opts.Log("[archive] 7z completed")
+	}
+
+	return nil
 }

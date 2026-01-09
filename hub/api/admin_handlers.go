@@ -417,6 +417,8 @@ func normalizeArchiveFormat(format string) (string, bool) {
 		return "tar.gz", true
 	case "zip":
 		return "zip", true
+	case "7z":
+		return "7z", true
 	default:
 		return "", false
 	}
@@ -537,6 +539,9 @@ func (h *Handler) CreateTask(c *gin.Context) {
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid archive_format"})
 		return
+	}
+	if backupMode == "archive" && req.EncryptionEnabled {
+		archiveFormat = "7z"
 	}
 
 	rcloneArgs, err := json.Marshal(req.RcloneArgs)
@@ -668,6 +673,9 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid archive_format"})
 		return
+	}
+	if backupMode == "archive" && req.EncryptionEnabled {
+		archiveFormat = "7z"
 	}
 
 	rcloneArgs, err := json.Marshal(req.RcloneArgs)
