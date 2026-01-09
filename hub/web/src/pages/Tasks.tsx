@@ -655,6 +655,13 @@ type FSListResponse = {
                 <div className="modal-body">
                   <div className="row g-3">
                     <div className="col-12">
+                      <div className="card">
+                        <div className="card-header">
+                          <h3 className="card-title">{t('tasks.create.basic')}</h3>
+                        </div>
+                        <div className="card-body">
+                          <div className="row g-3">
+                    <div className="col-12">
                       <label className="form-label">{t('tasks.task_name')}</label>
                       <input
                         type="text"
@@ -682,6 +689,134 @@ type FSListResponse = {
                       </select>
                     </div>
 
+                    <div className="col-12">
+                      <label className="form-label">{t('tasks.backup_mode')}</label>
+                      <select
+                        value={formData.backup_mode}
+                        onChange={(e) => {
+                          const mode = e.target.value as 'sync' | 'archive';
+                          setFormData({
+                            ...formData,
+                            backup_mode: mode,
+                            archive_format: mode === 'archive' ? formData.archive_format : 'tar.gz',
+                          });
+                        }}
+                        className="form-select"
+                      >
+                        <option value="sync">{t('tasks.backup_mode_sync')}</option>
+                        <option value="archive">{t('tasks.backup_mode_archive')}</option>
+                      </select>
+                      <div className="form-text">
+                        {formData.backup_mode === 'sync'
+                          ? t('tasks.backup_mode_help_sync')
+                          : t('tasks.backup_mode_help_archive')}
+                      </div>
+                    </div>
+
+                    {formData.backup_mode === 'archive' && (
+                      <>
+                        <div className="col-12 col-md-6">
+                          <label className="form-label">{t('tasks.archive_format')}</label>
+                          <select
+                            value={formData.archive_format}
+                            onChange={(e) => setFormData({ ...formData, archive_format: e.target.value as any })}
+                            className="form-select"
+                          >
+                            <option value="tar.gz">tar.gz</option>
+                            <option value="zip">zip</option>
+                          </select>
+                        </div>
+
+                        <div className="col-12 col-md-6">
+                          <label className="form-label">{t('tasks.max_retention')}</label>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={formData.max_retention}
+                            onChange={(e) => setFormData({ ...formData, max_retention: e.target.value })}
+                            className="form-control"
+                            placeholder={t('tasks.max_retention_placeholder')}
+                          />
+                          <div className="form-text">{t('tasks.max_retention_help')}</div>
+                        </div>
+                      </>
+                    )}
+
+                    <div className="col-12">
+                      <div className="form-check form-switch">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          id="task-is-active"
+                          checked={formData.is_active}
+                          onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                        />
+                        <label className="form-check-label" htmlFor="task-is-active">
+                          {t('tasks.activate_immediately')}
+                        </label>
+                      </div>
+                    </div>
+
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="col-12">
+                      <div className="card">
+                        <div className="card-header">
+                          <h3 className="card-title">{t('tasks.create.agents')}</h3>
+                        </div>
+                        <div className="card-body">
+                          <label className="form-label">{t('tasks.assign_agents')}</label>
+                          <div className="d-flex flex-column gap-2">
+                            {agents.map((agent) => {
+                              const statusMeta = getAgentStatusMeta(agent.status);
+                              return (
+                                <div key={agent.id} className="form-check">
+                                  <input
+                                    type="checkbox"
+                                    className="form-check-input"
+                                    id={`task-agent-${agent.id}`}
+                                    checked={formData.assigned_agent_ids.includes(agent.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setFormData({
+                                          ...formData,
+                                          assigned_agent_ids: [...formData.assigned_agent_ids, agent.id],
+                                        });
+                                      } else {
+                                        setFormData({
+                                          ...formData,
+                                          assigned_agent_ids: formData.assigned_agent_ids.filter(id => id !== agent.id),
+                                        });
+                                      }
+                                    }}
+                                  />
+                                  <label className="form-check-label" htmlFor={`task-agent-${agent.id}`}>
+                                    {agent.name}
+                                    <span className={`badge ms-2 ${statusMeta.badgeClass} text-white`}>
+                                      {statusMeta.label}
+                                    </span>
+                                  </label>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="form-text">{t('tasks.assigned_agents_help')}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="col-12">
+                      <div className="card">
+                        <div className="card-header">
+                          <h3 className="card-title">{t('tasks.create.paths')}</h3>
+                        </div>
+                        <div className="card-body">
+                          <div className="row g-3">
+
 	                    <div className="col-12 col-md-6">
 	                      <label className="form-label">{t('tasks.source_path')}</label>
 	                      <div className="input-group">
@@ -693,7 +828,17 @@ type FSListResponse = {
 	                          className="form-control font-monospace"
 	                          required
 	                        />
-	                        <button type="button" className="btn btn-outline-secondary" onClick={openSourceBrowser}>
+	                        <button
+	                          type="button"
+	                          className="btn btn-outline-secondary"
+	                          onClick={openSourceBrowser}
+	                          disabled={formData.assigned_agent_ids.length === 0}
+	                          title={
+	                            formData.assigned_agent_ids.length === 0
+	                              ? t('tasks.browse.select_agent_first')
+	                              : t('tasks.browse.button')
+	                          }
+	                        >
 	                          <IconFolder size={16} />
 	                          <span className="ms-1">{t('tasks.browse.button')}</span>
 	                        </button>
@@ -706,10 +851,20 @@ type FSListResponse = {
 	                        type="text"
 	                        value={formData.destination_path}
 	                        onChange={(e) => setFormData({ ...formData, destination_path: e.target.value })}
-	                        placeholder={t('tasks.destination_path_placeholder')}
+	                        placeholder={
+	                          isS3Remote
+	                            ? t('tasks.destination_path_placeholder_s3')
+	                            : t('tasks.destination_path_placeholder')
+	                        }
 	                        className="form-control font-monospace"
 	                        required
 	                      />
+	                      <div className="form-text">
+	                        {isS3Remote ? `${t('tasks.destination_path_help_s3')} ` : ''}
+	                        {formData.backup_mode === 'sync'
+	                          ? t('tasks.destination_path_help_sync')
+	                          : t('tasks.destination_path_help_archive')}
+	                      </div>
 	                    </div>
 
 	                    {sourceBrowserOpen && (
@@ -834,253 +989,173 @@ type FSListResponse = {
 	                      </div>
 	                    )}
 
+	                          </div>
+	                        </div>
+	                      </div>
+	                    </div>
+
 	                    <div className="col-12">
-	                      <label className="form-label">{t('tasks.list.columns.schedule')}</label>
-	                      <div className="row g-2">
-	                        <div className="col-12 col-md-6">
-	                          <select
-                            value={cronPresets.find(p => p.value === formData.schedule) ? formData.schedule : 'custom'}
-                            onChange={(e) => {
-                              if (e.target.value !== 'custom') {
-                                setFormData({ ...formData, schedule: e.target.value });
-                              }
-                            }}
-                            className="form-select"
-                          >
-                            {cronPresets.map((preset) => (
-                              <option key={preset.value} value={preset.value}>
-                                {preset.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="col-12 col-md-6">
-                          <input
-                            type="text"
-                            value={formData.schedule}
-                            onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
-                            placeholder="* * * * *"
-                            className="form-control font-monospace"
-                            required
-                          />
-                        </div>
-                      </div>
-                      <div className="form-text">{t('tasks.cron_help')}</div>
-                    </div>
-
+	                      <div className="card">
+	                        <div className="card-header">
+	                          <h3 className="card-title">{t('tasks.create.schedule')}</h3>
+	                        </div>
+	                        <div className="card-body">
+	                          <label className="form-label">{t('tasks.list.columns.schedule')}</label>
+	                          <div className="row g-2">
+	                            <div className="col-12 col-md-6">
+	                              <select
+	                                value={cronPresets.find(p => p.value === formData.schedule) ? formData.schedule : 'custom'}
+	                                onChange={(e) => {
+	                                  if (e.target.value !== 'custom') {
+	                                    setFormData({ ...formData, schedule: e.target.value });
+	                                  }
+	                                }}
+	                                className="form-select"
+	                              >
+	                                {cronPresets.map((preset) => (
+	                                  <option key={preset.value} value={preset.value}>
+	                                    {preset.label}
+	                                  </option>
+	                                ))}
+	                              </select>
+	                            </div>
+	                            <div className="col-12 col-md-6">
+	                              <input
+	                                type="text"
+	                                value={formData.schedule}
+	                                onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
+	                                placeholder="* * * * *"
+	                                className="form-control font-monospace"
+	                                required
+	                              />
+	                            </div>
+	                          </div>
+	                          <div className="form-text">{t('tasks.cron_help')}</div>
+	                        </div>
+	                      </div>
+	                    </div>
                     <div className="col-12">
-                      <label className="form-label">{t('tasks.assign_agents')}</label>
-                      <div className="d-flex flex-column gap-2">
-                        {agents.map((agent) => {
-                          const statusMeta = getAgentStatusMeta(agent.status);
-                          return (
-                            <div key={agent.id} className="form-check">
-                              <input
-                                type="checkbox"
-                                className="form-check-input"
-                                id={`task-agent-${agent.id}`}
-                                checked={formData.assigned_agent_ids.includes(agent.id)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
+                      <div className="card">
+                        <div className="card-header">
+                          <h3 className="card-title">{t('tasks.create.advanced')}</h3>
+                        </div>
+                        <div className="card-body">
+                          <div className="row g-3">
+                            <div className="col-12">
+                              <label className="form-check form-switch">
+                                <input
+                                  className="form-check-input"
+                                  type="checkbox"
+                                  checked={formData.encryption_enabled}
+                                  onChange={(e) =>
                                     setFormData({
                                       ...formData,
-                                      assigned_agent_ids: [...formData.assigned_agent_ids, agent.id],
-                                    });
-                                  } else {
-                                    setFormData({
-                                      ...formData,
-                                      assigned_agent_ids: formData.assigned_agent_ids.filter(id => id !== agent.id),
-                                    });
+                                      encryption_enabled: e.target.checked,
+                                      encryption_password: e.target.checked ? formData.encryption_password : '',
+                                    })
                                   }
-                                }}
-                              />
-                              <label className="form-check-label" htmlFor={`task-agent-${agent.id}`}>
-                                {agent.name}
-                                <span className={`badge ms-2 ${statusMeta.badgeClass} text-white`}>
-                                  {statusMeta.label}
-                                </span>
+                                />
+                                <span className="form-check-label">{t('tasks.enable_encryption')}</span>
                               </label>
+                              <div className="form-text">{t('tasks.encryption_help')}</div>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
 
-                    <div className="col-12">
-                      <label className="form-label">{t('tasks.backup_mode')}</label>
-                      <select
-                        value={formData.backup_mode}
-                        onChange={(e) => {
-                          const mode = e.target.value as 'sync' | 'archive';
-                          setFormData({
-                            ...formData,
-                            backup_mode: mode,
-                            archive_format: mode === 'archive' ? formData.archive_format : 'tar.gz',
-                          });
-                        }}
-                        className="form-select"
-                      >
-                        <option value="sync">{t('tasks.backup_mode_sync')}</option>
-                        <option value="archive">{t('tasks.backup_mode_archive')}</option>
-                      </select>
-                    </div>
+                            {formData.encryption_enabled && (
+                              <div className="col-12 col-md-6">
+                                <label className="form-label">{t('tasks.encryption_password')}</label>
+                                <input
+                                  type="password"
+                                  value={formData.encryption_password}
+                                  onChange={(e) => setFormData({ ...formData, encryption_password: e.target.value })}
+                                  className="form-control"
+                                  placeholder={editingTask ? t('tasks.encryption_password_keep') : ''}
+                                  required={!editingTask}
+                                />
+                              </div>
+                            )}
 
-                    {formData.backup_mode === 'archive' && (
-                      <>
-                        <div className="col-12 col-md-6">
-                          <label className="form-label">{t('tasks.archive_format')}</label>
-                          <select
-                            value={formData.archive_format}
-                            onChange={(e) => setFormData({ ...formData, archive_format: e.target.value as any })}
-                            className="form-select"
-                          >
-                            <option value="tar.gz">tar.gz</option>
-                            <option value="zip">zip</option>
-                          </select>
-                        </div>
-
-                        <div className="col-12 col-md-6">
-                          <label className="form-label">{t('tasks.max_retention')}</label>
-                          <input
-                            type="number"
-                            min="1"
-                            step="1"
-                            value={formData.max_retention}
-                            onChange={(e) => setFormData({ ...formData, max_retention: e.target.value })}
-                            className="form-control"
-                            placeholder={t('tasks.max_retention_placeholder')}
-                          />
-                          <div className="form-text">{t('tasks.max_retention_help')}</div>
-                        </div>
-                      </>
-                    )}
-
-                    <div className="col-12">
-                      <label className="form-check form-switch">
-                        <input
-                          className="form-check-input"
-                          type="checkbox"
-                          checked={formData.encryption_enabled}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              encryption_enabled: e.target.checked,
-                              encryption_password: e.target.checked ? formData.encryption_password : '',
-                            })
-                          }
-                        />
-                        <span className="form-check-label">{t('tasks.enable_encryption')}</span>
-                      </label>
-                      <div className="form-text">{t('tasks.encryption_help')}</div>
-                    </div>
-
-                    {formData.encryption_enabled && (
-                      <div className="col-12 col-md-6">
-                        <label className="form-label">{t('tasks.encryption_password')}</label>
-                        <input
-                          type="password"
-                          value={formData.encryption_password}
-                          onChange={(e) => setFormData({ ...formData, encryption_password: e.target.value })}
-                          className="form-control"
-                          placeholder={editingTask ? t('tasks.encryption_password_keep') : ''}
-                          required={!editingTask}
-                        />
-                      </div>
-                    )}
-
-                    <div className="col-12">
-                      <label className="form-label">{t('tasks.rclone_arguments')}</label>
-                      <div className="d-flex flex-column gap-2">
-                        {rcloneArgPresets.map((arg, index) => {
-                          const inputId = `task-arg-${index}`;
-                          return (
-                            <div key={arg.label} className="form-check">
-                              <input
-                                type="checkbox"
-                                className="form-check-input"
-                                id={inputId}
-                                checked={formData.rclone_args.includes(arg.label)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setFormData({
-                                      ...formData,
-                                      rclone_args: [...formData.rclone_args, arg.label],
-                                    });
-                                  } else {
-                                    setFormData({
-                                      ...formData,
-                                      rclone_args: formData.rclone_args.filter(a => a !== arg.label),
-                                    });
-                                  }
-                                }}
-                              />
-                              <label className="form-check-label" htmlFor={inputId}>
-                                <code>{arg.label}</code>
-                                <div className="text-muted small">{arg.description}</div>
-                              </label>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div className="mt-2">
-                        <input
-                          type="text"
-                          placeholder={t('tasks.custom_args')}
-                          onKeyDown={(e) => {
-                            if (e.key !== 'Enter') return;
-                            e.preventDefault();
-
-                            const input = e.currentTarget;
-                            const value = input.value.trim();
-                            if (!value) return;
-                            if (formData.rclone_args.includes(value)) {
-                              input.value = '';
-                              return;
-                            }
-
-                            setFormData({
-                              ...formData,
-                              rclone_args: [...formData.rclone_args, value],
-                            });
-                            input.value = '';
-                          }}
-                          className="form-control"
-                        />
-                      </div>
-
-                      {formData.rclone_args.length > 0 && (
-                        <div className="d-flex flex-wrap gap-1 mt-2">
-                          {formData.rclone_args.map((arg, idx) => (
-                            <span key={idx} className="badge bg-secondary text-white">
-                              <code className="text-white">{arg}</code>
-                              <button
-                                type="button"
-                                className="btn-close btn-close-white ms-2"
-                                aria-label={t('common.delete')}
-                                onClick={() => setFormData({
-                                  ...formData,
-                                  rclone_args: formData.rclone_args.filter((_, i) => i !== idx),
+                            <div className="col-12">
+                              <label className="form-label">{t('tasks.rclone_arguments')}</label>
+                              <div className="d-flex flex-column gap-2">
+                                {rcloneArgPresets.map((arg, index) => {
+                                  const inputId = `task-arg-${index}`;
+                                  return (
+                                    <div key={arg.label} className="form-check">
+                                      <input
+                                        type="checkbox"
+                                        className="form-check-input"
+                                        id={inputId}
+                                        checked={formData.rclone_args.includes(arg.label)}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            setFormData({
+                                              ...formData,
+                                              rclone_args: [...formData.rclone_args, arg.label],
+                                            });
+                                          } else {
+                                            setFormData({
+                                              ...formData,
+                                              rclone_args: formData.rclone_args.filter(a => a !== arg.label),
+                                            });
+                                          }
+                                        }}
+                                      />
+                                      <label className="form-check-label" htmlFor={inputId}>
+                                        <code>{arg.label}</code>
+                                        <div className="text-muted small">{arg.description}</div>
+                                      </label>
+                                    </div>
+                                  );
                                 })}
-                              ></button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                              </div>
 
-                    <div className="col-12">
-                      <div className="form-check form-switch">
-                        <input
-                          type="checkbox"
-                          className="form-check-input"
-                          id="task-is-active"
-                          checked={formData.is_active}
-                          onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                        />
-                        <label className="form-check-label" htmlFor="task-is-active">
-                          {t('tasks.activate_immediately')}
-                        </label>
+                              <div className="mt-2">
+                                <input
+                                  type="text"
+                                  placeholder={t('tasks.custom_args')}
+                                  onKeyDown={(e) => {
+                                    if (e.key !== 'Enter') return;
+                                    e.preventDefault();
+
+                                    const input = e.currentTarget;
+                                    const value = input.value.trim();
+                                    if (!value) return;
+                                    if (formData.rclone_args.includes(value)) {
+                                      input.value = '';
+                                      return;
+                                    }
+
+                                    setFormData({
+                                      ...formData,
+                                      rclone_args: [...formData.rclone_args, value],
+                                    });
+                                    input.value = '';
+                                  }}
+                                  className="form-control"
+                                />
+                              </div>
+
+                              {formData.rclone_args.length > 0 && (
+                                <div className="d-flex flex-wrap gap-1 mt-2">
+                                  {formData.rclone_args.map((arg, idx) => (
+                                    <span key={idx} className="badge bg-secondary text-white">
+                                      <code className="text-white">{arg}</code>
+                                      <button
+                                        type="button"
+                                        className="btn-close btn-close-white ms-2"
+                                        aria-label={t('common.delete')}
+                                        onClick={() => setFormData({
+                                          ...formData,
+                                          rclone_args: formData.rclone_args.filter((_, i) => i !== idx),
+                                        })}
+                                      ></button>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>

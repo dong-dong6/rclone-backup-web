@@ -176,6 +176,8 @@
     "backup_mode": "Backup Mode",
     "backup_mode_sync": "Sync (Mirror)",
     "backup_mode_archive": "Archive (Compressed File)",
+    "backup_mode_help_sync": "Sync mode mirrors the source directory to the destination path.",
+    "backup_mode_help_archive": "Archive mode uploads a single compressed file; you can enable max retention to auto-delete old backups.",
     "archive_format": "Archive Format",
     "max_retention": "Max Retention (count)",
     "max_retention_placeholder": "Leave empty for unlimited",
@@ -187,8 +189,13 @@
     "encryption_password_keep": "Leave empty to keep existing password",
     "encryption_password_required": "Encryption password is required.",
     "destination_path_placeholder": "backups/website",
+    "destination_path_placeholder_s3": "bucket-name/backups/website",
     "destination_path_required": "Destination path is required.",
     "destination_path_no_remote": "Destination path should not include a remote prefix (e.g. 's3:').",
+    "destination_path_help_s3": "S3/R2 destination path must start with the bucket name (e.g. wordpress-backup/gogs).",
+    "destination_path_help_sync": "Sync mode mirrors the source directory to the destination path.",
+    "destination_path_help_archive": "Archive mode uploads a single compressed file to the destination path (name: task-YYYYMMDDHHMMSS.ext).",
+    "assigned_agents_help": "Source paths live on agents; the browse button uses the first selected agent.",
     "args": {
       "dry_run": "Simulate only; no data is transferred.",
       "verbose": "Show verbose output.",
@@ -220,6 +227,8 @@
     "create": {
       "title": "Create Task",
       "basic": "Basic Info",
+      "agents": "Agents",
+      "paths": "Paths",
       "schedule": "Schedule",
       "advanced": "Advanced"
     },
