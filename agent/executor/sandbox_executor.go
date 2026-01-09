@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,7 @@ type TaskInfo struct {
 	ID                  string             `json:"id"`
 	ExecutionID         string             `json:"execution_id"`
 	TaskID              string             `json:"task_id"`
+	TaskName            string             `json:"task_name"`
 	RemoteConfig        string             `json:"remote_config"`
 	SourcePath          string             `json:"source_path"`
 	DestPath            string             `json:"dest_path"`
@@ -132,7 +134,7 @@ func (te *TaskExecutor) ExecuteTask(ctx context.Context, task *TaskInfo) error {
 		if archiveFormat == "" {
 			archiveFormat = "tar.gz"
 		}
-		archiveName := fmt.Sprintf("backup-%s-%s.%s", task.TaskID, time.Now().UTC().Format("20060102T150405Z"), archiveFormat)
+		archiveName := buildArchiveName(task, archiveFormat, time.Now())
 		archivePath := filepath.Join(taskWorkDir, archiveName)
 		if te.logHook != nil {
 			te.logHook(task.ExecutionID, fmt.Sprintf("[archive] creating %s from %s", archiveName, task.SourcePath))
@@ -231,9 +233,15 @@ func (te *TaskExecutor) runRclone(ctx context.Context, task *TaskInfo, configPat
 	}
 
 	// Add user-specified arguments
-	args = append(args, task.RcloneArgs...)
+	args = append(args, expandRcloneArgs(task.RcloneArgs)...)
 
 	log.Printf("[Executor] Running command: %s %s", rclonePath, strings.Join(args, " "))
+	if te.logHook != nil {
+		if summary := summarizeConfigForLog(configPath); summary != "" {
+			te.logHook(task.ExecutionID, summary)
+		}
+		te.logHook(task.ExecutionID, formatCommandForLog(rclonePath, args))
+	}
 
 	// Create command
 	cmd := exec.CommandContext(ctx, rclonePath, args...)
@@ -514,4 +522,293 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
 	}
 	return fmt.Sprintf("%dh%dm%ds", int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60)
+}
+
+func expandRcloneArgs(args []string) []string {
+	var expanded []string
+	for _, raw := range args {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+
+		if !strings.ContainsAny(raw, " \t\r\n") {
+			expanded = append(expanded, raw)
+			continue
+		}
+
+		fields, err := splitCommandLine(raw)
+		if err != nil || len(fields) == 0 {
+			expanded = append(expanded, raw)
+			continue
+		}
+		expanded = append(expanded, fields...)
+	}
+	return expanded
+}
+
+func splitCommandLine(input string) ([]string, error) {
+	var (
+		out      []string
+		buf      strings.Builder
+		inSingle bool
+		inDouble bool
+		escaped  bool
+	)
+
+	flush := func() {
+		if buf.Len() == 0 {
+			return
+		}
+		out = append(out, buf.String())
+		buf.Reset()
+	}
+
+	for _, r := range input {
+		if escaped {
+			buf.WriteRune(r)
+			escaped = false
+			continue
+		}
+
+		if r == '\\' && !inSingle {
+			escaped = true
+			continue
+		}
+
+		if r == '\'' && !inDouble {
+			inSingle = !inSingle
+			continue
+		}
+		if r == '"' && !inSingle {
+			inDouble = !inDouble
+			continue
+		}
+
+		if !inSingle && !inDouble {
+			if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+				flush()
+				continue
+			}
+		}
+
+		buf.WriteRune(r)
+	}
+
+	if escaped || inSingle || inDouble {
+		return nil, fmt.Errorf("unterminated quote/escape in argument")
+	}
+
+	flush()
+	return out, nil
+}
+
+func summarizeConfigForLog(configPath string) string {
+	const remoteAlias = "remote"
+
+	file, err := os.Open(configPath)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	type remoteSummary struct {
+		Type          string
+		Provider      string
+		NoCheckBucket string
+	}
+
+	var summary remoteSummary
+	currentSection := ""
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(strings.TrimRight(scanner.Text(), "\r"))
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			name := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "["), "]"))
+			if currentSection == remoteAlias && name != remoteAlias {
+				break
+			}
+			currentSection = name
+			continue
+		}
+
+		if currentSection != remoteAlias {
+			continue
+		}
+
+		eq := strings.Index(line, "=")
+		if eq < 0 {
+			continue
+		}
+
+		key := strings.ToLower(strings.TrimSpace(line[:eq]))
+		value := strings.TrimSpace(line[eq+1:])
+
+		switch key {
+		case "type":
+			summary.Type = value
+		case "provider":
+			summary.Provider = value
+		case "no_check_bucket":
+			summary.NoCheckBucket = value
+		}
+	}
+
+	parts := make([]string, 0, 3)
+	if summary.Type != "" {
+		parts = append(parts, "type="+summary.Type)
+	}
+	if summary.Provider != "" {
+		parts = append(parts, "provider="+summary.Provider)
+	}
+	if summary.NoCheckBucket != "" {
+		parts = append(parts, "no_check_bucket="+summary.NoCheckBucket)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return "[config] " + remoteAlias + "." + strings.Join(parts, " ")
+}
+
+func formatCommandForLog(exe string, args []string) string {
+	safe := sanitizeArgsForLog(append([]string(nil), args...))
+
+	parts := make([]string, 0, len(safe)+1)
+	parts = append(parts, formatArgForLog(exe))
+	for _, arg := range safe {
+		parts = append(parts, formatArgForLog(arg))
+	}
+	return "[exec] " + strings.Join(parts, " ")
+}
+
+func sanitizeArgsForLog(args []string) []string {
+	sensitiveFlags := map[string]struct{}{
+		"--password":             {},
+		"--password-command":     {},
+		"--token":                {},
+		"--access-key-id":        {},
+		"--secret-access-key":    {},
+		"--s3-access-key-id":     {},
+		"--s3-secret-access-key": {},
+		"--s3-session-token":     {},
+	}
+
+	isSensitiveFlag := func(flag string) bool {
+		flag = strings.ToLower(strings.TrimSpace(flag))
+		if _, ok := sensitiveFlags[flag]; ok {
+			return true
+		}
+		if strings.Contains(flag, "secret") || strings.Contains(flag, "password") || strings.Contains(flag, "token") {
+			return true
+		}
+		return false
+	}
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "--") {
+			continue
+		}
+
+		if eq := strings.Index(arg, "="); eq > 0 {
+			flag := arg[:eq]
+			if isSensitiveFlag(flag) {
+				args[i] = flag + "=***"
+			}
+			continue
+		}
+
+		if isSensitiveFlag(arg) && i+1 < len(args) {
+			args[i+1] = "***"
+		}
+	}
+
+	return args
+}
+
+func formatArgForLog(arg string) string {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		return "''"
+	}
+	if strings.ContainsAny(arg, " \t\r\n\"'\\") {
+		return strconv.Quote(arg)
+	}
+	return arg
+}
+
+func buildArchiveName(task *TaskInfo, archiveFormat string, now time.Time) string {
+	baseName := sanitizeFilenameComponent(task.TaskName)
+	if baseName == "" {
+		baseName = sanitizeFilenameComponent(task.TaskID)
+	}
+	if baseName == "" {
+		baseName = "backup"
+	}
+
+	archiveFormat = strings.TrimSpace(strings.TrimPrefix(archiveFormat, "."))
+	if archiveFormat == "" {
+		archiveFormat = "tar.gz"
+	}
+
+	return fmt.Sprintf("%s-%s.%s", baseName, now.Format("20060102150405"), archiveFormat)
+}
+
+func sanitizeFilenameComponent(input string) string {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return ""
+	}
+
+	input = strings.Join(strings.Fields(input), "-")
+
+	const invalid = "/\\:*?\"<>|"
+	const maxRunes = 80
+
+	var buf strings.Builder
+	buf.Grow(len(input))
+
+	lastDash := false
+	for _, r := range input {
+		if r <= 31 || r == 127 {
+			continue
+		}
+
+		if strings.ContainsRune(invalid, r) {
+			if !lastDash {
+				buf.WriteByte('-')
+				lastDash = true
+			}
+			continue
+		}
+
+		if r == '-' {
+			if lastDash {
+				continue
+			}
+			lastDash = true
+			buf.WriteRune(r)
+			continue
+		}
+
+		lastDash = false
+		buf.WriteRune(r)
+	}
+
+	out := strings.Trim(buf.String(), " .-_")
+	if out == "" {
+		return ""
+	}
+
+	runes := []rune(out)
+	if len(runes) > maxRunes {
+		out = string(runes[:maxRunes])
+	}
+	return out
 }

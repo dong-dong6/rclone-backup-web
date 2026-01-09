@@ -185,6 +185,14 @@
     "destination_path_placeholder": "backups/website",
     "destination_path_required": "Destination path is required.",
     "destination_path_no_remote": "Destination path should not include a remote prefix (e.g. 's3:').",
+    "args": {
+      "dry_run": "Simulate only; no data is transferred.",
+      "verbose": "Show verbose output.",
+      "checksum": "Use checksums to verify files.",
+      "delete_after": "Delete destination files that no longer exist on source.",
+      "exclude_tmp": "Exclude temporary files.",
+      "s3_no_check_bucket": "S3: Skip bucket existence check (recommended for R2 / object-only credentials)."
+    },
     "list": {
       "title": "Task List",
       "empty": "No tasks found",

@@ -306,7 +306,8 @@
       "verbose": "显示详细输出",
       "checksum": "使用校验和验证文件",
       "delete_after": "删除目标中源端不存在的文件",
-      "exclude_tmp": "排除临时文件"
+      "exclude_tmp": "排除临时文件",
+      "s3_no_check_bucket": "S3：不检查桶是否存在（R2/仅对象权限推荐）"
     },
     "list": {
       "title": "任务列表",

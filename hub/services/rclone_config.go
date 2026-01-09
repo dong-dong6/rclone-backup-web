@@ -11,11 +11,11 @@ const DefaultRcloneRemoteAlias = "remote"
 // rclone remote named "remote" (DefaultRcloneRemoteAlias).
 //
 // Supported inputs:
-// - A config body without any [section] header (common UI format)
-// - A full config section like:
-//   [myremote]
-//   type = s3
-//   ...
+//   - A config body without any [section] header (common UI format)
+//   - A full config section like:
+//     [myremote]
+//     type = s3
+//     ...
 //
 // If multiple sections are present, it prefers the [remote] section; otherwise it uses the
 // first section and re-homes its key/value lines under [remote].
@@ -73,7 +73,48 @@ func NormalizeRcloneConfigForSingleRemote(config string) string {
 	if content == "" {
 		return "[" + DefaultRcloneRemoteAlias + "]"
 	}
+	content = maybeEnableS3NoCheckBucket(content)
 	return "[" + DefaultRcloneRemoteAlias + "]\n" + content
+}
+
+func maybeEnableS3NoCheckBucket(content string) string {
+	options := parseRcloneOptions(content)
+	if !strings.EqualFold(strings.TrimSpace(options["type"]), "s3") {
+		return content
+	}
+	if !strings.EqualFold(strings.TrimSpace(options["provider"]), "Cloudflare") {
+		return content
+	}
+	if _, ok := options["no_check_bucket"]; ok {
+		return content
+	}
+	return content + "\nno_check_bucket = true"
+}
+
+func parseRcloneOptions(content string) map[string]string {
+	options := make(map[string]string)
+
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := strings.TrimSpace(strings.TrimRight(scanner.Text(), "\r"))
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+
+		eq := strings.Index(line, "=")
+		if eq < 0 {
+			continue
+		}
+
+		key := strings.ToLower(strings.TrimSpace(line[:eq]))
+		value := strings.TrimSpace(line[eq+1:])
+		if key == "" {
+			continue
+		}
+		options[key] = value
+	}
+
+	return options
 }
 
 func parseRcloneSectionHeader(trimmedLine string) (string, bool) {
@@ -98,4 +139,3 @@ func parseRcloneSectionHeader(trimmedLine string) (string, bool) {
 
 	return "", false
 }
-

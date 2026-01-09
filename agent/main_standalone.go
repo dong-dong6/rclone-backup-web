@@ -91,6 +91,7 @@ type queuedLogEntry struct {
 type hubTaskDetails struct {
 	ExecutionID         string   `json:"execution_id"`
 	TaskID              string   `json:"task_id"`
+	TaskName            string   `json:"task_name"`
 	SourcePath          string   `json:"source_path"`
 	DestinationPath     string   `json:"destination_path"`
 	RcloneConfigB64     string   `json:"rclone_config_b64"`
@@ -657,6 +658,7 @@ func (a *Agent) executeTask(actionExecutionID string, taskData json.RawMessage) 
 	}
 
 	details.TaskID = strings.TrimSpace(details.TaskID)
+	details.TaskName = strings.TrimSpace(details.TaskName)
 	details.SourcePath = strings.TrimSpace(details.SourcePath)
 	details.DestinationPath = strings.TrimSpace(details.DestinationPath)
 	details.RcloneConfigB64 = strings.TrimSpace(details.RcloneConfigB64)
@@ -679,6 +681,7 @@ func (a *Agent) executeTask(actionExecutionID string, taskData json.RawMessage) 
 		ID:                  details.TaskID,
 		ExecutionID:         details.ExecutionID,
 		TaskID:              details.TaskID,
+		TaskName:            details.TaskName,
 		RemoteConfig:        details.RcloneConfigB64,
 		SourcePath:          details.SourcePath,
 		DestPath:            destPath,
@@ -733,6 +736,7 @@ func (a *Agent) handleLocalFallback() {
 			ID:                  task.ID,
 			ExecutionID:         uuid.New().String(),
 			TaskID:              task.ID,
+			TaskName:            strings.TrimSpace(task.Name),
 			RemoteConfig:        task.RemoteConfig,
 			SourcePath:          task.SourcePath,
 			DestPath:            destPath,

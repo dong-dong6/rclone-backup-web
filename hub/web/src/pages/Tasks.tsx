@@ -107,13 +107,38 @@ type FSListResponse = {
   ];
 
   // Common rclone arguments
-  const rcloneArgPresets = [
+  const baseRcloneArgPresets = [
     { label: '--dry-run', description: t('tasks.args.dry_run') },
     { label: '--verbose', description: t('tasks.args.verbose') },
     { label: '--checksum', description: t('tasks.args.checksum') },
     { label: '--delete-after', description: t('tasks.args.delete_after') },
     { label: '--exclude *.tmp', description: t('tasks.args.exclude_tmp') },
   ];
+
+  const selectedRemote = remotes.find(r => r.id === formData.rclone_remote_id);
+  const isS3Remote = (selectedRemote?.type || '').toLowerCase() === 's3';
+
+  const rcloneArgPresets = [
+    ...baseRcloneArgPresets,
+    ...(isS3Remote
+      ? [
+          {
+            label: '--s3-no-check-bucket',
+            description: t('tasks.args.s3_no_check_bucket'),
+          },
+        ]
+      : []),
+  ];
+
+  useEffect(() => {
+    if (!isS3Remote) return;
+
+    const flag = '--s3-no-check-bucket';
+    setFormData(current => {
+      if (current.rclone_args.includes(flag)) return current;
+      return { ...current, rclone_args: [...current.rclone_args, flag] };
+    });
+  }, [isS3Remote]);
 
   useEffect(() => {
     fetchData();

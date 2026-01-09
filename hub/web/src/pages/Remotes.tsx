@@ -652,7 +652,7 @@ const Remotes: React.FC = () => {
       key: 's3_cloudflare_r2',
       label: t('remotes.preset.cloudflare_r2'),
       type: 's3',
-      constantOptions: { provider: 'Cloudflare', region: 'auto' },
+      constantOptions: { provider: 'Cloudflare', region: 'auto', no_check_bucket: 'true' },
       initialValues: { access_key_id: '', secret_access_key: '', endpoint: '' },
       fields: [
         { key: 'access_key_id', label: t('remotes.fields.access_key_id'), kind: 'text', required: true },
