@@ -766,62 +766,59 @@ type FSListResponse = {
                     <div className="col-12">
                       <div className="card">
                         <div className="card-header">
-                          <h3 className="card-title">{t('tasks.create.agents')}</h3>
-                        </div>
-                        <div className="card-body">
-                          <label className="form-label">{t('tasks.assign_agents')}</label>
-                          <div className="d-flex flex-column gap-2">
-                            {agents.map((agent) => {
-                              const statusMeta = getAgentStatusMeta(agent.status);
-                              return (
-                                <div key={agent.id} className="form-check">
-                                  <input
-                                    type="checkbox"
-                                    className="form-check-input"
-                                    id={`task-agent-${agent.id}`}
-                                    checked={formData.assigned_agent_ids.includes(agent.id)}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        setFormData({
-                                          ...formData,
-                                          assigned_agent_ids: [...formData.assigned_agent_ids, agent.id],
-                                        });
-                                      } else {
-                                        setFormData({
-                                          ...formData,
-                                          assigned_agent_ids: formData.assigned_agent_ids.filter(id => id !== agent.id),
-                                        });
-                                      }
-                                    }}
-                                  />
-                                  <label className="form-check-label" htmlFor={`task-agent-${agent.id}`}>
-                                    {agent.name}
-                                    <span className={`badge ms-2 ${statusMeta.badgeClass} text-white`}>
-                                      {statusMeta.label}
-                                    </span>
-                                  </label>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <div className="form-text">{t('tasks.assigned_agents_help')}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="col-12">
-                      <div className="card">
-                        <div className="card-header">
-                          <h3 className="card-title">{t('tasks.create.paths')}</h3>
+                          <h3 className="card-title">{t('tasks.create.agents_paths')}</h3>
                         </div>
                         <div className="card-body">
                           <div className="row g-3">
 
-	                    <div className="col-12 col-md-6">
-	                      <label className="form-label">{t('tasks.source_path')}</label>
-	                      <div className="input-group">
-	                        <input
-	                          type="text"
+                            <div className="col-12">
+                              <label className="form-label">{t('tasks.assign_agents')}</label>
+                              <div className="d-flex flex-column gap-2">
+                                {agents.map((agent) => {
+                                  const statusMeta = getAgentStatusMeta(agent.status);
+                                  return (
+                                    <div key={agent.id} className="form-check">
+                                      <input
+                                        type="checkbox"
+                                        className="form-check-input"
+                                        id={`task-agent-${agent.id}`}
+                                        checked={formData.assigned_agent_ids.includes(agent.id)}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            setFormData({
+                                              ...formData,
+                                              assigned_agent_ids: [...formData.assigned_agent_ids, agent.id],
+                                            });
+                                          } else {
+                                            setFormData({
+                                              ...formData,
+                                              assigned_agent_ids: formData.assigned_agent_ids.filter(id => id !== agent.id),
+                                            });
+                                          }
+                                        }}
+                                      />
+                                      <label className="form-check-label" htmlFor={`task-agent-${agent.id}`}>
+                                        {agent.name}
+                                        <span className={`badge ms-2 ${statusMeta.badgeClass} text-white`}>
+                                          {statusMeta.label}
+                                        </span>
+                                      </label>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div className="form-text">{t('tasks.assigned_agents_help')}</div>
+                            </div>
+
+                            <div className="col-12">
+                              <hr className="my-2" />
+                            </div>
+
+		                    <div className="col-12 col-md-6">
+		                      <label className="form-label">{t('tasks.source_path')}</label>
+		                      <div className="input-group">
+		                        <input
+		                          type="text"
 	                          value={formData.source_path}
 	                          onChange={(e) => setFormData({ ...formData, source_path: e.target.value })}
 	                          placeholder="/path/to/source"

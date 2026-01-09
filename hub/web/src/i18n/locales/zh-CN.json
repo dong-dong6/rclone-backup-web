@@ -345,6 +345,7 @@
       "basic": "基本信息",
       "agents": "节点选择",
       "paths": "路径设置",
+      "agents_paths": "节点与路径",
       "schedule": "调度设置",
       "advanced": "高级选项"
     },
