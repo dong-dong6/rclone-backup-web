@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,6 +47,7 @@ type TaskInfo struct {
 	EncryptionEnabled   bool               `json:"encryption_enabled,omitempty"`
 	EncryptionPassword  string             `json:"-"`
 	EncryptionPassword2 string             `json:"-"`
+	MaxRetention        int                `json:"max_retention,omitempty"`
 	StartedAt           time.Time          `json:"started_at"`
 	Status              string             `json:"status"`
 	Progress            *TransferProgress  `json:"progress,omitempty"`
@@ -202,6 +204,15 @@ func (te *TaskExecutor) ExecuteTask(ctx context.Context, task *TaskInfo) error {
 	if err := te.runRclone(taskCtx, task, configPath, taskWorkDir); err != nil {
 		task.Status = "failed"
 		return fmt.Errorf("rclone execution failed: %w", err)
+	}
+
+	// Post-flight: enforce max retention for archive mode.
+	if backupMode == "archive" && task.MaxRetention > 0 {
+		if err := te.enforceArchiveRetention(taskCtx, task, configPath, taskWorkDir); err != nil {
+			if te.logHook != nil {
+				te.logHook(task.ExecutionID, fmt.Sprintf("[retention] warning: %v", err))
+			}
+		}
 	}
 
 	task.Status = "completed"
@@ -811,4 +822,199 @@ func sanitizeFilenameComponent(input string) string {
 		out = string(runes[:maxRunes])
 	}
 	return out
+}
+
+type rcloneLSJSONEntry struct {
+	Path  string `json:"Path"`
+	Name  string `json:"Name"`
+	IsDir bool   `json:"IsDir"`
+}
+
+type archiveCandidate struct {
+	Name      string
+	Timestamp time.Time
+}
+
+func (te *TaskExecutor) enforceArchiveRetention(ctx context.Context, task *TaskInfo, configPath, workDir string) error {
+	maxRetention := task.MaxRetention
+	if maxRetention <= 0 {
+		return nil
+	}
+
+	destDir := strings.TrimSpace(task.DestPath)
+	if destDir == "" {
+		return nil
+	}
+
+	rclonePath := te.rcloneManager.GetExecutablePath()
+	extraArgs := retentionRcloneArgs(task)
+
+	lsArgs := append([]string{"lsjson", destDir, "--config", configPath, "--files-only", "--max-depth", "1"}, extraArgs...)
+	if te.logHook != nil {
+		te.logHook(task.ExecutionID, formatCommandForLog(rclonePath, lsArgs))
+	}
+
+	stdout, stderr, err := te.runRcloneCapture(ctx, workDir, configPath, lsArgs)
+	if err != nil {
+		msg := strings.TrimSpace(string(stderr))
+		if msg == "" {
+			msg = strings.TrimSpace(string(stdout))
+		}
+		if msg != "" {
+			return fmt.Errorf("list remote backups failed: %s", msg)
+		}
+		return fmt.Errorf("list remote backups failed: %w", err)
+	}
+
+	var entries []rcloneLSJSONEntry
+	if err := json.Unmarshal(stdout, &entries); err != nil {
+		return fmt.Errorf("parse remote listing failed: %w", err)
+	}
+
+	candidates := make([]archiveCandidate, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir {
+			continue
+		}
+		name := strings.TrimSpace(entry.Name)
+		if name == "" {
+			name = strings.TrimSpace(entry.Path)
+		}
+		if name == "" {
+			continue
+		}
+
+		ts, ok := parseArchiveTimestamp(name)
+		if !ok {
+			continue
+		}
+		candidates = append(candidates, archiveCandidate{Name: name, Timestamp: ts})
+	}
+
+	if len(candidates) <= maxRetention {
+		if te.logHook != nil {
+			te.logHook(task.ExecutionID, fmt.Sprintf("[retention] keep=%d found=%d delete=0", maxRetention, len(candidates)))
+		}
+		return nil
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].Timestamp.Equal(candidates[j].Timestamp) {
+			return candidates[i].Name > candidates[j].Name
+		}
+		return candidates[i].Timestamp.After(candidates[j].Timestamp)
+	})
+
+	toDelete := candidates[maxRetention:]
+	if te.logHook != nil {
+		te.logHook(task.ExecutionID, fmt.Sprintf("[retention] keep=%d found=%d delete=%d", maxRetention, len(candidates), len(toDelete)))
+	}
+
+	var deleteErr error
+	for _, candidate := range toDelete {
+		target := joinRclonePath(destDir, candidate.Name)
+		delArgs := append([]string{"deletefile", target, "--config", configPath}, extraArgs...)
+		if te.logHook != nil {
+			te.logHook(task.ExecutionID, formatCommandForLog(rclonePath, delArgs))
+			te.logHook(task.ExecutionID, fmt.Sprintf("[retention] deleting %s", target))
+		}
+
+		_, stderr, err := te.runRcloneCapture(ctx, workDir, configPath, delArgs)
+		if err != nil {
+			msg := strings.TrimSpace(string(stderr))
+			if msg == "" {
+				msg = err.Error()
+			}
+			if te.logHook != nil {
+				te.logHook(task.ExecutionID, fmt.Sprintf("[retention] delete failed: %s", msg))
+			}
+			deleteErr = fmt.Errorf("delete old backups failed: %w", err)
+		}
+	}
+
+	return deleteErr
+}
+
+func retentionRcloneArgs(task *TaskInfo) []string {
+	expanded := expandRcloneArgs(task.RcloneArgs)
+	out := make([]string, 0, 1)
+	for _, arg := range expanded {
+		arg = strings.TrimSpace(arg)
+		if arg == "" {
+			continue
+		}
+		if arg == "--s3-no-check-bucket" || strings.HasPrefix(arg, "--s3-no-check-bucket=") {
+			out = append(out, arg)
+		}
+	}
+	return out
+}
+
+func parseArchiveTimestamp(filename string) (time.Time, bool) {
+	lower := strings.ToLower(strings.TrimSpace(filename))
+	if lower == "" {
+		return time.Time{}, false
+	}
+
+	suffixes := []string{".tar.gz", ".zip", ".tgz"}
+	var suffix string
+	for _, s := range suffixes {
+		if strings.HasSuffix(lower, s) {
+			suffix = s
+			break
+		}
+	}
+	if suffix == "" {
+		return time.Time{}, false
+	}
+
+	base := filename[:len(filename)-len(suffix)]
+	dash := strings.LastIndex(base, "-")
+	if dash < 0 {
+		return time.Time{}, false
+	}
+
+	ts := strings.TrimSpace(base[dash+1:])
+	if len(ts) != 14 {
+		return time.Time{}, false
+	}
+
+	parsed, err := time.ParseInLocation("20060102150405", ts, time.Local)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed, true
+}
+
+func joinRclonePath(dir, name string) string {
+	dir = strings.TrimRight(strings.TrimSpace(dir), "/")
+	name = strings.TrimLeft(strings.TrimSpace(name), "/")
+	if dir == "" {
+		return name
+	}
+	if name == "" {
+		return dir
+	}
+	return dir + "/" + name
+}
+
+func (te *TaskExecutor) runRcloneCapture(ctx context.Context, workDir, configPath string, args []string) ([]byte, []byte, error) {
+	rclonePath := te.rcloneManager.GetExecutablePath()
+	cmd := exec.CommandContext(ctx, rclonePath, args...)
+	cmd.Dir = workDir
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("RCLONE_CONFIG=%s", configPath),
+		"RCLONE_NO_CHECK_CERTIFICATE=false",
+		fmt.Sprintf("TMPDIR=%s", workDir),
+	)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return stdout.Bytes(), stderr.Bytes(), err
+	}
+	return stdout.Bytes(), stderr.Bytes(), nil
 }

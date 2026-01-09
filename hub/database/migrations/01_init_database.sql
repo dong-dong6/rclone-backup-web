@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS backup_tasks (
     encryption_password TEXT,                                    -- 任务加密口令（Hub 端加密存储）
     encryption_password2 TEXT,                                   -- 任务加密盐口令（Hub 端加密存储）
     retention_days INTEGER DEFAULT 30,                           -- 备份数据保留天数
+    max_retention INTEGER,                                       -- archive 模式最大留存份数（超出将删除旧备份）
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),  -- 记录创建时间
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()   -- 记录更新时间
 );

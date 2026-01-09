@@ -394,6 +394,7 @@ type TaskUpsertRequest struct {
 	EncryptionPassword string `json:"encryption_password,omitempty"`
 
 	RetentionDays *int `json:"retention_days,omitempty"`
+	MaxRetention  *int `json:"max_retention,omitempty"`
 
 	AssignedAgentIDs []string `json:"assigned_agent_ids,omitempty"`
 	AssignedAgents   []string `json:"assigned_agents,omitempty"`
@@ -572,6 +573,11 @@ func (h *Handler) CreateTask(c *gin.Context) {
 		password2Enc = &encryptedPassword2
 	}
 
+	maxRetention := req.MaxRetention
+	if maxRetention != nil && *maxRetention <= 0 {
+		maxRetention = nil
+	}
+
 	task := models.BackupTask{
 		Name:                   req.Name,
 		RcloneRemoteID:         remoteID,
@@ -586,6 +592,7 @@ func (h *Handler) CreateTask(c *gin.Context) {
 		EncryptionPasswordEnc:  passwordEnc,
 		EncryptionPassword2Enc: password2Enc,
 		RetentionDays:          req.RetentionDays,
+		MaxRetention:           maxRetention,
 	}
 
 	taskModel := models.NewTaskModel(h.db)
@@ -681,9 +688,17 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 		BackupMode:      backupMode,
 		ArchiveFormat:   archiveFormat,
 		RetentionDays:   current.RetentionDays,
+		MaxRetention:    current.MaxRetention,
 	}
 	if req.RetentionDays != nil {
 		next.RetentionDays = req.RetentionDays
+	}
+	if req.MaxRetention != nil {
+		if *req.MaxRetention > 0 {
+			next.MaxRetention = req.MaxRetention
+		} else {
+			next.MaxRetention = nil
+		}
 	}
 
 	if req.EncryptionEnabled {

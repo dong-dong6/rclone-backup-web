@@ -23,6 +23,7 @@ type BackupTask struct {
 	ArchiveFormat     string          `json:"archive_format,omitempty"`
 	EncryptionEnabled bool            `json:"encryption_enabled"`
 	RetentionDays     *int            `json:"retention_days,omitempty"`
+	MaxRetention      *int            `json:"max_retention,omitempty"`
 	CreatedAt         time.Time       `json:"created_at"`
 	UpdatedAt         time.Time       `json:"updated_at"`
 
@@ -59,14 +60,14 @@ func (m *TaskModel) Create(ctx context.Context, task *BackupTask) error {
 	}
 
 	query := `
-		INSERT INTO backup_tasks (
-			id, name, rclone_remote_id, source_path, destination_path,
-			schedule, rclone_args, is_active,
-			backup_mode, archive_format, encryption_enabled, encryption_password, encryption_password2,
-			retention_days, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-		RETURNING id, created_at, updated_at
-	`
+			INSERT INTO backup_tasks (
+				id, name, rclone_remote_id, source_path, destination_path,
+				schedule, rclone_args, is_active,
+				backup_mode, archive_format, encryption_enabled, encryption_password, encryption_password2,
+				retention_days, max_retention, created_at, updated_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+			RETURNING id, created_at, updated_at
+		`
 
 	err := m.db.QueryRow(ctx, query,
 		task.ID,
@@ -83,6 +84,7 @@ func (m *TaskModel) Create(ctx context.Context, task *BackupTask) error {
 		task.EncryptionPasswordEnc,
 		task.EncryptionPassword2Enc,
 		task.RetentionDays,
+		task.MaxRetention,
 		task.CreatedAt,
 		task.UpdatedAt,
 	).Scan(&task.ID, &task.CreatedAt, &task.UpdatedAt)
@@ -94,15 +96,15 @@ func (m *TaskModel) Create(ctx context.Context, task *BackupTask) error {
 func (m *TaskModel) GetByID(ctx context.Context, id uuid.UUID) (*BackupTask, error) {
 	task := &BackupTask{}
 	query := `
-		SELECT 
-			t.id, t.name, t.rclone_remote_id, t.source_path, t.destination_path,
-			t.schedule, t.rclone_args, t.is_active,
-			t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
-			t.retention_days, t.created_at, t.updated_at,
-			r.name as remote_name
-		FROM backup_tasks t
-		LEFT JOIN rclone_remotes r ON t.rclone_remote_id = r.id
-		WHERE t.id = $1
+			SELECT 
+				t.id, t.name, t.rclone_remote_id, t.source_path, t.destination_path,
+				t.schedule, t.rclone_args, t.is_active,
+				t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
+				t.retention_days, t.max_retention, t.created_at, t.updated_at,
+				r.name as remote_name
+			FROM backup_tasks t
+			LEFT JOIN rclone_remotes r ON t.rclone_remote_id = r.id
+			WHERE t.id = $1
 	`
 
 	err := m.db.QueryRow(ctx, query, id).Scan(
@@ -120,6 +122,7 @@ func (m *TaskModel) GetByID(ctx context.Context, id uuid.UUID) (*BackupTask, err
 		&task.EncryptionPasswordEnc,
 		&task.EncryptionPassword2Enc,
 		&task.RetentionDays,
+		&task.MaxRetention,
 		&task.CreatedAt,
 		&task.UpdatedAt,
 		&task.RemoteName,
@@ -138,16 +141,16 @@ func (m *TaskModel) GetByID(ctx context.Context, id uuid.UUID) (*BackupTask, err
 // List retrieves all tasks
 func (m *TaskModel) List(ctx context.Context) ([]*BackupTask, error) {
 	query := `
-		SELECT 
-			t.id, t.name, t.rclone_remote_id, t.source_path, t.destination_path,
-			t.schedule, t.rclone_args, t.is_active,
-			t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
-			t.retention_days, t.created_at, t.updated_at,
-			r.name as remote_name
-		FROM backup_tasks t
-		LEFT JOIN rclone_remotes r ON t.rclone_remote_id = r.id
-		ORDER BY t.created_at DESC
-	`
+			SELECT 
+				t.id, t.name, t.rclone_remote_id, t.source_path, t.destination_path,
+				t.schedule, t.rclone_args, t.is_active,
+				t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
+				t.retention_days, t.max_retention, t.created_at, t.updated_at,
+				r.name as remote_name
+			FROM backup_tasks t
+			LEFT JOIN rclone_remotes r ON t.rclone_remote_id = r.id
+			ORDER BY t.created_at DESC
+		`
 
 	rows, err := m.db.Query(ctx, query)
 	if err != nil {
@@ -173,6 +176,7 @@ func (m *TaskModel) List(ctx context.Context) ([]*BackupTask, error) {
 			&task.EncryptionPasswordEnc,
 			&task.EncryptionPassword2Enc,
 			&task.RetentionDays,
+			&task.MaxRetention,
 			&task.CreatedAt,
 			&task.UpdatedAt,
 			&task.RemoteName,
@@ -195,23 +199,24 @@ func (m *TaskModel) Update(ctx context.Context, task *BackupTask) error {
 	task.UpdatedAt = time.Now()
 
 	query := `
-		UPDATE backup_tasks SET
-			name = $2,
-			rclone_remote_id = $3,
-			source_path = $4,
-			destination_path = $5,
-			schedule = $6,
-			rclone_args = $7,
-			is_active = $8,
-			backup_mode = $9,
-			archive_format = $10,
-			encryption_enabled = $11,
-			encryption_password = $12,
-			encryption_password2 = $13,
-			retention_days = $14,
-			updated_at = $15
-		WHERE id = $1
-	`
+			UPDATE backup_tasks SET
+				name = $2,
+				rclone_remote_id = $3,
+				source_path = $4,
+				destination_path = $5,
+				schedule = $6,
+				rclone_args = $7,
+				is_active = $8,
+				backup_mode = $9,
+				archive_format = $10,
+				encryption_enabled = $11,
+				encryption_password = $12,
+				encryption_password2 = $13,
+				retention_days = $14,
+				max_retention = $15,
+				updated_at = $16
+			WHERE id = $1
+		`
 
 	_, err := m.db.Exec(ctx, query,
 		task.ID,
@@ -228,6 +233,7 @@ func (m *TaskModel) Update(ctx context.Context, task *BackupTask) error {
 		task.EncryptionPasswordEnc,
 		task.EncryptionPassword2Enc,
 		task.RetentionDays,
+		task.MaxRetention,
 		task.UpdatedAt,
 	)
 
@@ -297,7 +303,7 @@ func (m *TaskModel) GetAgentTasks(ctx context.Context, agentID uuid.UUID) ([]*Ba
 			t.id, t.name, t.rclone_remote_id, t.source_path, t.destination_path,
 			t.schedule, t.rclone_args, t.is_active,
 			t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
-			t.created_at, t.updated_at
+			t.max_retention, t.created_at, t.updated_at
 		FROM backup_tasks t
 		INNER JOIN task_agent_assignments ta ON t.id = ta.task_id
 		WHERE ta.agent_id = $1 AND t.is_active = true
@@ -327,6 +333,7 @@ func (m *TaskModel) GetAgentTasks(ctx context.Context, agentID uuid.UUID) ([]*Ba
 			&task.EncryptionEnabled,
 			&task.EncryptionPasswordEnc,
 			&task.EncryptionPassword2Enc,
+			&task.MaxRetention,
 			&task.CreatedAt,
 			&task.UpdatedAt,
 		)

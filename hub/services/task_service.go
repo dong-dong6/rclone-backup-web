@@ -171,6 +171,10 @@ func (s *TaskService) BuildTaskDetailsForAgent(ctx context.Context, task *models
 	normalizedConfig := NormalizeRcloneConfigForSingleRemote(decryptedConfig)
 
 	// Build task details
+	maxRetention := 0
+	if task.MaxRetention != nil {
+		maxRetention = *task.MaxRetention
+	}
 	taskDetails := map[string]interface{}{
 		"execution_id":       executionID.String(),
 		"task_id":            task.ID.String(),
@@ -183,6 +187,7 @@ func (s *TaskService) BuildTaskDetailsForAgent(ctx context.Context, task *models
 		"backup_mode":        task.BackupMode,
 		"archive_format":     task.ArchiveFormat,
 		"encryption_enabled": task.EncryptionEnabled,
+		"max_retention":      maxRetention,
 	}
 
 	if task.EncryptionEnabled {

@@ -14,6 +14,7 @@ var dbPool *pgxpool.Pool
 
 func ensureSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	statements := []string{
+		`ALTER TABLE backup_tasks ADD COLUMN IF NOT EXISTS max_retention INTEGER`,
 		`ALTER TABLE rclone_remotes ADD COLUMN IF NOT EXISTS last_test_at TIMESTAMP WITH TIME ZONE`,
 		`ALTER TABLE rclone_remotes ADD COLUMN IF NOT EXISTS last_test_success BOOLEAN`,
 		`ALTER TABLE rclone_remotes ADD COLUMN IF NOT EXISTS last_test_message TEXT`,

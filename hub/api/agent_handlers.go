@@ -362,6 +362,7 @@ func (h *Handler) buildLegacyAgentTasks(ctx context.Context, agentID uuid.UUID) 
 			BackupMode:        task.BackupMode,
 			ArchiveFormat:     task.ArchiveFormat,
 			EncryptionEnabled: task.EncryptionEnabled,
+			MaxRetention:      task.MaxRetention,
 		}
 
 		if task.EncryptionEnabled {

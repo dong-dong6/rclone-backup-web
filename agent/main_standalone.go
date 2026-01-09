@@ -101,6 +101,7 @@ type hubTaskDetails struct {
 	EncryptionEnabled   bool     `json:"encryption_enabled"`
 	EncryptionPassword  string   `json:"encryption_password"`
 	EncryptionPassword2 string   `json:"encryption_password2"`
+	MaxRetention        int      `json:"max_retention"`
 }
 
 type fsListActionPayload struct {
@@ -662,6 +663,9 @@ func (a *Agent) executeTask(actionExecutionID string, taskData json.RawMessage) 
 	details.SourcePath = strings.TrimSpace(details.SourcePath)
 	details.DestinationPath = strings.TrimSpace(details.DestinationPath)
 	details.RcloneConfigB64 = strings.TrimSpace(details.RcloneConfigB64)
+	if details.MaxRetention < 0 {
+		details.MaxRetention = 0
+	}
 
 	if details.TaskID == "" || details.SourcePath == "" || details.DestinationPath == "" || details.RcloneConfigB64 == "" {
 		a.sendExecutionUpdate(details.ExecutionID, "failed", "task payload missing required fields")
@@ -691,6 +695,7 @@ func (a *Agent) executeTask(actionExecutionID string, taskData json.RawMessage) 
 		EncryptionEnabled:   details.EncryptionEnabled,
 		EncryptionPassword:  details.EncryptionPassword,
 		EncryptionPassword2: details.EncryptionPassword2,
+		MaxRetention:        details.MaxRetention,
 	}
 
 	log.Printf("Executing task %s from hub", task.ExecutionID)
@@ -746,6 +751,7 @@ func (a *Agent) handleLocalFallback() {
 			EncryptionEnabled:   task.EncryptionEnabled,
 			EncryptionPassword:  task.EncryptionPassword,
 			EncryptionPassword2: task.EncryptionPassword2,
+			MaxRetention:        task.MaxRetention,
 		}
 
 		// Execute task

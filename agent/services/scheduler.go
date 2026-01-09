@@ -37,6 +37,7 @@ type ScheduledTask struct {
 	EncryptionEnabled   bool      `json:"encryption_enabled"`
 	EncryptionPassword  string    `json:"encryption_password,omitempty"`
 	EncryptionPassword2 string    `json:"encryption_password2,omitempty"`
+	MaxRetention        int       `json:"max_retention,omitempty"`
 	LastRun             time.Time `json:"last_run,omitempty"`
 	NextRun             time.Time `json:"next_run,omitempty"`
 }
@@ -111,6 +112,7 @@ func (s *Scheduler) UpdateTasks(tasks []Task) {
 			EncryptionEnabled:   task.EncryptionEnabled,
 			EncryptionPassword:  task.EncryptionPassword,
 			EncryptionPassword2: task.EncryptionPassword2,
+			MaxRetention:        task.MaxRetention,
 		}
 
 		// Add to cron

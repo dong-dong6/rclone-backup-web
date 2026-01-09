@@ -45,6 +45,7 @@ interface BackupTask {
   backup_mode: 'sync' | 'archive';
   archive_format?: 'tar.gz' | 'zip';
   encryption_enabled?: boolean;
+  max_retention?: number | null;
   created_at: string;
   updated_at: string;
   assigned_agents: string[];
@@ -94,6 +95,7 @@ type FSListResponse = {
     archive_format: 'tar.gz' as 'tar.gz' | 'zip',
     encryption_enabled: false,
     encryption_password: '',
+    max_retention: '',
     assigned_agent_ids: [] as string[],
   });
 
@@ -217,6 +219,7 @@ type FSListResponse = {
       archive_format: 'tar.gz',
       encryption_enabled: false,
       encryption_password: '',
+      max_retention: '',
       assigned_agent_ids: [],
     });
     setSourceBrowserOpen(false);
@@ -243,6 +246,7 @@ type FSListResponse = {
       archive_format: task.archive_format || 'tar.gz',
       encryption_enabled: !!task.encryption_enabled,
       encryption_password: '',
+      max_retention: task.max_retention ? String(task.max_retention) : '',
       assigned_agent_ids: task.assigned_agents,
     });
     setSourceBrowserOpen(false);
@@ -372,6 +376,19 @@ type FSListResponse = {
       };
       if (formData.encryption_enabled && formData.encryption_password.trim()) {
         payload.encryption_password = formData.encryption_password.trim();
+      }
+      if (formData.backup_mode === 'archive') {
+        const raw = formData.max_retention.trim();
+        if (raw) {
+          const parsed = Number.parseInt(raw, 10);
+          if (!Number.isFinite(parsed) || parsed <= 0) {
+            alert(t('tasks.max_retention_invalid'));
+            return;
+          }
+          payload.max_retention = parsed;
+        } else if (editingTask) {
+          payload.max_retention = 0;
+        }
       }
 
       if (editingTask) {
@@ -909,17 +926,33 @@ type FSListResponse = {
                     </div>
 
                     {formData.backup_mode === 'archive' && (
-                      <div className="col-12 col-md-6">
-                        <label className="form-label">{t('tasks.archive_format')}</label>
-                        <select
-                          value={formData.archive_format}
-                          onChange={(e) => setFormData({ ...formData, archive_format: e.target.value as any })}
-                          className="form-select"
-                        >
-                          <option value="tar.gz">tar.gz</option>
-                          <option value="zip">zip</option>
-                        </select>
-                      </div>
+                      <>
+                        <div className="col-12 col-md-6">
+                          <label className="form-label">{t('tasks.archive_format')}</label>
+                          <select
+                            value={formData.archive_format}
+                            onChange={(e) => setFormData({ ...formData, archive_format: e.target.value as any })}
+                            className="form-select"
+                          >
+                            <option value="tar.gz">tar.gz</option>
+                            <option value="zip">zip</option>
+                          </select>
+                        </div>
+
+                        <div className="col-12 col-md-6">
+                          <label className="form-label">{t('tasks.max_retention')}</label>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={formData.max_retention}
+                            onChange={(e) => setFormData({ ...formData, max_retention: e.target.value })}
+                            className="form-control"
+                            placeholder={t('tasks.max_retention_placeholder')}
+                          />
+                          <div className="form-text">{t('tasks.max_retention_help')}</div>
+                        </div>
+                      </>
                     )}
 
                     <div className="col-12">
