@@ -15,11 +15,11 @@ import (
 
 // CronScheduler manages cron-based task scheduling
 type CronScheduler struct {
-	db              *pgxpool.Pool
-	parser          cron.Parser
-	executionCache  map[uuid.UUID]time.Time // taskID -> last execution time
-	cacheMux        sync.RWMutex
-	minInterval     time.Duration // Minimum interval between executions
+	db             *pgxpool.Pool
+	parser         cron.Parser
+	executionCache map[uuid.UUID]time.Time // taskID -> last execution time
+	cacheMux       sync.RWMutex
+	minInterval    time.Duration // Minimum interval between executions
 }
 
 // NewCronScheduler creates a new cron scheduler
@@ -51,7 +51,7 @@ func (s *CronScheduler) GetDueTasksForAgent(ctx context.Context, agentID uuid.UU
 
 		isDue, reason := s.isTaskDue(ctx, task, now)
 		if isDue {
-			log.Printf("[Scheduler] Task %s (%s) is due: %s", 
+			log.Printf("[Scheduler] Task %s (%s) is due: %s",
 				task.ID, task.Name, reason)
 			dueTasks = append(dueTasks, task)
 		}
@@ -79,7 +79,7 @@ func (s *CronScheduler) isTaskDue(ctx context.Context, task *models.BackupTask, 
 	if lastExecTime.IsZero() {
 		// For new tasks, use creation time as reference
 		lastExecTime = task.CreatedAt
-		
+
 		// If task was created very recently, don't run immediately
 		if now.Sub(lastExecTime) < 1*time.Minute {
 			return false, "task just created, waiting for first schedule"
@@ -107,15 +107,15 @@ func (s *CronScheduler) isTaskDue(ctx context.Context, task *models.BackupTask, 
 		// Check if there's a more recent schedule we should wait for instead
 		nextNextTime := schedule.Next(nextScheduledTime)
 		if now.Before(nextNextTime) {
-			return false, fmt.Sprintf("missed window for %v, waiting for %v", 
-				nextScheduledTime.Format(time.RFC3339), 
+			return false, fmt.Sprintf("missed window for %v, waiting for %v",
+				nextScheduledTime.Format(time.RFC3339),
 				nextNextTime.Format(time.RFC3339))
 		}
 	}
 
 	// Task is due!
-	return true, fmt.Sprintf("scheduled for %v (last run: %v)", 
-		nextScheduledTime.Format(time.RFC3339), 
+	return true, fmt.Sprintf("scheduled for %v (last run: %v)",
+		nextScheduledTime.Format(time.RFC3339),
 		lastExecTime.Format(time.RFC3339))
 }
 
@@ -131,7 +131,7 @@ func (s *CronScheduler) getLastExecutionTime(ctx context.Context, taskID uuid.UU
 
 	// Query database for last successful execution
 	executionModel := models.NewExecutionModel(s.db)
-	lastExec, err := executionModel.GetLastSuccessfulExecutionForTask(ctx, taskID)
+	lastExec, err := executionModel.GetLastExecutionForTask(ctx, taskID)
 	if err != nil {
 		return time.Time{}, err
 	}

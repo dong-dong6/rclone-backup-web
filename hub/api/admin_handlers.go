@@ -1037,7 +1037,12 @@ func (h *Handler) GetExecutionDetail(c *gin.Context) {
 	executionModel := models.NewExecutionModel(h.db)
 	execution, err := executionModel.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Execution not found"})
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Execution not found"})
+			return
+		}
+		log.Printf("[GetExecutionDetail] Failed to load execution %s: %v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load execution"})
 		return
 	}
 

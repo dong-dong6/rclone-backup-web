@@ -2,12 +2,13 @@ package models
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -110,9 +111,9 @@ func (m *ExecutionModel) GetByID(ctx context.Context, id uuid.UUID) (*TaskExecut
 	query := `
 		SELECT 
 			e.id, e.task_id, e.agent_id, e.status, e.trigger_mode,
-			e.log_output, e.error_message, e.bytes_transferred, e.files_transferred,
+			COALESCE(e.log_output, ''), COALESCE(e.error_message, ''), e.bytes_transferred, e.files_transferred,
 			e.duration_seconds, e.started_at, e.ended_at, e.created_at,
-			t.name as task_name, a.name as agent_name
+			COALESCE(t.name, ''), COALESCE(a.name, '')
 		FROM task_executions e
 		LEFT JOIN backup_tasks t ON e.task_id = t.id
 		LEFT JOIN agents a ON e.agent_id = a.id
@@ -464,7 +465,7 @@ func (m *ExecutionModel) GetLastExecutionForTask(ctx context.Context, taskID uui
 	query := `
 		SELECT 
 			id, task_id, agent_id, status, trigger_mode,
-			log_output, error_message, started_at, ended_at, created_at
+			COALESCE(log_output, ''), COALESCE(error_message, ''), started_at, ended_at, created_at
 		FROM task_executions
 		WHERE task_id = $1
 		ORDER BY created_at DESC
@@ -485,7 +486,7 @@ func (m *ExecutionModel) GetLastExecutionForTask(ctx context.Context, taskID uui
 	)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil // No previous execution
 		}
 		return nil, err
@@ -500,7 +501,7 @@ func (m *ExecutionModel) GetLastSuccessfulExecutionForTask(ctx context.Context, 
 	query := `
 		SELECT 
 			id, task_id, agent_id, status, trigger_mode,
-			log_output, error_message, started_at, ended_at, created_at
+			COALESCE(log_output, ''), COALESCE(error_message, ''), started_at, ended_at, created_at
 		FROM task_executions
 		WHERE task_id = $1 AND status = 'success'
 		ORDER BY created_at DESC
@@ -521,7 +522,7 @@ func (m *ExecutionModel) GetLastSuccessfulExecutionForTask(ctx context.Context, 
 	)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil // No successful execution
 		}
 		return nil, err

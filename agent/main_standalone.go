@@ -418,7 +418,7 @@ func (a *Agent) handleActions(actions []services.Action) {
 	for _, action := range actions {
 		switch strings.ToUpper(strings.TrimSpace(action.Type)) {
 		case "EXECUTE_TASK":
-			go a.executeTask(action.Task)
+			go a.executeTask(action.ExecutionID, action.Task)
 		case "CANCEL_TASK":
 			if action.ExecutionID != "" {
 				a.executor.CancelTask(action.ExecutionID)
@@ -632,15 +632,37 @@ func (a *Agent) sendFSListResult(result services.FSListResult) {
 }
 
 // executeTask executes a task from hub
-func (a *Agent) executeTask(taskData json.RawMessage) {
+func (a *Agent) executeTask(actionExecutionID string, taskData json.RawMessage) {
+	actionExecutionID = strings.TrimSpace(actionExecutionID)
+
 	var details hubTaskDetails
 	if err := json.Unmarshal(taskData, &details); err != nil {
-		log.Printf("Failed to unmarshal task: %v", err)
+		log.Printf("Failed to unmarshal task payload (execution=%s): %v", actionExecutionID, err)
+		if actionExecutionID != "" {
+			a.sendExecutionUpdate(actionExecutionID, "failed", fmt.Sprintf("invalid task payload: %v", err))
+		}
 		return
 	}
 
+	if strings.TrimSpace(details.ExecutionID) == "" {
+		details.ExecutionID = actionExecutionID
+	}
+	details.ExecutionID = strings.TrimSpace(details.ExecutionID)
 	if details.ExecutionID == "" {
-		log.Printf("Task payload missing execution_id")
+		log.Printf("Task payload missing execution_id (action execution=%s)", actionExecutionID)
+		if actionExecutionID != "" {
+			a.sendExecutionUpdate(actionExecutionID, "failed", "task payload missing execution_id")
+		}
+		return
+	}
+
+	details.TaskID = strings.TrimSpace(details.TaskID)
+	details.SourcePath = strings.TrimSpace(details.SourcePath)
+	details.DestinationPath = strings.TrimSpace(details.DestinationPath)
+	details.RcloneConfigB64 = strings.TrimSpace(details.RcloneConfigB64)
+
+	if details.TaskID == "" || details.SourcePath == "" || details.DestinationPath == "" || details.RcloneConfigB64 == "" {
+		a.sendExecutionUpdate(details.ExecutionID, "failed", "task payload missing required fields")
 		return
 	}
 
