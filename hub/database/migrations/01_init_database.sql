@@ -81,7 +81,17 @@ CREATE TABLE IF NOT EXISTS backup_tasks (
     name VARCHAR(255) NOT NULL,                                  -- 任务名称
     rclone_remote_id UUID NOT NULL 
         REFERENCES rclone_remotes(id) ON DELETE CASCADE,         -- 关联的 rclone 远程配置
-    source_path TEXT NOT NULL,                                   -- 备份源路径
+    source_type VARCHAR(20) NOT NULL DEFAULT 'path'
+        CHECK (source_type IN ('path', 'database')),             -- 备份源类型：path=文件路径，database=数据库
+    source_path TEXT NOT NULL,                                   -- 备份源路径（source_type=path 时必填；sqlite 可复用为 DB 文件路径）
+    db_engine VARCHAR(20)
+        CHECK (db_engine IN ('postgres', 'mysql', 'sqlite')),    -- 数据库类型（source_type=database）
+    db_host TEXT,                                                -- 数据库主机（postgres/mysql）
+    db_port INTEGER,                                             -- 数据库端口（postgres/mysql）
+    db_user TEXT,                                                -- 数据库用户（postgres/mysql）
+    db_name TEXT,                                                -- 数据库名（postgres/mysql）
+    db_password TEXT,                                            -- 数据库口令（Hub 端加密存储）
+    db_path TEXT,                                                -- SQLite 数据库文件路径（source_type=database 且 db_engine=sqlite）
     destination_path TEXT NOT NULL,                              -- 远程目标路径
     schedule VARCHAR(100) NOT NULL,                              -- Cron 表达式（定时调度）
     rclone_args JSONB DEFAULT '[]'::JSONB,                       -- 额外的 rclone 命令参数
@@ -89,7 +99,7 @@ CREATE TABLE IF NOT EXISTS backup_tasks (
     backup_mode VARCHAR(20) NOT NULL DEFAULT 'sync' 
         CHECK (backup_mode IN ('sync', 'archive')),              -- 备份模式：sync=镜像同步，archive=压缩归档
     archive_format VARCHAR(20) NOT NULL DEFAULT 'tar.gz'
-        CHECK (archive_format IN ('tar.gz', 'zip')),             -- archive 模式压缩格式
+        CHECK (archive_format IN ('tar.gz', 'zip', '7z')),        -- archive 模式压缩格式
     encryption_enabled BOOLEAN NOT NULL DEFAULT false,           -- 是否启用加密（rclone crypt）
     encryption_password TEXT,                                    -- 任务加密口令（Hub 端加密存储）
     encryption_password2 TEXT,                                   -- 任务加密盐口令（Hub 端加密存储）

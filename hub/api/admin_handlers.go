@@ -381,7 +381,15 @@ func (h *Handler) ListTasks(c *gin.Context) {
 type TaskUpsertRequest struct {
 	Name            string   `json:"name" binding:"required"`
 	RcloneRemoteID  string   `json:"rclone_remote_id" binding:"required"`
-	SourcePath      string   `json:"source_path" binding:"required"`
+	SourceType      string   `json:"source_type,omitempty"`
+	SourcePath      string   `json:"source_path,omitempty"`
+	DBEngine        string   `json:"db_engine,omitempty"`
+	DBHost          string   `json:"db_host,omitempty"`
+	DBPort          *int     `json:"db_port,omitempty"`
+	DBUser          string   `json:"db_user,omitempty"`
+	DBName          string   `json:"db_name,omitempty"`
+	DBPassword      string   `json:"db_password,omitempty"`
+	DBPath          string   `json:"db_path,omitempty"`
 	DestinationPath string   `json:"destination_path" binding:"required"`
 	Schedule        string   `json:"schedule" binding:"required"`
 	RcloneArgs      []string `json:"rclone_args"`
@@ -419,6 +427,30 @@ func normalizeArchiveFormat(format string) (string, bool) {
 		return "zip", true
 	case "7z":
 		return "7z", true
+	default:
+		return "", false
+	}
+}
+
+func normalizeSourceType(raw string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "path", "file", "filesystem":
+		return "path", true
+	case "database", "db":
+		return "database", true
+	default:
+		return "", false
+	}
+}
+
+func normalizeDBEngine(engine string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(engine)) {
+	case "postgres", "postgresql", "pgsql":
+		return "postgres", true
+	case "mysql", "mariadb":
+		return "mysql", true
+	case "sqlite", "sqlite3":
+		return "sqlite", true
 	default:
 		return "", false
 	}
@@ -529,19 +561,42 @@ func (h *Handler) CreateTask(c *gin.Context) {
 		return
 	}
 
-	backupMode, ok := normalizeBackupMode(req.BackupMode)
+	sourceType, ok := normalizeSourceType(req.SourceType)
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid backup_mode"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid source_type"})
 		return
 	}
 
-	archiveFormat, ok := normalizeArchiveFormat(req.ArchiveFormat)
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid archive_format"})
+	sourcePath := strings.TrimSpace(req.SourcePath)
+	if sourceType == "path" && sourcePath == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "source_path is required when source_type is path"})
 		return
 	}
-	if backupMode == "archive" && req.EncryptionEnabled {
-		archiveFormat = "7z"
+	if sourceType == "database" {
+		sourcePath = ""
+	}
+
+	backupMode := "archive"
+	if sourceType == "path" {
+		var ok bool
+		backupMode, ok = normalizeBackupMode(req.BackupMode)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid backup_mode"})
+			return
+		}
+	}
+
+	archiveFormat := "7z"
+	if sourceType == "path" {
+		var ok bool
+		archiveFormat, ok = normalizeArchiveFormat(req.ArchiveFormat)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid archive_format"})
+			return
+		}
+		if backupMode == "archive" && req.EncryptionEnabled {
+			archiveFormat = "7z"
+		}
 	}
 
 	rcloneArgs, err := json.Marshal(req.RcloneArgs)
@@ -578,6 +633,64 @@ func (h *Handler) CreateTask(c *gin.Context) {
 		password2Enc = &encryptedPassword2
 	}
 
+	var (
+		dbEngine      *string
+		dbHost        *string
+		dbPort        *int
+		dbUser        *string
+		dbName        *string
+		dbPath        *string
+		dbPasswordEnc *string
+	)
+
+	if sourceType == "database" {
+		engine, ok := normalizeDBEngine(req.DBEngine)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid db_engine"})
+			return
+		}
+		dbEngine = &engine
+
+		if engine == "sqlite" {
+			path := strings.TrimSpace(req.DBPath)
+			if path == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "db_path is required when db_engine is sqlite"})
+				return
+			}
+			dbPath = &path
+		} else {
+			host := strings.TrimSpace(req.DBHost)
+			user := strings.TrimSpace(req.DBUser)
+			name := strings.TrimSpace(req.DBName)
+			if host == "" || user == "" || name == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "db_host, db_user and db_name are required for database tasks"})
+				return
+			}
+
+			port := 3306
+			if engine == "postgres" {
+				port = 5432
+			}
+			if req.DBPort != nil && *req.DBPort > 0 {
+				port = *req.DBPort
+			}
+
+			dbHost = &host
+			dbUser = &user
+			dbName = &name
+			dbPort = &port
+		}
+
+		if raw := strings.TrimSpace(req.DBPassword); raw != "" {
+			enc, err := h.cryptoService.Encrypt(raw)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt db_password"})
+				return
+			}
+			dbPasswordEnc = &enc
+		}
+	}
+
 	maxRetention := req.MaxRetention
 	if maxRetention != nil && *maxRetention <= 0 {
 		maxRetention = nil
@@ -586,7 +699,15 @@ func (h *Handler) CreateTask(c *gin.Context) {
 	task := models.BackupTask{
 		Name:                   req.Name,
 		RcloneRemoteID:         remoteID,
-		SourcePath:             req.SourcePath,
+		SourceType:             sourceType,
+		SourcePath:             sourcePath,
+		DBEngine:               dbEngine,
+		DBHost:                 dbHost,
+		DBPort:                 dbPort,
+		DBUser:                 dbUser,
+		DBName:                 dbName,
+		DBPath:                 dbPath,
+		DBPasswordEnc:          dbPasswordEnc,
 		DestinationPath:        req.DestinationPath,
 		Schedule:               req.Schedule,
 		RcloneArgs:             rcloneArgs,
@@ -606,7 +727,6 @@ func (h *Handler) CreateTask(c *gin.Context) {
 		return
 	}
 
-	// Assign to agents if provided
 	assignedRaw := uniqueStrings(append(req.AssignedAgentIDs, req.AssignedAgents...))
 	if len(assignedRaw) > 0 {
 		agentIDs, err := parseUUIDList(assignedRaw)
@@ -617,8 +737,6 @@ func (h *Handler) CreateTask(c *gin.Context) {
 		task.AssignedAgents = agentIDs
 		for _, agentID := range agentIDs {
 			_ = taskModel.AssignAgent(c.Request.Context(), task.ID, agentID)
-
-			// Mark agent for config sync
 			h.schedulerService.MarkAgentForSync(agentID)
 			if h.wsService != nil && h.wsService.IsConnected(agentID) {
 				_ = h.wsService.SendJSON(agentID, WSMessage{Type: WSMessageTypeHubPing})
@@ -663,19 +781,58 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 		return
 	}
 
-	backupMode, ok := normalizeBackupMode(req.BackupMode)
+	sourceTypeInput := strings.TrimSpace(req.SourceType)
+	if sourceTypeInput == "" {
+		sourceTypeInput = strings.TrimSpace(current.SourceType)
+	}
+	sourceType, ok := normalizeSourceType(sourceTypeInput)
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid backup_mode"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid source_type"})
 		return
 	}
 
-	archiveFormat, ok := normalizeArchiveFormat(req.ArchiveFormat)
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid archive_format"})
-		return
+	sourcePath := strings.TrimSpace(req.SourcePath)
+	if sourceType == "path" {
+		if sourcePath == "" {
+			sourcePath = strings.TrimSpace(current.SourcePath)
+		}
+		if sourcePath == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "source_path is required when source_type is path"})
+			return
+		}
+	} else {
+		sourcePath = ""
 	}
-	if backupMode == "archive" && req.EncryptionEnabled {
-		archiveFormat = "7z"
+
+	backupMode := "archive"
+	if sourceType == "path" {
+		backupModeInput := strings.TrimSpace(req.BackupMode)
+		if backupModeInput == "" {
+			backupModeInput = strings.TrimSpace(current.BackupMode)
+		}
+		var ok bool
+		backupMode, ok = normalizeBackupMode(backupModeInput)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid backup_mode"})
+			return
+		}
+	}
+
+	archiveFormat := "7z"
+	if sourceType == "path" {
+		archiveFormatInput := strings.TrimSpace(req.ArchiveFormat)
+		if archiveFormatInput == "" {
+			archiveFormatInput = strings.TrimSpace(current.ArchiveFormat)
+		}
+		var ok bool
+		archiveFormat, ok = normalizeArchiveFormat(archiveFormatInput)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid archive_format"})
+			return
+		}
+		if backupMode == "archive" && req.EncryptionEnabled {
+			archiveFormat = "7z"
+		}
 	}
 
 	rcloneArgs, err := json.Marshal(req.RcloneArgs)
@@ -684,11 +841,97 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 		return
 	}
 
+	var (
+		dbEngine      *string
+		dbHost        *string
+		dbPort        *int
+		dbUser        *string
+		dbName        *string
+		dbPath        *string
+		dbPasswordEnc *string
+	)
+	if sourceType == "database" {
+		engineInput := strings.TrimSpace(req.DBEngine)
+		if engineInput == "" && current.DBEngine != nil {
+			engineInput = strings.TrimSpace(*current.DBEngine)
+		}
+		engine, ok := normalizeDBEngine(engineInput)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid db_engine"})
+			return
+		}
+		dbEngine = &engine
+
+		if engine == "sqlite" {
+			path := strings.TrimSpace(req.DBPath)
+			if path == "" && current.DBPath != nil {
+				path = strings.TrimSpace(*current.DBPath)
+			}
+			if path == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "db_path is required when db_engine is sqlite"})
+				return
+			}
+			dbPath = &path
+		} else {
+			host := strings.TrimSpace(req.DBHost)
+			user := strings.TrimSpace(req.DBUser)
+			name := strings.TrimSpace(req.DBName)
+			if host == "" && current.DBHost != nil {
+				host = strings.TrimSpace(*current.DBHost)
+			}
+			if user == "" && current.DBUser != nil {
+				user = strings.TrimSpace(*current.DBUser)
+			}
+			if name == "" && current.DBName != nil {
+				name = strings.TrimSpace(*current.DBName)
+			}
+			if host == "" || user == "" || name == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "db_host, db_user and db_name are required for database tasks"})
+				return
+			}
+
+			port := 3306
+			if engine == "postgres" {
+				port = 5432
+			}
+			if current.DBPort != nil && *current.DBPort > 0 {
+				port = *current.DBPort
+			}
+			if req.DBPort != nil && *req.DBPort > 0 {
+				port = *req.DBPort
+			}
+
+			dbHost = &host
+			dbUser = &user
+			dbName = &name
+			dbPort = &port
+		}
+
+		if raw := strings.TrimSpace(req.DBPassword); raw != "" {
+			enc, err := h.cryptoService.Encrypt(raw)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt db_password"})
+				return
+			}
+			dbPasswordEnc = &enc
+		} else if strings.EqualFold(strings.TrimSpace(current.SourceType), "database") {
+			dbPasswordEnc = current.DBPasswordEnc
+		}
+	}
+
 	next := models.BackupTask{
 		ID:              id,
 		Name:            req.Name,
 		RcloneRemoteID:  remoteID,
-		SourcePath:      req.SourcePath,
+		SourceType:      sourceType,
+		SourcePath:      sourcePath,
+		DBEngine:        dbEngine,
+		DBHost:          dbHost,
+		DBPort:          dbPort,
+		DBUser:          dbUser,
+		DBName:          dbName,
+		DBPath:          dbPath,
+		DBPasswordEnc:   dbPasswordEnc,
 		DestinationPath: req.DestinationPath,
 		Schedule:        req.Schedule,
 		RcloneArgs:      rcloneArgs,
@@ -698,6 +941,7 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 		RetentionDays:   current.RetentionDays,
 		MaxRetention:    current.MaxRetention,
 	}
+
 	if req.RetentionDays != nil {
 		next.RetentionDays = req.RetentionDays
 	}

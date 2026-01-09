@@ -92,6 +92,8 @@ type hubTaskDetails struct {
 	ExecutionID         string   `json:"execution_id"`
 	TaskID              string   `json:"task_id"`
 	TaskName            string   `json:"task_name"`
+	RemoteName          string   `json:"remote_name"`
+	SourceType          string   `json:"source_type"`
 	SourcePath          string   `json:"source_path"`
 	DestinationPath     string   `json:"destination_path"`
 	RcloneConfigB64     string   `json:"rclone_config_b64"`
@@ -102,6 +104,13 @@ type hubTaskDetails struct {
 	EncryptionPassword  string   `json:"encryption_password"`
 	EncryptionPassword2 string   `json:"encryption_password2"`
 	MaxRetention        int      `json:"max_retention"`
+	DBEngine            *string  `json:"db_engine"`
+	DBHost              *string  `json:"db_host"`
+	DBPort              *int     `json:"db_port"`
+	DBUser              *string  `json:"db_user"`
+	DBName              *string  `json:"db_name"`
+	DBPassword          string   `json:"db_password"`
+	DBPath              *string  `json:"db_path"`
 }
 
 type fsListActionPayload struct {
@@ -660,6 +669,8 @@ func (a *Agent) executeTask(actionExecutionID string, taskData json.RawMessage) 
 
 	details.TaskID = strings.TrimSpace(details.TaskID)
 	details.TaskName = strings.TrimSpace(details.TaskName)
+	details.RemoteName = strings.TrimSpace(details.RemoteName)
+	details.SourceType = strings.TrimSpace(details.SourceType)
 	details.SourcePath = strings.TrimSpace(details.SourcePath)
 	details.DestinationPath = strings.TrimSpace(details.DestinationPath)
 	details.RcloneConfigB64 = strings.TrimSpace(details.RcloneConfigB64)
@@ -667,15 +678,66 @@ func (a *Agent) executeTask(actionExecutionID string, taskData json.RawMessage) 
 		details.MaxRetention = 0
 	}
 
-	if details.TaskID == "" || details.SourcePath == "" || details.DestinationPath == "" || details.RcloneConfigB64 == "" {
+	sourceType := strings.ToLower(strings.TrimSpace(details.SourceType))
+	if sourceType == "" {
+		sourceType = "path"
+	}
+
+	if details.TaskID == "" || details.DestinationPath == "" || details.RcloneConfigB64 == "" {
 		a.sendExecutionUpdate(details.ExecutionID, "failed", "task payload missing required fields")
 		return
 	}
 
+	switch sourceType {
+	case "path":
+		if details.SourcePath == "" {
+			a.sendExecutionUpdate(details.ExecutionID, "failed", "task payload missing source_path")
+			return
+		}
+	case "database":
+		engine := ""
+		if details.DBEngine != nil {
+			engine = strings.ToLower(strings.TrimSpace(*details.DBEngine))
+		}
+		switch engine {
+		case "postgres", "mysql":
+			if details.DBHost == nil || strings.TrimSpace(*details.DBHost) == "" ||
+				details.DBUser == nil || strings.TrimSpace(*details.DBUser) == "" ||
+				details.DBName == nil || strings.TrimSpace(*details.DBName) == "" {
+				a.sendExecutionUpdate(details.ExecutionID, "failed", "task payload missing database connection fields")
+				return
+			}
+		case "sqlite":
+			if details.DBPath == nil || strings.TrimSpace(*details.DBPath) == "" {
+				a.sendExecutionUpdate(details.ExecutionID, "failed", "task payload missing db_path for sqlite")
+				return
+			}
+		default:
+			a.sendExecutionUpdate(details.ExecutionID, "failed", "task payload has invalid db_engine")
+			return
+		}
+	default:
+		a.sendExecutionUpdate(details.ExecutionID, "failed", "task payload has invalid source_type")
+		return
+	}
+
+	if sourceType == "database" {
+		details.SourcePath = ""
+		details.BackupMode = "archive"
+		if strings.TrimSpace(details.ArchiveFormat) == "" {
+			details.ArchiveFormat = "7z"
+		}
+	}
+
+	remoteName := strings.TrimSpace(details.RemoteName)
+	if remoteName == "" {
+		remoteName = "remote"
+	}
+
 	destPath := strings.TrimSpace(details.DestinationPath)
-	if destPath != "" && !strings.HasPrefix(destPath, "remote:") && !strings.HasPrefix(destPath, "crypt:") {
-		prefix := "remote:"
-		isArchive := strings.EqualFold(strings.TrimSpace(details.BackupMode), "archive")
+	if destPath != "" && !strings.HasPrefix(destPath, "crypt:") && !looksLikeRcloneRemotePrefix(destPath) {
+		prefix := remoteName + ":"
+		isArchive := sourceType == "database" || strings.EqualFold(strings.TrimSpace(details.BackupMode), "archive")
 		if details.EncryptionEnabled && !isArchive {
 			prefix = "crypt:"
 		}
@@ -687,6 +749,7 @@ func (a *Agent) executeTask(actionExecutionID string, taskData json.RawMessage) 
 		ExecutionID:         details.ExecutionID,
 		TaskID:              details.TaskID,
 		TaskName:            details.TaskName,
+		SourceType:          sourceType,
 		RemoteConfig:        details.RcloneConfigB64,
 		SourcePath:          details.SourcePath,
 		DestPath:            destPath,
@@ -697,6 +760,13 @@ func (a *Agent) executeTask(actionExecutionID string, taskData json.RawMessage) 
 		EncryptionPassword:  details.EncryptionPassword,
 		EncryptionPassword2: details.EncryptionPassword2,
 		MaxRetention:        details.MaxRetention,
+		DBEngine:            details.DBEngine,
+		DBHost:              details.DBHost,
+		DBPort:              details.DBPort,
+		DBUser:              details.DBUser,
+		DBName:              details.DBName,
+		DBPassword:          details.DBPassword,
+		DBPath:              details.DBPath,
 	}
 
 	log.Printf("Executing task %s from hub", task.ExecutionID)
@@ -1016,4 +1086,33 @@ func handleServiceCommand(install, uninstall, start, stop bool) {
 		fmt.Println("Stopping service...")
 		// Implementation would go here
 	}
+}
+
+func looksLikeRcloneRemotePrefix(path string) bool {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return false
+	}
+
+	// Windows drive letter (e.g. C:\foo or C:/foo).
+	if len(trimmed) >= 3 {
+		c0 := trimmed[0]
+		if (c0 >= 'A' && c0 <= 'Z') || (c0 >= 'a' && c0 <= 'z') {
+			if trimmed[1] == ':' && (trimmed[2] == '\\' || trimmed[2] == '/') {
+				return false
+			}
+		}
+	}
+
+	colon := strings.IndexByte(trimmed, ':')
+	if colon <= 0 {
+		return false
+	}
+
+	prefix := trimmed[:colon]
+	if strings.ContainsAny(prefix, "/\\") {
+		return false
+	}
+
+	return true
 }

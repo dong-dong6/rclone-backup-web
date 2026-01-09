@@ -37,7 +37,14 @@ interface BackupTask {
   name: string;
   rclone_remote_id: string;
   remote_name?: string;
+  source_type?: 'path' | 'database';
   source_path: string;
+  db_engine?: 'postgres' | 'mysql' | 'sqlite' | null;
+  db_host?: string | null;
+  db_port?: number | null;
+  db_user?: string | null;
+  db_name?: string | null;
+  db_path?: string | null;
   destination_path: string;
   schedule: string;
   rclone_args: string[];
@@ -86,7 +93,15 @@ type FSListResponse = {
   const [formData, setFormData] = useState({
     name: '',
     rclone_remote_id: '',
+    source_type: 'path' as 'path' | 'database',
     source_path: '',
+    db_engine: 'postgres' as 'postgres' | 'mysql' | 'sqlite',
+    db_host: '',
+    db_port: '',
+    db_user: '',
+    db_name: '',
+    db_password: '',
+    db_path: '',
     destination_path: '',
     schedule: '0 2 * * *', // Default: daily at 2 AM
     rclone_args: [] as string[],
@@ -119,6 +134,7 @@ type FSListResponse = {
 
   const selectedRemote = remotes.find(r => r.id === formData.rclone_remote_id);
   const isS3Remote = (selectedRemote?.type || '').toLowerCase() === 's3';
+  const isDatabaseSource = formData.source_type === 'database';
 
   const rcloneArgPresets = [
     ...baseRcloneArgPresets,
@@ -148,6 +164,14 @@ type FSListResponse = {
     if (formData.archive_format === '7z') return;
     setFormData(current => ({ ...current, archive_format: '7z' }));
   }, [formData.backup_mode, formData.encryption_enabled]);
+
+  useEffect(() => {
+    if (!isDatabaseSource) return;
+    setFormData(current => {
+      if (current.backup_mode === 'archive' && current.archive_format === '7z') return current;
+      return { ...current, backup_mode: 'archive', archive_format: '7z' };
+    });
+  }, [isDatabaseSource]);
 
   useEffect(() => {
     fetchData();
@@ -217,7 +241,15 @@ type FSListResponse = {
     setFormData({
       name: '',
       rclone_remote_id: '',
+      source_type: 'path',
       source_path: '',
+      db_engine: 'postgres',
+      db_host: '',
+      db_port: '',
+      db_user: '',
+      db_name: '',
+      db_password: '',
+      db_path: '',
       destination_path: '',
       schedule: '0 2 * * *',
       rclone_args: [],
@@ -244,7 +276,15 @@ type FSListResponse = {
     setFormData({
       name: task.name,
       rclone_remote_id: task.rclone_remote_id,
+      source_type: task.source_type || 'path',
       source_path: task.source_path,
+      db_engine: (task.db_engine as any) || 'postgres',
+      db_host: task.db_host || '',
+      db_port: task.db_port ? String(task.db_port) : '',
+      db_user: task.db_user || '',
+      db_name: task.db_name || '',
+      db_password: '',
+      db_path: task.db_path || '',
       destination_path: task.destination_path,
       schedule: task.schedule,
       rclone_args: task.rclone_args,
@@ -368,23 +408,70 @@ type FSListResponse = {
         return;
       }
 
+      if (!isDatabaseSource && !formData.source_path.trim()) {
+        alert(t('tasks.source_path_required'));
+        return;
+      }
+
+      let dbPort: number | undefined;
+      if (isDatabaseSource) {
+        if (!formData.db_engine) {
+          alert(t('tasks.db_engine_required'));
+          return;
+        }
+        if (formData.db_engine === 'sqlite') {
+          if (!formData.db_path.trim()) {
+            alert(t('tasks.db_path_required'));
+            return;
+          }
+        } else {
+          if (!formData.db_host.trim() || !formData.db_user.trim() || !formData.db_name.trim()) {
+            alert(t('tasks.db_fields_required'));
+            return;
+          }
+          if (formData.db_port.trim()) {
+            const parsed = Number.parseInt(formData.db_port.trim(), 10);
+            if (!Number.isFinite(parsed) || parsed <= 0) {
+              alert(t('tasks.db_port_invalid'));
+              return;
+            }
+            dbPort = parsed;
+          }
+        }
+      }
+
       const payload: any = {
         name: formData.name,
         rclone_remote_id: formData.rclone_remote_id,
-        source_path: formData.source_path,
+        source_type: formData.source_type,
+        ...(isDatabaseSource ? {} : { source_path: formData.source_path }),
         destination_path: formData.destination_path,
         schedule: formData.schedule,
         rclone_args: formData.rclone_args,
         is_active: formData.is_active,
         assigned_agent_ids: formData.assigned_agent_ids,
-        backup_mode: formData.backup_mode,
-        archive_format: formData.archive_format,
+        backup_mode: isDatabaseSource ? 'archive' : formData.backup_mode,
+        archive_format: isDatabaseSource ? '7z' : formData.archive_format,
         encryption_enabled: formData.encryption_enabled,
       };
+      if (isDatabaseSource) {
+        payload.db_engine = formData.db_engine;
+        if (formData.db_engine === 'sqlite') {
+          payload.db_path = formData.db_path.trim();
+        } else {
+          payload.db_host = formData.db_host.trim();
+          payload.db_user = formData.db_user.trim();
+          payload.db_name = formData.db_name.trim();
+          if (dbPort) payload.db_port = dbPort;
+        }
+        if (formData.db_password.trim()) {
+          payload.db_password = formData.db_password.trim();
+        }
+      }
       if (formData.encryption_enabled && formData.encryption_password.trim()) {
         payload.encryption_password = formData.encryption_password.trim();
       }
-      if (formData.backup_mode === 'archive') {
+      if ((isDatabaseSource ? 'archive' : formData.backup_mode) === 'archive') {
         const raw = formData.max_retention.trim();
         if (raw) {
           const parsed = Number.parseInt(raw, 10);
@@ -476,6 +563,20 @@ type FSListResponse = {
     return task.remote_name || remoteNameFromList || task.rclone_remote_id;
   };
 
+  const getSourceDisplay = (task: BackupTask) => {
+    if (task.source_type === 'database') {
+      const engine = (task.db_engine || '').toLowerCase();
+      if (engine === 'sqlite') {
+        return `sqlite:${task.db_path || ''}`;
+      }
+      const host = task.db_host || '';
+      const port = task.db_port ? `:${task.db_port}` : '';
+      const name = task.db_name || '';
+      return `${engine || 'db'}:${host}${port}/${name}`;
+    }
+    return task.source_path;
+  };
+
   const getAgentStatusMeta = (status: Agent['status']) => {
     switch (status) {
       case 'online':
@@ -556,7 +657,7 @@ type FSListResponse = {
               <div className="card-body">
                 <div className="mb-3">
                   <div className="text-muted small mb-1">{t('tasks.source')}</div>
-                  <code className="text-break">{task.source_path}</code>
+                  <code className="text-break">{getSourceDisplay(task)}</code>
                 </div>
 
                 <div className="mb-3">
@@ -709,14 +810,17 @@ type FSListResponse = {
                           });
                         }}
                         className="form-select"
+                        disabled={isDatabaseSource}
                       >
                         <option value="sync">{t('tasks.backup_mode_sync')}</option>
                         <option value="archive">{t('tasks.backup_mode_archive')}</option>
                       </select>
                       <div className="form-text">
-                        {formData.backup_mode === 'sync'
-                          ? t('tasks.backup_mode_help_sync')
-                          : t('tasks.backup_mode_help_archive')}
+                        {isDatabaseSource
+                          ? t('tasks.backup_mode_help_database')
+                          : formData.backup_mode === 'sync'
+                            ? t('tasks.backup_mode_help_sync')
+                            : t('tasks.backup_mode_help_archive')}
                       </div>
                     </div>
 
@@ -728,7 +832,7 @@ type FSListResponse = {
 	                            value={formData.archive_format}
 	                            onChange={(e) => setFormData({ ...formData, archive_format: e.target.value as any })}
 	                            className="form-select"
-	                            disabled={formData.encryption_enabled}
+	                            disabled={formData.encryption_enabled || isDatabaseSource}
 	                          >
 	                            <option value="tar.gz">tar.gz</option>
 	                            <option value="zip">zip</option>
@@ -823,55 +927,182 @@ type FSListResponse = {
                               <hr className="my-2" />
                             </div>
 
-		                    <div className="col-12 col-md-6">
-		                      <label className="form-label">{t('tasks.source_path')}</label>
-		                      <div className="input-group">
-		                        <input
-		                          type="text"
-	                          value={formData.source_path}
-	                          onChange={(e) => setFormData({ ...formData, source_path: e.target.value })}
-	                          placeholder="/path/to/source"
-	                          className="form-control font-monospace"
-	                          required
-	                        />
-	                        <button
-	                          type="button"
-	                          className="btn btn-outline-secondary"
-	                          onClick={openSourceBrowser}
-	                          disabled={formData.assigned_agent_ids.length === 0}
-	                          title={
-	                            formData.assigned_agent_ids.length === 0
-	                              ? t('tasks.browse.select_agent_first')
-	                              : t('tasks.browse.button')
-	                          }
-	                        >
-	                          <IconFolder size={16} />
-	                          <span className="ms-1">{t('tasks.browse.button')}</span>
-	                        </button>
-	                      </div>
-	                    </div>
+                            <div className="col-12">
+                              <label className="form-label">{t('tasks.source_type')}</label>
+                              <select
+                                value={formData.source_type}
+                                onChange={(e) => setFormData({ ...formData, source_type: e.target.value as any })}
+                                className="form-select"
+                              >
+                                <option value="path">{t('tasks.source_type_path')}</option>
+                                <option value="database">{t('tasks.source_type_database')}</option>
+                              </select>
+                              <div className="form-text">{t('tasks.source_type_help')}</div>
+                            </div>
 
-	                    <div className="col-12 col-md-6">
-	                      <label className="form-label">{t('tasks.destination_path')}</label>
-	                      <input
-	                        type="text"
-	                        value={formData.destination_path}
-	                        onChange={(e) => setFormData({ ...formData, destination_path: e.target.value })}
-	                        placeholder={
-	                          isS3Remote
-	                            ? t('tasks.destination_path_placeholder_s3')
-	                            : t('tasks.destination_path_placeholder')
-	                        }
-	                        className="form-control font-monospace"
-	                        required
-	                      />
-	                      <div className="form-text">
-	                        {isS3Remote ? `${t('tasks.destination_path_help_s3')} ` : ''}
-	                        {formData.backup_mode === 'sync'
-	                          ? t('tasks.destination_path_help_sync')
-	                          : t('tasks.destination_path_help_archive')}
-	                      </div>
-	                    </div>
+                            {formData.source_type === 'path' ? (
+                              <>
+                                <div className="col-12 col-md-6">
+                                  <label className="form-label">{t('tasks.source_path')}</label>
+                                  <div className="input-group">
+                                    <input
+                                      type="text"
+                                      value={formData.source_path}
+                                      onChange={(e) => setFormData({ ...formData, source_path: e.target.value })}
+                                      placeholder="/path/to/source"
+                                      className="form-control font-monospace"
+                                      required
+                                    />
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline-secondary"
+                                      onClick={openSourceBrowser}
+                                      disabled={formData.assigned_agent_ids.length === 0}
+                                      title={
+                                        formData.assigned_agent_ids.length === 0
+                                          ? t('tasks.browse.select_agent_first')
+                                          : t('tasks.browse.button')
+                                      }
+                                    >
+                                      <IconFolder size={16} />
+                                      <span className="ms-1">{t('tasks.browse.button')}</span>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="col-12 col-md-6">
+                                  <label className="form-label">{t('tasks.destination_path')}</label>
+                                  <input
+                                    type="text"
+                                    value={formData.destination_path}
+                                    onChange={(e) => setFormData({ ...formData, destination_path: e.target.value })}
+                                    placeholder={
+                                      isS3Remote
+                                        ? t('tasks.destination_path_placeholder_s3')
+                                        : t('tasks.destination_path_placeholder')
+                                    }
+                                    className="form-control font-monospace"
+                                    required
+                                  />
+                                  <div className="form-text">
+                                    {isS3Remote ? `${t('tasks.destination_path_help_s3')} ` : ''}
+                                    {formData.backup_mode === 'sync'
+                                      ? t('tasks.destination_path_help_sync')
+                                      : t('tasks.destination_path_help_archive')}
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="col-12 col-md-4">
+                                  <label className="form-label">{t('tasks.db_engine')}</label>
+                                  <select
+                                    value={formData.db_engine}
+                                    onChange={(e) => setFormData({ ...formData, db_engine: e.target.value as any })}
+                                    className="form-select"
+                                  >
+                                    <option value="postgres">{t('tasks.db_engine_postgres')}</option>
+                                    <option value="mysql">{t('tasks.db_engine_mysql')}</option>
+                                    <option value="sqlite">{t('tasks.db_engine_sqlite')}</option>
+                                  </select>
+                                </div>
+
+                                {formData.db_engine === 'sqlite' ? (
+                                  <div className="col-12 col-md-8">
+                                    <label className="form-label">{t('tasks.db_path')}</label>
+                                    <input
+                                      type="text"
+                                      value={formData.db_path}
+                                      onChange={(e) => setFormData({ ...formData, db_path: e.target.value })}
+                                      placeholder="/path/to/app.sqlite3"
+                                      className="form-control font-monospace"
+                                      required
+                                    />
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="col-12 col-md-6">
+                                      <label className="form-label">{t('tasks.db_host')}</label>
+                                      <input
+                                        type="text"
+                                        value={formData.db_host}
+                                        onChange={(e) => setFormData({ ...formData, db_host: e.target.value })}
+                                        placeholder="127.0.0.1"
+                                        className="form-control"
+                                        required
+                                      />
+                                    </div>
+
+                                    <div className="col-12 col-md-3">
+                                      <label className="form-label">{t('tasks.db_port')}</label>
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        step="1"
+                                        value={formData.db_port}
+                                        onChange={(e) => setFormData({ ...formData, db_port: e.target.value })}
+                                        placeholder={formData.db_engine === 'postgres' ? '5432' : '3306'}
+                                        className="form-control"
+                                      />
+                                    </div>
+
+                                    <div className="col-12 col-md-3">
+                                      <label className="form-label">{t('tasks.db_user')}</label>
+                                      <input
+                                        type="text"
+                                        value={formData.db_user}
+                                        onChange={(e) => setFormData({ ...formData, db_user: e.target.value })}
+                                        className="form-control"
+                                        required
+                                      />
+                                    </div>
+
+                                    <div className="col-12 col-md-6">
+                                      <label className="form-label">{t('tasks.db_name')}</label>
+                                      <input
+                                        type="text"
+                                        value={formData.db_name}
+                                        onChange={(e) => setFormData({ ...formData, db_name: e.target.value })}
+                                        className="form-control"
+                                        required
+                                      />
+                                    </div>
+
+                                    <div className="col-12 col-md-6">
+                                      <label className="form-label">{t('tasks.db_password')}</label>
+                                      <input
+                                        type="password"
+                                        value={formData.db_password}
+                                        onChange={(e) => setFormData({ ...formData, db_password: e.target.value })}
+                                        className="form-control"
+                                        placeholder={editingTask ? t('tasks.db_password_placeholder_edit') : ''}
+                                      />
+                                      <div className="form-text">{t('tasks.db_password_help')}</div>
+                                    </div>
+                                  </>
+                                )}
+
+                                <div className="col-12">
+                                  <label className="form-label">{t('tasks.destination_path')}</label>
+                                  <input
+                                    type="text"
+                                    value={formData.destination_path}
+                                    onChange={(e) => setFormData({ ...formData, destination_path: e.target.value })}
+                                    placeholder={
+                                      isS3Remote
+                                        ? t('tasks.destination_path_placeholder_s3')
+                                        : t('tasks.destination_path_placeholder')
+                                    }
+                                    className="form-control font-monospace"
+                                    required
+                                  />
+                                  <div className="form-text">
+                                    {isS3Remote ? `${t('tasks.destination_path_help_s3')} ` : ''}
+                                    {t('tasks.destination_path_help_archive')}
+                                  </div>
+                                </div>
+                              </>
+                            )}
 
 	                    {sourceBrowserOpen && (
 	                      <div className="col-12">

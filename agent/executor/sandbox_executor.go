@@ -38,6 +38,7 @@ type TaskInfo struct {
 	ExecutionID         string             `json:"execution_id"`
 	TaskID              string             `json:"task_id"`
 	TaskName            string             `json:"task_name"`
+	SourceType          string             `json:"source_type,omitempty"`
 	RemoteConfig        string             `json:"remote_config"`
 	SourcePath          string             `json:"source_path"`
 	DestPath            string             `json:"dest_path"`
@@ -48,6 +49,13 @@ type TaskInfo struct {
 	EncryptionPassword  string             `json:"-"`
 	EncryptionPassword2 string             `json:"-"`
 	MaxRetention        int                `json:"max_retention,omitempty"`
+	DBEngine            *string            `json:"db_engine,omitempty"`
+	DBHost              *string            `json:"db_host,omitempty"`
+	DBPort              *int               `json:"db_port,omitempty"`
+	DBUser              *string            `json:"db_user,omitempty"`
+	DBName              *string            `json:"db_name,omitempty"`
+	DBPassword          string             `json:"-"`
+	DBPath              *string            `json:"db_path,omitempty"`
 	StartedAt           time.Time          `json:"started_at"`
 	Status              string             `json:"status"`
 	Progress            *TransferProgress  `json:"progress,omitempty"`
@@ -126,13 +134,39 @@ func (te *TaskExecutor) ExecuteTask(ctx context.Context, task *TaskInfo) error {
 	}
 	defer te.cleanupTaskWorkDir(taskWorkDir)
 
+	sourceType := strings.ToLower(strings.TrimSpace(task.SourceType))
+	if sourceType == "" {
+		sourceType = "path"
+	}
+	if sourceType == "database" {
+		dumpPath, err := te.prepareDatabaseDump(taskCtx, task, taskWorkDir)
+		if err != nil {
+			return err
+		}
+		task.SourcePath = dumpPath
+		task.BackupMode = "archive"
+		if strings.TrimSpace(task.ArchiveFormat) == "" {
+			task.ArchiveFormat = "7z"
+		}
+	}
+
 	// Pre-flight: create archive if requested.
 	backupMode := strings.ToLower(strings.TrimSpace(task.BackupMode))
 	if backupMode == "" {
 		backupMode = "sync"
 	}
 	if backupMode == "archive" && strings.HasPrefix(task.DestPath, "crypt:") {
-		task.DestPath = "remote:" + strings.TrimPrefix(task.DestPath, "crypt:")
+		baseConfig, err := decodeMaybeBase64(task.RemoteConfig)
+		if err == nil {
+			remoteName := primaryRcloneRemoteName(baseConfig)
+			if remoteName != "" {
+				task.DestPath = remoteName + ":" + strings.TrimPrefix(task.DestPath, "crypt:")
+			} else {
+				task.DestPath = "remote:" + strings.TrimPrefix(task.DestPath, "crypt:")
+			}
+		} else {
+			task.DestPath = "remote:" + strings.TrimPrefix(task.DestPath, "crypt:")
+		}
 	}
 	if backupMode == "archive" {
 		archiveFormat := strings.ToLower(strings.TrimSpace(task.ArchiveFormat))
@@ -188,9 +222,14 @@ func (te *TaskExecutor) ExecuteTask(ctx context.Context, task *TaskInfo) error {
 			return fmt.Errorf("failed to decode remote config: %w", err)
 		}
 
-		cryptRemote := "remote:"
+		baseRemote := primaryRcloneRemoteName(baseConfig)
+		if baseRemote == "" {
+			baseRemote = "remote"
+		}
+
+		cryptRemote := baseRemote + ":"
 		if isS3RemoteConfig(baseConfig) {
-			if nextRemote, nextDest, ok := rewriteS3CryptDestination(task.DestPath); ok {
+			if nextRemote, nextDest, ok := rewriteS3CryptDestination(baseRemote, task.DestPath); ok {
 				previousDest := task.DestPath
 				cryptRemote = nextRemote
 				task.DestPath = nextDest
@@ -376,7 +415,7 @@ func isS3RemoteConfig(config []byte) bool {
 			continue
 		}
 
-		if hasSection && section != "remote" {
+		if hasSection && section == "crypt" {
 			continue
 		}
 
@@ -397,7 +436,26 @@ func isS3RemoteConfig(config []byte) bool {
 	return false
 }
 
-func rewriteS3CryptDestination(destPath string) (string, string, bool) {
+func primaryRcloneRemoteName(config []byte) string {
+	scanner := bufio.NewScanner(bytes.NewReader(config))
+	for scanner.Scan() {
+		line := strings.TrimSpace(strings.TrimRight(scanner.Text(), "\r"))
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			name := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "["), "]"))
+			if strings.EqualFold(name, "crypt") {
+				continue
+			}
+			return name
+		}
+	}
+	return ""
+}
+
+func rewriteS3CryptDestination(baseRemoteName string, destPath string) (string, string, bool) {
 	destPath = strings.TrimSpace(destPath)
 	if destPath == "" {
 		return "", "", false
@@ -407,8 +465,15 @@ func rewriteS3CryptDestination(destPath string) (string, string, bool) {
 	if strings.HasPrefix(withoutPrefix, "crypt:") {
 		withoutPrefix = strings.TrimPrefix(withoutPrefix, "crypt:")
 	}
-	if strings.HasPrefix(withoutPrefix, "remote:") {
-		withoutPrefix = strings.TrimPrefix(withoutPrefix, "remote:")
+	legacyPrefixes := []string{"remote:"}
+	if strings.TrimSpace(baseRemoteName) != "" {
+		legacyPrefixes = append([]string{strings.TrimSpace(baseRemoteName) + ":"}, legacyPrefixes...)
+	}
+	for _, prefix := range legacyPrefixes {
+		if strings.HasPrefix(withoutPrefix, prefix) {
+			withoutPrefix = strings.TrimPrefix(withoutPrefix, prefix)
+			break
+		}
 	}
 	withoutPrefix = strings.TrimLeft(withoutPrefix, "/")
 	withoutPrefix = strings.TrimSpace(withoutPrefix)
@@ -427,7 +492,11 @@ func rewriteS3CryptDestination(destPath string) (string, string, bool) {
 		rest = strings.TrimLeft(strings.TrimSpace(parts[1]), "/")
 	}
 
-	remote := "remote:" + bucket
+	remote := strings.TrimSpace(baseRemoteName)
+	if remote == "" {
+		remote = "remote"
+	}
+	remote += ":" + bucket
 	dest := "crypt:"
 	if rest != "" {
 		dest += rest

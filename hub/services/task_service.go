@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -168,7 +169,7 @@ func (s *TaskService) BuildTaskDetailsForAgent(ctx context.Context, task *models
 		return nil, fmt.Errorf("failed to decrypt remote config: %w", err)
 	}
 
-	normalizedConfig := NormalizeRcloneConfigForSingleRemote(decryptedConfig)
+	normalizedConfig := NormalizeRcloneConfigForRemoteAlias(decryptedConfig, remote.Name)
 
 	// Build task details
 	maxRetention := 0
@@ -180,6 +181,8 @@ func (s *TaskService) BuildTaskDetailsForAgent(ctx context.Context, task *models
 		"task_id":            task.ID.String(),
 		"task_name":          task.Name,
 		"remote_id":          remote.ID.String(),
+		"remote_name":        remote.Name,
+		"source_type":        task.SourceType,
 		"source_path":        task.SourcePath,
 		"destination_path":   task.DestinationPath,
 		"schedule":           task.Schedule,
@@ -188,6 +191,23 @@ func (s *TaskService) BuildTaskDetailsForAgent(ctx context.Context, task *models
 		"archive_format":     task.ArchiveFormat,
 		"encryption_enabled": task.EncryptionEnabled,
 		"max_retention":      maxRetention,
+	}
+
+	if strings.EqualFold(strings.TrimSpace(task.SourceType), "database") {
+		taskDetails["db_engine"] = task.DBEngine
+		taskDetails["db_host"] = task.DBHost
+		taskDetails["db_port"] = task.DBPort
+		taskDetails["db_user"] = task.DBUser
+		taskDetails["db_name"] = task.DBName
+		taskDetails["db_path"] = task.DBPath
+
+		if task.DBPasswordEnc != nil {
+			password, err := cryptoService.Decrypt(*task.DBPasswordEnc)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decrypt db_password: %w", err)
+			}
+			taskDetails["db_password"] = password
+		}
 	}
 
 	if task.EncryptionEnabled {

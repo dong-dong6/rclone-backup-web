@@ -20,9 +20,23 @@ const DefaultRcloneRemoteAlias = "remote"
 // If multiple sections are present, it prefers the [remote] section; otherwise it uses the
 // first section and re-homes its key/value lines under [remote].
 func NormalizeRcloneConfigForSingleRemote(config string) string {
+	return NormalizeRcloneConfigForRemoteAlias(config, DefaultRcloneRemoteAlias)
+}
+
+// NormalizeRcloneConfigForRemoteAlias returns a config file content that defines exactly one
+// rclone remote named alias.
+//
+// It follows the same parsing rules as NormalizeRcloneConfigForSingleRemote, but lets callers
+// pick the section name (useful when the agent should execute with the user's remote name).
+func NormalizeRcloneConfigForRemoteAlias(config string, alias string) string {
 	config = strings.TrimSpace(config)
 	if config == "" {
 		return ""
+	}
+
+	alias = strings.TrimSpace(alias)
+	if alias == "" {
+		alias = DefaultRcloneRemoteAlias
 	}
 
 	var (
@@ -63,7 +77,7 @@ func NormalizeRcloneConfigForSingleRemote(config string) string {
 	if !hasSections {
 		content = strings.TrimSpace(strings.Join(bodyLines, "\n"))
 	} else {
-		lines := sections[DefaultRcloneRemoteAlias]
+		lines := sections[alias]
 		if lines == nil {
 			lines = sections[firstSection]
 		}
@@ -71,10 +85,10 @@ func NormalizeRcloneConfigForSingleRemote(config string) string {
 	}
 
 	if content == "" {
-		return "[" + DefaultRcloneRemoteAlias + "]"
+		return "[" + alias + "]"
 	}
 	content = maybeEnableS3NoCheckBucket(content)
-	return "[" + DefaultRcloneRemoteAlias + "]\n" + content
+	return "[" + alias + "]\n" + content
 }
 
 func maybeEnableS3NoCheckBucket(content string) string {

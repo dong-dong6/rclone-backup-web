@@ -15,6 +15,16 @@ var dbPool *pgxpool.Pool
 func ensureSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	statements := []string{
 		`ALTER TABLE backup_tasks ADD COLUMN IF NOT EXISTS max_retention INTEGER`,
+		`ALTER TABLE backup_tasks ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'path'`,
+		`ALTER TABLE backup_tasks ADD COLUMN IF NOT EXISTS db_engine TEXT`,
+		`ALTER TABLE backup_tasks ADD COLUMN IF NOT EXISTS db_host TEXT`,
+		`ALTER TABLE backup_tasks ADD COLUMN IF NOT EXISTS db_port INTEGER`,
+		`ALTER TABLE backup_tasks ADD COLUMN IF NOT EXISTS db_user TEXT`,
+		`ALTER TABLE backup_tasks ADD COLUMN IF NOT EXISTS db_name TEXT`,
+		`ALTER TABLE backup_tasks ADD COLUMN IF NOT EXISTS db_password TEXT`,
+		`ALTER TABLE backup_tasks ADD COLUMN IF NOT EXISTS db_path TEXT`,
+		`ALTER TABLE backup_tasks DROP CONSTRAINT IF EXISTS backup_tasks_archive_format_check`,
+		`ALTER TABLE backup_tasks ADD CONSTRAINT backup_tasks_archive_format_check CHECK (archive_format IN ('tar.gz', 'zip', '7z'))`,
 		`ALTER TABLE rclone_remotes ADD COLUMN IF NOT EXISTS last_test_at TIMESTAMP WITH TIME ZONE`,
 		`ALTER TABLE rclone_remotes ADD COLUMN IF NOT EXISTS last_test_success BOOLEAN`,
 		`ALTER TABLE rclone_remotes ADD COLUMN IF NOT EXISTS last_test_message TEXT`,

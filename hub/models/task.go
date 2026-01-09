@@ -14,7 +14,14 @@ type BackupTask struct {
 	ID                uuid.UUID       `json:"id"`
 	Name              string          `json:"name"`
 	RcloneRemoteID    uuid.UUID       `json:"rclone_remote_id"`
+	SourceType        string          `json:"source_type"`
 	SourcePath        string          `json:"source_path"`
+	DBEngine          *string         `json:"db_engine,omitempty"`
+	DBHost            *string         `json:"db_host,omitempty"`
+	DBPort            *int            `json:"db_port,omitempty"`
+	DBUser            *string         `json:"db_user,omitempty"`
+	DBName            *string         `json:"db_name,omitempty"`
+	DBPath            *string         `json:"db_path,omitempty"`
 	DestinationPath   string          `json:"destination_path"`
 	Schedule          string          `json:"schedule"`
 	RcloneArgs        json.RawMessage `json:"rclone_args"`
@@ -29,6 +36,7 @@ type BackupTask struct {
 
 	EncryptionPasswordEnc  *string `json:"-"`
 	EncryptionPassword2Enc *string `json:"-"`
+	DBPasswordEnc          *string `json:"-"`
 
 	// Additional fields from joins
 	RemoteName     string      `json:"remote_name,omitempty"`
@@ -52,6 +60,9 @@ func (m *TaskModel) Create(ctx context.Context, task *BackupTask) error {
 	if task.RcloneArgs == nil {
 		task.RcloneArgs = json.RawMessage("[]")
 	}
+	if strings.TrimSpace(task.SourceType) == "" {
+		task.SourceType = "path"
+	}
 	if strings.TrimSpace(task.BackupMode) == "" {
 		task.BackupMode = "sync"
 	}
@@ -60,20 +71,30 @@ func (m *TaskModel) Create(ctx context.Context, task *BackupTask) error {
 	}
 
 	query := `
-			INSERT INTO backup_tasks (
-				id, name, rclone_remote_id, source_path, destination_path,
-				schedule, rclone_args, is_active,
-				backup_mode, archive_format, encryption_enabled, encryption_password, encryption_password2,
-				retention_days, max_retention, created_at, updated_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-			RETURNING id, created_at, updated_at
-		`
+				INSERT INTO backup_tasks (
+					id, name, rclone_remote_id,
+					source_type, source_path, db_engine, db_host, db_port, db_user, db_name, db_password, db_path,
+					destination_path,
+					schedule, rclone_args, is_active,
+					backup_mode, archive_format, encryption_enabled, encryption_password, encryption_password2,
+					retention_days, max_retention, created_at, updated_at
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+				RETURNING id, created_at, updated_at
+			`
 
 	err := m.db.QueryRow(ctx, query,
 		task.ID,
 		task.Name,
 		task.RcloneRemoteID,
+		task.SourceType,
 		task.SourcePath,
+		task.DBEngine,
+		task.DBHost,
+		task.DBPort,
+		task.DBUser,
+		task.DBName,
+		task.DBPasswordEnc,
+		task.DBPath,
 		task.DestinationPath,
 		task.Schedule,
 		task.RcloneArgs,
@@ -96,13 +117,15 @@ func (m *TaskModel) Create(ctx context.Context, task *BackupTask) error {
 func (m *TaskModel) GetByID(ctx context.Context, id uuid.UUID) (*BackupTask, error) {
 	task := &BackupTask{}
 	query := `
-			SELECT 
-				t.id, t.name, t.rclone_remote_id, t.source_path, t.destination_path,
-				t.schedule, t.rclone_args, t.is_active,
-				t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
-				t.retention_days, t.max_retention, t.created_at, t.updated_at,
-				r.name as remote_name
-			FROM backup_tasks t
+				SELECT 
+					t.id, t.name, t.rclone_remote_id,
+					t.source_type, t.source_path, t.db_engine, t.db_host, t.db_port, t.db_user, t.db_name, t.db_password, t.db_path,
+					t.destination_path,
+					t.schedule, t.rclone_args, t.is_active,
+					t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
+					t.retention_days, t.max_retention, t.created_at, t.updated_at,
+					r.name as remote_name
+				FROM backup_tasks t
 			LEFT JOIN rclone_remotes r ON t.rclone_remote_id = r.id
 			WHERE t.id = $1
 	`
@@ -111,7 +134,15 @@ func (m *TaskModel) GetByID(ctx context.Context, id uuid.UUID) (*BackupTask, err
 		&task.ID,
 		&task.Name,
 		&task.RcloneRemoteID,
+		&task.SourceType,
 		&task.SourcePath,
+		&task.DBEngine,
+		&task.DBHost,
+		&task.DBPort,
+		&task.DBUser,
+		&task.DBName,
+		&task.DBPasswordEnc,
+		&task.DBPath,
 		&task.DestinationPath,
 		&task.Schedule,
 		&task.RcloneArgs,
@@ -141,13 +172,15 @@ func (m *TaskModel) GetByID(ctx context.Context, id uuid.UUID) (*BackupTask, err
 // List retrieves all tasks
 func (m *TaskModel) List(ctx context.Context) ([]*BackupTask, error) {
 	query := `
-			SELECT 
-				t.id, t.name, t.rclone_remote_id, t.source_path, t.destination_path,
-				t.schedule, t.rclone_args, t.is_active,
-				t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
-				t.retention_days, t.max_retention, t.created_at, t.updated_at,
-				r.name as remote_name
-			FROM backup_tasks t
+				SELECT 
+					t.id, t.name, t.rclone_remote_id,
+					t.source_type, t.source_path, t.db_engine, t.db_host, t.db_port, t.db_user, t.db_name, t.db_password, t.db_path,
+					t.destination_path,
+					t.schedule, t.rclone_args, t.is_active,
+					t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
+					t.retention_days, t.max_retention, t.created_at, t.updated_at,
+					r.name as remote_name
+				FROM backup_tasks t
 			LEFT JOIN rclone_remotes r ON t.rclone_remote_id = r.id
 			ORDER BY t.created_at DESC
 		`
@@ -165,7 +198,15 @@ func (m *TaskModel) List(ctx context.Context) ([]*BackupTask, error) {
 			&task.ID,
 			&task.Name,
 			&task.RcloneRemoteID,
+			&task.SourceType,
 			&task.SourcePath,
+			&task.DBEngine,
+			&task.DBHost,
+			&task.DBPort,
+			&task.DBUser,
+			&task.DBName,
+			&task.DBPasswordEnc,
+			&task.DBPath,
 			&task.DestinationPath,
 			&task.Schedule,
 			&task.RcloneArgs,
@@ -199,30 +240,46 @@ func (m *TaskModel) Update(ctx context.Context, task *BackupTask) error {
 	task.UpdatedAt = time.Now()
 
 	query := `
-			UPDATE backup_tasks SET
-				name = $2,
-				rclone_remote_id = $3,
-				source_path = $4,
-				destination_path = $5,
-				schedule = $6,
-				rclone_args = $7,
-				is_active = $8,
-				backup_mode = $9,
-				archive_format = $10,
-				encryption_enabled = $11,
-				encryption_password = $12,
-				encryption_password2 = $13,
-				retention_days = $14,
-				max_retention = $15,
-				updated_at = $16
-			WHERE id = $1
-		`
+				UPDATE backup_tasks SET
+					name = $2,
+					rclone_remote_id = $3,
+					source_type = $4,
+					source_path = $5,
+					db_engine = $6,
+					db_host = $7,
+					db_port = $8,
+					db_user = $9,
+					db_name = $10,
+					db_password = $11,
+					db_path = $12,
+					destination_path = $13,
+					schedule = $14,
+					rclone_args = $15,
+					is_active = $16,
+					backup_mode = $17,
+					archive_format = $18,
+					encryption_enabled = $19,
+					encryption_password = $20,
+					encryption_password2 = $21,
+					retention_days = $22,
+					max_retention = $23,
+					updated_at = $24
+				WHERE id = $1
+			`
 
 	_, err := m.db.Exec(ctx, query,
 		task.ID,
 		task.Name,
 		task.RcloneRemoteID,
+		task.SourceType,
 		task.SourcePath,
+		task.DBEngine,
+		task.DBHost,
+		task.DBPort,
+		task.DBUser,
+		task.DBName,
+		task.DBPasswordEnc,
+		task.DBPath,
 		task.DestinationPath,
 		task.Schedule,
 		task.RcloneArgs,
@@ -299,12 +356,14 @@ func (m *TaskModel) GetAssignedAgents(ctx context.Context, taskID uuid.UUID) ([]
 // GetAgentTasks gets all tasks assigned to an agent
 func (m *TaskModel) GetAgentTasks(ctx context.Context, agentID uuid.UUID) ([]*BackupTask, error) {
 	query := `
-		SELECT 
-			t.id, t.name, t.rclone_remote_id, t.source_path, t.destination_path,
-			t.schedule, t.rclone_args, t.is_active,
-			t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
-			t.max_retention, t.created_at, t.updated_at
-		FROM backup_tasks t
+			SELECT 
+				t.id, t.name, t.rclone_remote_id,
+				t.source_type, t.source_path, t.db_engine, t.db_host, t.db_port, t.db_user, t.db_name, t.db_password, t.db_path,
+				t.destination_path,
+				t.schedule, t.rclone_args, t.is_active,
+				t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
+				t.max_retention, t.created_at, t.updated_at
+			FROM backup_tasks t
 		INNER JOIN task_agent_assignments ta ON t.id = ta.task_id
 		WHERE ta.agent_id = $1 AND t.is_active = true
 		ORDER BY t.created_at DESC
@@ -323,7 +382,15 @@ func (m *TaskModel) GetAgentTasks(ctx context.Context, agentID uuid.UUID) ([]*Ba
 			&task.ID,
 			&task.Name,
 			&task.RcloneRemoteID,
+			&task.SourceType,
 			&task.SourcePath,
+			&task.DBEngine,
+			&task.DBHost,
+			&task.DBPort,
+			&task.DBUser,
+			&task.DBName,
+			&task.DBPasswordEnc,
+			&task.DBPath,
 			&task.DestinationPath,
 			&task.Schedule,
 			&task.RcloneArgs,
