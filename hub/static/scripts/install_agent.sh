@@ -213,7 +213,7 @@ PIDFile=/run/$SERVICE_NAME/$SERVICE_NAME.pid
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=read-only
 ReadWritePaths=$AGENT_HOME
 
 [Install]

@@ -133,6 +133,14 @@ func (h *Handler) processAgentHeartbeat(ctx context.Context, agentID uuid.UUID, 
 		return HeartbeatResponse{}, &APIError{Status: http.StatusInternalServerError, Message: "Failed to update heartbeat"}
 	}
 
+	statusChanged := false
+	h.agentStatusMu.Lock()
+	if prev, ok := h.agentStatusCache[agentID]; !ok || prev != req.Status {
+		h.agentStatusCache[agentID] = req.Status
+		statusChanged = true
+	}
+	h.agentStatusMu.Unlock()
+
 	metricsModel := models.NewMetricsModel(h.db)
 	metric := &models.AgentMetric{
 		AgentID:        agentID,
@@ -272,6 +280,14 @@ func (h *Handler) processAgentHeartbeat(ctx context.Context, agentID uuid.UUID, 
 		})
 	}
 
+	if statusChanged {
+		h.sseService.SendEvent("agent.status.update", map[string]interface{}{
+			"agent_id":  agentID.String(),
+			"status":    req.Status,
+			"timestamp": time.Now().Format(time.RFC3339),
+		})
+	}
+
 	// Send SSE event for heartbeat with metrics
 	h.sseService.SendEvent("agent.heartbeat", map[string]interface{}{
 		"agent_id":  agentID,
@@ -309,6 +325,12 @@ type AgentFSListResultRequest struct {
 func (h *Handler) processAgentFSListResult(agentID uuid.UUID, req AgentFSListResultRequest) error {
 	if h.fsBroker == nil {
 		return &APIError{Status: http.StatusServiceUnavailable, Message: "FS broker not available"}
+	}
+
+	if msg := strings.TrimSpace(req.Error); msg != "" {
+		log.Printf("[FSList] result agent=%s request=%s path=%q err=%q", agentID.String(), strings.TrimSpace(req.RequestID), strings.TrimSpace(req.Path), msg)
+	} else {
+		log.Printf("[FSList] result agent=%s request=%s path=%q entries=%d", agentID.String(), strings.TrimSpace(req.RequestID), strings.TrimSpace(req.Path), len(req.Entries))
 	}
 
 	resp := &services.FSListResponse{

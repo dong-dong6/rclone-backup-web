@@ -182,24 +182,34 @@ func (h *Handler) ListAgentDirectory(c *gin.Context) {
 		return
 	}
 
+	if h.wsService == nil || !h.wsService.IsConnected(agentID) {
+		c.JSON(http.StatusConflict, gin.H{
+			"error":   "Agent not connected",
+			"message": "Directory listing requires an active WebSocket connection to the agent.",
+		})
+		return
+	}
+
 	req, resultCh := h.fsBroker.Enqueue(agentID, path, limit)
-	if h.wsService != nil && h.wsService.IsConnected(agentID) {
-		payload, _ := json.Marshal(map[string]interface{}{
-			"request_id": req.ID,
-			"path":       req.Path,
-			"limit":      req.Limit,
-		})
-		actionsData, _ := json.Marshal(HeartbeatResponse{
-			Actions: []HeartbeatAction{{
-				Action: "FS_LIST",
-				Type:   "FS_LIST",
-				Task:   payload,
-			}},
-		})
-		_ = h.wsService.SendJSON(agentID, WSMessage{
-			Type: WSMessageTypeHubActions,
-			Data: actionsData,
-		})
+	log.Printf("[FSList] enqueue agent=%s request=%s path=%q limit=%d", agentID.String(), req.ID, req.Path, req.Limit)
+
+	payload, _ := json.Marshal(map[string]interface{}{
+		"request_id": req.ID,
+		"path":       req.Path,
+		"limit":      req.Limit,
+	})
+	actionsData, _ := json.Marshal(HeartbeatResponse{
+		Actions: []HeartbeatAction{{
+			Action: "FS_LIST",
+			Type:   "FS_LIST",
+			Task:   payload,
+		}},
+	})
+	if err := h.wsService.SendJSON(agentID, WSMessage{
+		Type: WSMessageTypeHubActions,
+		Data: actionsData,
+	}); err != nil {
+		log.Printf("[FSList] dispatch failed agent=%s request=%s: %v", agentID.String(), req.ID, err)
 	}
 
 	waitCtx, cancel := context.WithTimeout(c.Request.Context(), 40*time.Second)
@@ -208,6 +218,7 @@ func (h *Handler) ListAgentDirectory(c *gin.Context) {
 	select {
 	case result, ok := <-resultCh:
 		if !ok || result.Response == nil {
+			log.Printf("[FSList] timeout agent=%s request=%s duration=%s", agentID.String(), req.ID, time.Since(req.CreatedAt))
 			c.JSON(http.StatusGatewayTimeout, gin.H{
 				"error":   "Directory listing timed out",
 				"message": "Agent did not respond in time.",
@@ -215,16 +226,19 @@ func (h *Handler) ListAgentDirectory(c *gin.Context) {
 			return
 		}
 		if strings.TrimSpace(result.Error) != "" {
+			log.Printf("[FSList] error agent=%s request=%s path=%q duration=%s err=%q", agentID.String(), req.ID, req.Path, time.Since(req.CreatedAt), strings.TrimSpace(result.Error))
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":   "Failed to list directory",
 				"message": result.Error,
 			})
 			return
 		}
+		log.Printf("[FSList] ok agent=%s request=%s path=%q duration=%s entries=%d", agentID.String(), req.ID, req.Path, time.Since(req.CreatedAt), len(result.Response.Entries))
 		c.JSON(http.StatusOK, result.Response)
 		return
 	case <-waitCtx.Done():
 		h.fsBroker.Cancel(agentID, req.ID)
+		log.Printf("[FSList] timeout agent=%s request=%s duration=%s", agentID.String(), req.ID, time.Since(req.CreatedAt))
 		c.JSON(http.StatusGatewayTimeout, gin.H{
 			"error":   "Directory listing timed out",
 			"message": "Agent did not respond in time.",

@@ -34,77 +34,31 @@ export const SSEProvider: React.FC<SSEProviderProps> = ({ children }) => {
   const [events, setEvents] = useState<SSEEvent[]>([]);
   const [connected, setConnected] = useState(false);
   const [lastEvent, setLastEvent] = useState<SSEEvent | null>(null);
-  const [eventSource, setEventSource] = useState<EventSource | null>(null);
   const subscribersRef = useRef<Map<string, Set<(event: SSEEvent) => void>>>(new Map());
   const { token } = useAuth();
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const retryAttemptRef = useRef(0);
 
   useEffect(() => {
-    if (!token) {
-      // Close existing connection if token is not available
-      if (eventSource) {
-        eventSource.close();
-        setEventSource(null);
-        setConnected(false);
+    const cleanup = () => {
+      setConnected(false);
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
       }
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+
+    if (!token) {
+      cleanup();
       return;
     }
 
-    // Create SSE connection
     const baseUrl = import.meta.env.VITE_API_URL || '';
-    const es = new EventSource(`${baseUrl}/events?token=${encodeURIComponent(token)}`, {
-      withCredentials: true,
-    });
-
-    es.onopen = () => {
-      console.log('SSE connection established');
-      setConnected(true);
-    };
-
-    es.onerror = (error) => {
-      console.error('SSE connection error:', error);
-      setConnected(false);
-
-      // Reconnect after 5 seconds
-      setTimeout(() => {
-        if (es.readyState === EventSource.CLOSED) {
-          console.log('Attempting to reconnect SSE...');
-          // Recursively call this effect by updating a dependency
-        }
-      }, 5000);
-    };
-
-    // Generic message handler
-    es.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        handleEvent('message', data);
-      } catch (error) {
-        console.error('Failed to parse SSE message:', error);
-      }
-    };
-
-    // Specific event handlers
-    const eventTypes = [
-      'agent.status.update',
-      'agent.registered',
-      'agent.heartbeat',
-      'execution.status.update',
-      'execution.log.update',
-      'task.created',
-      'task.updated',
-      'task.deleted',
-    ];
-
-    eventTypes.forEach(eventType => {
-      es.addEventListener(eventType, (event: MessageEvent) => {
-        try {
-          const data = JSON.parse(event.data);
-          handleEvent(eventType, data);
-        } catch (error) {
-          console.error(`Failed to parse ${eventType} event:`, error);
-        }
-      });
-    });
 
     const handleEvent = (type: string, data: any) => {
       const newEvent: SSEEvent = {
@@ -130,12 +84,77 @@ export const SSEProvider: React.FC<SSEProviderProps> = ({ children }) => {
       }
     };
 
-    setEventSource(es);
+    const eventTypes = [
+      'agent.status.update',
+      'agent.registered',
+      'agent.heartbeat',
+      'execution.status.update',
+      'execution.log.update',
+      'task.dispatched',
+      'task.created',
+      'task.updated',
+      'task.deleted',
+    ];
+
+    const connect = () => {
+      if (!token) return;
+
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+
+      const es = new EventSource(`${baseUrl}/events?token=${encodeURIComponent(token)}`, {
+        withCredentials: true,
+      });
+      eventSourceRef.current = es;
+
+      es.onopen = () => {
+        retryAttemptRef.current = 0;
+        setConnected(true);
+      };
+
+      es.onerror = () => {
+        setConnected(false);
+        es.close();
+
+        if (reconnectTimerRef.current !== null) return;
+
+        retryAttemptRef.current += 1;
+        const backoffMs = Math.min(30_000, 1_000 * Math.pow(2, retryAttemptRef.current - 1));
+        const jitterMs = Math.floor(Math.random() * 250);
+        reconnectTimerRef.current = window.setTimeout(() => {
+          reconnectTimerRef.current = null;
+          connect();
+        }, backoffMs + jitterMs);
+      };
+
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          handleEvent('message', data);
+        } catch (error) {
+          console.error('Failed to parse SSE message:', error);
+        }
+      };
+
+      eventTypes.forEach((eventType) => {
+        es.addEventListener(eventType, (event: MessageEvent) => {
+          try {
+            const data = JSON.parse(event.data);
+            handleEvent(eventType, data);
+          } catch (error) {
+            console.error(`Failed to parse ${eventType} event:`, error);
+          }
+        });
+      });
+    };
+
+    connect();
 
     // Cleanup
     return () => {
-      es.close();
-      setConnected(false);
+      cleanup();
     };
   }, [token]); // Reconnect when token changes
 

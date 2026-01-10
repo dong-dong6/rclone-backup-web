@@ -345,6 +345,7 @@ func (a *Agent) hubLoop() {
 
 			ws = conn
 			a.setWSConn(ws)
+			log.Printf("[HubWS] connected hub=%s agent=%s", strings.TrimSpace(a.config.HubURL), strings.TrimSpace(a.config.AgentID))
 			retryBackoff = 1 * time.Second
 			nextWSAttempt = time.Now()
 
@@ -596,6 +597,8 @@ func (a *Agent) handleFSList(taskData json.RawMessage) {
 		clean = filepath.Join(a.config.WorkDir, clean)
 	}
 
+	log.Printf("[FSList] request_id=%s path=%q limit=%d", strings.TrimSpace(payload.RequestID), clean, limit)
+
 	result := services.FSListResult{
 		RequestID: payload.RequestID,
 		Path:      clean,
@@ -607,6 +610,7 @@ func (a *Agent) handleFSList(taskData json.RawMessage) {
 
 	entries, err := os.ReadDir(clean)
 	if err != nil {
+		log.Printf("[FSList] request_id=%s path=%q err=%q", strings.TrimSpace(payload.RequestID), clean, err.Error())
 		result.Error = err.Error()
 		a.sendFSListResult(result)
 		return

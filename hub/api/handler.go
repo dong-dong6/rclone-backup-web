@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +26,9 @@ type Handler struct {
 	fsBroker         *services.AgentFSRequestBroker
 	oauthFlows       *oauthFlowStore
 	logTokens        bool
+
+	agentStatusMu    sync.Mutex
+	agentStatusCache map[uuid.UUID]string
 }
 
 func NewHandler(
@@ -46,6 +50,7 @@ func NewHandler(
 		fsBroker:         services.NewAgentFSRequestBroker(),
 		oauthFlows:       newOAuthFlowStore(),
 		logTokens:        strings.EqualFold(os.Getenv("DEBUG_LOG_TOKENS"), "true"),
+		agentStatusCache: make(map[uuid.UUID]string),
 	}
 }
 
