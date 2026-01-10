@@ -234,6 +234,8 @@ make update-with-agent   # 更新Hub和Agent
 
 ## 🛠️ 故障排查
 
+更完整的 Hub ↔ Agent / 监控 / 路径浏览排查步骤见：`docs/troubleshooting.md`。
+
 ### Hub无法启动
 
 ```bash
