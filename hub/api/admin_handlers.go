@@ -210,6 +210,8 @@ func (h *Handler) ListAgentDirectory(c *gin.Context) {
 		Data: actionsData,
 	}); err != nil {
 		log.Printf("[FSList] dispatch failed agent=%s request=%s: %v", agentID.String(), req.ID, err)
+	} else {
+		h.fsBroker.MarkDispatched(agentID, req.ID)
 	}
 
 	waitCtx, cancel := context.WithTimeout(c.Request.Context(), 40*time.Second)

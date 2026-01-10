@@ -1,6 +1,7 @@
 package services
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -60,6 +61,46 @@ func (b *AgentFSRequestBroker) Enqueue(agentID uuid.UUID, path string, limit int
 	b.byID[req.ID] = req
 
 	return req, req.resultCh
+}
+
+// MarkDispatched removes a request from the per-agent queue once it has been
+// actively dispatched (e.g. via an immediate WebSocket hub.actions push).
+// The request remains addressable by ID until Resolve/Cancel is called.
+func (b *AgentFSRequestBroker) MarkDispatched(agentID uuid.UUID, requestID string) {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return
+	}
+
+	now := time.Now()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.cleanupLocked(now)
+
+	req, ok := b.byID[requestID]
+	if !ok || req.AgentID != agentID {
+		return
+	}
+
+	queue := b.byAgent[agentID]
+	if len(queue) == 0 {
+		return
+	}
+
+	filtered := queue[:0]
+	for _, item := range queue {
+		if item.ID == requestID {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+
+	if len(filtered) == 0 {
+		delete(b.byAgent, agentID)
+		return
+	}
+	b.byAgent[agentID] = filtered
 }
 
 func (b *AgentFSRequestBroker) PopNext(agentID uuid.UUID) *AgentFSListRequest {
