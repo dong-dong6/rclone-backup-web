@@ -21,6 +21,7 @@ type BackupTask struct {
 	DBPort            *int            `json:"db_port,omitempty"`
 	DBUser            *string         `json:"db_user,omitempty"`
 	DBName            *string         `json:"db_name,omitempty"`
+	DBDumpMode        *string         `json:"db_dump_mode,omitempty"`
 	DBPath            *string         `json:"db_path,omitempty"`
 	DestinationPath   string          `json:"destination_path"`
 	Schedule          string          `json:"schedule"`
@@ -73,12 +74,12 @@ func (m *TaskModel) Create(ctx context.Context, task *BackupTask) error {
 	query := `
 				INSERT INTO backup_tasks (
 					id, name, rclone_remote_id,
-					source_type, source_path, db_engine, db_host, db_port, db_user, db_name, db_password, db_path,
+					source_type, source_path, db_engine, db_host, db_port, db_user, db_name, db_dump_mode, db_password, db_path,
 					destination_path,
 					schedule, rclone_args, is_active,
 					backup_mode, archive_format, encryption_enabled, encryption_password, encryption_password2,
 					retention_days, max_retention, created_at, updated_at
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
 				RETURNING id, created_at, updated_at
 			`
 
@@ -93,6 +94,7 @@ func (m *TaskModel) Create(ctx context.Context, task *BackupTask) error {
 		task.DBPort,
 		task.DBUser,
 		task.DBName,
+		task.DBDumpMode,
 		task.DBPasswordEnc,
 		task.DBPath,
 		task.DestinationPath,
@@ -119,7 +121,7 @@ func (m *TaskModel) GetByID(ctx context.Context, id uuid.UUID) (*BackupTask, err
 	query := `
 				SELECT 
 					t.id, t.name, t.rclone_remote_id,
-					t.source_type, t.source_path, t.db_engine, t.db_host, t.db_port, t.db_user, t.db_name, t.db_password, t.db_path,
+					t.source_type, t.source_path, t.db_engine, t.db_host, t.db_port, t.db_user, t.db_name, t.db_dump_mode, t.db_password, t.db_path,
 					t.destination_path,
 					t.schedule, t.rclone_args, t.is_active,
 					t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
@@ -141,6 +143,7 @@ func (m *TaskModel) GetByID(ctx context.Context, id uuid.UUID) (*BackupTask, err
 		&task.DBPort,
 		&task.DBUser,
 		&task.DBName,
+		&task.DBDumpMode,
 		&task.DBPasswordEnc,
 		&task.DBPath,
 		&task.DestinationPath,
@@ -174,7 +177,7 @@ func (m *TaskModel) List(ctx context.Context) ([]*BackupTask, error) {
 	query := `
 				SELECT 
 					t.id, t.name, t.rclone_remote_id,
-					t.source_type, t.source_path, t.db_engine, t.db_host, t.db_port, t.db_user, t.db_name, t.db_password, t.db_path,
+					t.source_type, t.source_path, t.db_engine, t.db_host, t.db_port, t.db_user, t.db_name, t.db_dump_mode, t.db_password, t.db_path,
 					t.destination_path,
 					t.schedule, t.rclone_args, t.is_active,
 					t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
@@ -205,6 +208,7 @@ func (m *TaskModel) List(ctx context.Context) ([]*BackupTask, error) {
 			&task.DBPort,
 			&task.DBUser,
 			&task.DBName,
+			&task.DBDumpMode,
 			&task.DBPasswordEnc,
 			&task.DBPath,
 			&task.DestinationPath,
@@ -250,20 +254,21 @@ func (m *TaskModel) Update(ctx context.Context, task *BackupTask) error {
 					db_port = $8,
 					db_user = $9,
 					db_name = $10,
-					db_password = $11,
-					db_path = $12,
-					destination_path = $13,
-					schedule = $14,
-					rclone_args = $15,
-					is_active = $16,
-					backup_mode = $17,
-					archive_format = $18,
-					encryption_enabled = $19,
-					encryption_password = $20,
-					encryption_password2 = $21,
-					retention_days = $22,
-					max_retention = $23,
-					updated_at = $24
+					db_dump_mode = $11,
+					db_password = $12,
+					db_path = $13,
+					destination_path = $14,
+					schedule = $15,
+					rclone_args = $16,
+					is_active = $17,
+					backup_mode = $18,
+					archive_format = $19,
+					encryption_enabled = $20,
+					encryption_password = $21,
+					encryption_password2 = $22,
+					retention_days = $23,
+					max_retention = $24,
+					updated_at = $25
 				WHERE id = $1
 			`
 
@@ -278,6 +283,7 @@ func (m *TaskModel) Update(ctx context.Context, task *BackupTask) error {
 		task.DBPort,
 		task.DBUser,
 		task.DBName,
+		task.DBDumpMode,
 		task.DBPasswordEnc,
 		task.DBPath,
 		task.DestinationPath,
@@ -358,7 +364,7 @@ func (m *TaskModel) GetAgentTasks(ctx context.Context, agentID uuid.UUID) ([]*Ba
 	query := `
 			SELECT 
 				t.id, t.name, t.rclone_remote_id,
-				t.source_type, t.source_path, t.db_engine, t.db_host, t.db_port, t.db_user, t.db_name, t.db_password, t.db_path,
+				t.source_type, t.source_path, t.db_engine, t.db_host, t.db_port, t.db_user, t.db_name, t.db_dump_mode, t.db_password, t.db_path,
 				t.destination_path,
 				t.schedule, t.rclone_args, t.is_active,
 				t.backup_mode, t.archive_format, t.encryption_enabled, t.encryption_password, t.encryption_password2,
@@ -389,6 +395,7 @@ func (m *TaskModel) GetAgentTasks(ctx context.Context, agentID uuid.UUID) ([]*Ba
 			&task.DBPort,
 			&task.DBUser,
 			&task.DBName,
+			&task.DBDumpMode,
 			&task.DBPasswordEnc,
 			&task.DBPath,
 			&task.DestinationPath,

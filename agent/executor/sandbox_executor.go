@@ -50,6 +50,7 @@ type TaskInfo struct {
 	EncryptionPassword2 string             `json:"-"`
 	MaxRetention        int                `json:"max_retention,omitempty"`
 	DBEngine            *string            `json:"db_engine,omitempty"`
+	DBDumpMode          *string            `json:"db_dump_mode,omitempty"`
 	DBHost              *string            `json:"db_host,omitempty"`
 	DBPort              *int               `json:"db_port,omitempty"`
 	DBUser              *string            `json:"db_user,omitempty"`

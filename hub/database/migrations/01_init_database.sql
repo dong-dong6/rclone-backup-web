@@ -90,6 +90,8 @@ CREATE TABLE IF NOT EXISTS backup_tasks (
     db_port INTEGER,                                             -- 数据库端口（postgres/mysql）
     db_user TEXT,                                                -- 数据库用户（postgres/mysql）
     db_name TEXT,                                                -- 数据库名（postgres/mysql）
+    db_dump_mode VARCHAR(20)
+        CHECK (db_dump_mode IN ('single', 'all')),               -- 导出模式（postgres/mysql）：single=单库，all=全部库
     db_password TEXT,                                            -- 数据库口令（Hub 端加密存储）
     db_path TEXT,                                                -- SQLite 数据库文件路径（source_type=database 且 db_engine=sqlite）
     destination_path TEXT NOT NULL,                              -- 远程目标路径

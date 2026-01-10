@@ -195,6 +195,7 @@ func (s *TaskService) BuildTaskDetailsForAgent(ctx context.Context, task *models
 
 	if strings.EqualFold(strings.TrimSpace(task.SourceType), "database") {
 		taskDetails["db_engine"] = task.DBEngine
+		taskDetails["db_dump_mode"] = task.DBDumpMode
 		taskDetails["db_host"] = task.DBHost
 		taskDetails["db_port"] = task.DBPort
 		taskDetails["db_user"] = task.DBUser

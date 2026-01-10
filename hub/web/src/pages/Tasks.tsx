@@ -40,6 +40,7 @@ interface BackupTask {
   source_type?: 'path' | 'database';
   source_path: string;
   db_engine?: 'postgres' | 'mysql' | 'sqlite' | null;
+  db_dump_mode?: 'single' | 'all' | null;
   db_host?: string | null;
   db_port?: number | null;
   db_user?: string | null;
@@ -96,6 +97,7 @@ type FSListResponse = {
     source_type: 'path' as 'path' | 'database',
     source_path: '',
     db_engine: 'postgres' as 'postgres' | 'mysql' | 'sqlite',
+    db_dump_mode: 'single' as 'single' | 'all',
     db_host: '',
     db_port: '',
     db_user: '',
@@ -244,6 +246,7 @@ type FSListResponse = {
       source_type: 'path',
       source_path: '',
       db_engine: 'postgres',
+      db_dump_mode: 'single',
       db_host: '',
       db_port: '',
       db_user: '',
@@ -279,6 +282,7 @@ type FSListResponse = {
       source_type: task.source_type || 'path',
       source_path: task.source_path,
       db_engine: (task.db_engine as any) || 'postgres',
+      db_dump_mode: (task.db_dump_mode as any) || 'single',
       db_host: task.db_host || '',
       db_port: task.db_port ? String(task.db_port) : '',
       db_user: task.db_user || '',
@@ -425,8 +429,12 @@ type FSListResponse = {
             return;
           }
         } else {
-          if (!formData.db_host.trim() || !formData.db_user.trim() || !formData.db_name.trim()) {
-            alert(t('tasks.db_fields_required'));
+          if (!formData.db_host.trim() || !formData.db_user.trim()) {
+            alert(t('tasks.db_conn_fields_required'));
+            return;
+          }
+          if (formData.db_dump_mode === 'single' && !formData.db_name.trim()) {
+            alert(t('tasks.db_name_required'));
             return;
           }
           if (formData.db_port.trim()) {
@@ -456,12 +464,18 @@ type FSListResponse = {
       };
       if (isDatabaseSource) {
         payload.db_engine = formData.db_engine;
+        payload.db_dump_mode = formData.db_dump_mode;
         if (formData.db_engine === 'sqlite') {
           payload.db_path = formData.db_path.trim();
         } else {
           payload.db_host = formData.db_host.trim();
           payload.db_user = formData.db_user.trim();
-          payload.db_name = formData.db_name.trim();
+          if (formData.db_dump_mode === 'single' && formData.db_name.trim()) {
+            payload.db_name = formData.db_name.trim();
+          }
+          if (formData.db_dump_mode === 'all' && formData.db_engine === 'postgres' && formData.db_name.trim()) {
+            payload.db_name = formData.db_name.trim();
+          }
           if (dbPort) payload.db_port = dbPort;
         }
         if (formData.db_password.trim()) {
@@ -566,12 +580,13 @@ type FSListResponse = {
   const getSourceDisplay = (task: BackupTask) => {
     if (task.source_type === 'database') {
       const engine = (task.db_engine || '').toLowerCase();
+      const dumpMode = (task.db_dump_mode || 'single').toLowerCase();
       if (engine === 'sqlite') {
         return `sqlite:${task.db_path || ''}`;
       }
       const host = task.db_host || '';
       const port = task.db_port ? `:${task.db_port}` : '';
-      const name = task.db_name || '';
+      const name = dumpMode === 'all' ? '*' : task.db_name || '';
       return `${engine || 'db'}:${host}${port}/${name}`;
     }
     return task.source_path;
@@ -998,7 +1013,14 @@ type FSListResponse = {
                                   <label className="form-label">{t('tasks.db_engine')}</label>
                                   <select
                                     value={formData.db_engine}
-                                    onChange={(e) => setFormData({ ...formData, db_engine: e.target.value as any })}
+                                    onChange={(e) => {
+                                      const engine = e.target.value as any;
+                                      setFormData(current => ({
+                                        ...current,
+                                        db_engine: engine,
+                                        db_dump_mode: engine === 'sqlite' ? 'single' : current.db_dump_mode,
+                                      }));
+                                    }}
                                     className="form-select"
                                   >
                                     <option value="postgres">{t('tasks.db_engine_postgres')}</option>
@@ -1021,6 +1043,28 @@ type FSListResponse = {
                                   </div>
                                 ) : (
                                   <>
+                                    <div className="col-12 col-md-4">
+                                      <label className="form-label">{t('tasks.db_dump_mode')}</label>
+                                      <select
+                                        value={formData.db_dump_mode}
+                                        onChange={(e) => setFormData({ ...formData, db_dump_mode: e.target.value as any })}
+                                        className="form-select"
+                                      >
+                                        <option value="single">{t('tasks.db_dump_mode_single')}</option>
+                                        <option value="all">{t('tasks.db_dump_mode_all')}</option>
+                                      </select>
+                                      <div className="form-text">{t('tasks.db_dump_mode_help')}</div>
+                                    </div>
+
+                                    {formData.db_dump_mode === 'all' && (
+                                      <div className="col-12">
+                                        <div className="alert alert-warning" role="alert">
+                                          <div className="fw-bold mb-1">{t('tasks.db_all_warning_title')}</div>
+                                          <div className="small">{t('tasks.db_all_warning_body')}</div>
+                                        </div>
+                                      </div>
+                                    )}
+
                                     <div className="col-12 col-md-6">
                                       <label className="form-label">{t('tasks.db_host')}</label>
                                       <input
@@ -1057,16 +1101,26 @@ type FSListResponse = {
                                       />
                                     </div>
 
-                                    <div className="col-12 col-md-6">
-                                      <label className="form-label">{t('tasks.db_name')}</label>
-                                      <input
-                                        type="text"
-                                        value={formData.db_name}
-                                        onChange={(e) => setFormData({ ...formData, db_name: e.target.value })}
-                                        className="form-control"
-                                        required
-                                      />
-                                    </div>
+                                    {(formData.db_dump_mode === 'single' || formData.db_engine === 'postgres') && (
+                                      <div className="col-12 col-md-6">
+                                        <label className="form-label">{t('tasks.db_name')}</label>
+                                        <input
+                                          type="text"
+                                          value={formData.db_name}
+                                          onChange={(e) => setFormData({ ...formData, db_name: e.target.value })}
+                                          className="form-control"
+                                          required={formData.db_dump_mode === 'single'}
+                                          placeholder={
+                                            formData.db_dump_mode === 'all' && formData.db_engine === 'postgres'
+                                              ? t('tasks.db_name_placeholder_postgres_all')
+                                              : ''
+                                          }
+                                        />
+                                        {formData.db_dump_mode === 'all' && formData.db_engine === 'postgres' && (
+                                          <div className="form-text">{t('tasks.db_name_help_postgres_all')}</div>
+                                        )}
+                                      </div>
+                                    )}
 
                                     <div className="col-12 col-md-6">
                                       <label className="form-label">{t('tasks.db_password')}</label>

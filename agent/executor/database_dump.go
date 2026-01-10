@@ -23,14 +23,31 @@ func (te *TaskExecutor) prepareDatabaseDump(ctx context.Context, task *TaskInfo,
 
 	switch engine {
 	case "postgres":
+		if dbDumpMode(task) == "all" {
+			return te.preparePostgresDumpAll(ctx, task, taskWorkDir)
+		}
 		return te.preparePostgresDump(ctx, task, taskWorkDir)
 	case "mysql":
+		if dbDumpMode(task) == "all" {
+			return te.prepareMySQLDumpAll(ctx, task, taskWorkDir)
+		}
 		return te.prepareMySQLDump(ctx, task, taskWorkDir)
 	case "sqlite":
 		return te.prepareSQLiteDump(ctx, task, taskWorkDir)
 	default:
 		return "", fmt.Errorf("unsupported db_engine: %s", engine)
 	}
+}
+
+func dbDumpMode(task *TaskInfo) string {
+	if task == nil || task.DBDumpMode == nil {
+		return "single"
+	}
+	mode := strings.ToLower(strings.TrimSpace(*task.DBDumpMode))
+	if mode == "" {
+		return "single"
+	}
+	return mode
 }
 
 func (te *TaskExecutor) preparePostgresDump(ctx context.Context, task *TaskInfo, taskWorkDir string) (string, error) {
@@ -80,6 +97,55 @@ func (te *TaskExecutor) preparePostgresDump(ctx context.Context, task *TaskInfo,
 	return outPath, nil
 }
 
+func (te *TaskExecutor) preparePostgresDumpAll(ctx context.Context, task *TaskInfo, taskWorkDir string) (string, error) {
+	host, user, port, err := normalizeDBConnNoName(task, "postgres")
+	if err != nil {
+		return "", err
+	}
+
+	exe, err := exec.LookPath("pg_dumpall")
+	if err != nil {
+		return "", fmt.Errorf("pg_dumpall not found: please install PostgreSQL client tools on the agent host")
+	}
+
+	outPath := filepath.Join(taskWorkDir, "db.sql")
+	outFile, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return "", err
+	}
+	defer outFile.Close()
+
+	args := []string{
+		"--host", host,
+		"--port", port,
+		"--username", user,
+		"--no-role-passwords",
+	}
+
+	env := []string{}
+	if strings.TrimSpace(task.DBPassword) != "" {
+		env = append(env, "PGPASSWORD="+task.DBPassword)
+	}
+	if task.DBName != nil && strings.TrimSpace(*task.DBName) != "" {
+		env = append(env, "PGDATABASE="+strings.TrimSpace(*task.DBName))
+	}
+
+	if te.logHook != nil {
+		te.logHook(task.ExecutionID, fmt.Sprintf("[db] pg_dumpall %s@%s:%s -> %s", user, host, port, outPath))
+		te.logHook(task.ExecutionID, formatCommandForLog(exe, args))
+		te.logHook(task.ExecutionID, "[db] note: pg_dumpall uses --no-role-passwords (role password hashes are not exported)")
+	}
+
+	if err := te.runExternalCommandToFile(ctx, task.ExecutionID, taskWorkDir, env, exe, args, outFile); err != nil {
+		return "", fmt.Errorf("pg_dumpall failed: %w", err)
+	}
+
+	if te.logHook != nil {
+		te.logHook(task.ExecutionID, fmt.Sprintf("[db] pg_dumpall completed: %s", outPath))
+	}
+	return outPath, nil
+}
+
 func (te *TaskExecutor) prepareMySQLDump(ctx context.Context, task *TaskInfo, taskWorkDir string) (string, error) {
 	host, user, name, port, err := normalizeDBConn(task, "mysql")
 	if err != nil {
@@ -120,6 +186,58 @@ func (te *TaskExecutor) prepareMySQLDump(ctx context.Context, task *TaskInfo, ta
 
 	if te.logHook != nil {
 		te.logHook(task.ExecutionID, fmt.Sprintf("[db] mysqldump %s@%s:%s/%s -> %s", user, host, port, name, outPath))
+		te.logHook(task.ExecutionID, formatCommandForLog(exe, args))
+	}
+
+	if err := te.runExternalCommandToFile(ctx, task.ExecutionID, taskWorkDir, env, exe, args, outFile); err != nil {
+		return "", fmt.Errorf("mysqldump failed: %w", err)
+	}
+
+	if te.logHook != nil {
+		te.logHook(task.ExecutionID, fmt.Sprintf("[db] mysqldump completed: %s", outPath))
+	}
+	return outPath, nil
+}
+
+func (te *TaskExecutor) prepareMySQLDumpAll(ctx context.Context, task *TaskInfo, taskWorkDir string) (string, error) {
+	host, user, port, err := normalizeDBConnNoName(task, "mysql")
+	if err != nil {
+		return "", err
+	}
+
+	exe, err := exec.LookPath("mysqldump")
+	if err != nil {
+		if alt, errAlt := exec.LookPath("mariadb-dump"); errAlt == nil {
+			exe = alt
+		} else {
+			return "", fmt.Errorf("mysqldump not found: please install MySQL/MariaDB client tools on the agent host")
+		}
+	}
+
+	outPath := filepath.Join(taskWorkDir, "db.sql")
+	outFile, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return "", err
+	}
+	defer outFile.Close()
+
+	args := []string{
+		"--host", host,
+		"--port", port,
+		"--user", user,
+		"--all-databases",
+		"--single-transaction",
+		"--quick",
+		"--lock-tables=false",
+	}
+
+	env := []string{}
+	if strings.TrimSpace(task.DBPassword) != "" {
+		env = append(env, "MYSQL_PWD="+task.DBPassword)
+	}
+
+	if te.logHook != nil {
+		te.logHook(task.ExecutionID, fmt.Sprintf("[db] mysqldump --all-databases %s@%s:%s -> %s", user, host, port, outPath))
 		te.logHook(task.ExecutionID, formatCommandForLog(exe, args))
 	}
 
@@ -213,6 +331,32 @@ func normalizeDBConn(task *TaskInfo, engine string) (host, user, name, port stri
 	}
 	port = fmt.Sprintf("%d", p)
 	return host, user, name, port, nil
+}
+
+func normalizeDBConnNoName(task *TaskInfo, engine string) (host, user, port string, err error) {
+	if task.DBHost == nil || strings.TrimSpace(*task.DBHost) == "" {
+		return "", "", "", fmt.Errorf("%s task missing db_host", engine)
+	}
+	if task.DBUser == nil || strings.TrimSpace(*task.DBUser) == "" {
+		return "", "", "", fmt.Errorf("%s task missing db_user", engine)
+	}
+
+	host = strings.TrimSpace(*task.DBHost)
+	user = strings.TrimSpace(*task.DBUser)
+
+	p := 0
+	if task.DBPort != nil {
+		p = *task.DBPort
+	}
+	if p <= 0 {
+		if engine == "postgres" {
+			p = 5432
+		} else {
+			p = 3306
+		}
+	}
+	port = fmt.Sprintf("%d", p)
+	return host, user, port, nil
 }
 
 func (te *TaskExecutor) runExternalCommand(ctx context.Context, executionID, workDir string, env []string, exe string, args []string) error {

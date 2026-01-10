@@ -105,6 +105,7 @@ type hubTaskDetails struct {
 	EncryptionPassword2 string   `json:"encryption_password2"`
 	MaxRetention        int      `json:"max_retention"`
 	DBEngine            *string  `json:"db_engine"`
+	DBDumpMode          *string  `json:"db_dump_mode"`
 	DBHost              *string  `json:"db_host"`
 	DBPort              *int     `json:"db_port"`
 	DBUser              *string  `json:"db_user"`
@@ -699,17 +700,34 @@ func (a *Agent) executeTask(actionExecutionID string, taskData json.RawMessage) 
 		if details.DBEngine != nil {
 			engine = strings.ToLower(strings.TrimSpace(*details.DBEngine))
 		}
+		dumpMode := "single"
+		if details.DBDumpMode != nil {
+			if v := strings.ToLower(strings.TrimSpace(*details.DBDumpMode)); v != "" {
+				dumpMode = v
+			}
+		}
 		switch engine {
 		case "postgres", "mysql":
 			if details.DBHost == nil || strings.TrimSpace(*details.DBHost) == "" ||
-				details.DBUser == nil || strings.TrimSpace(*details.DBUser) == "" ||
-				details.DBName == nil || strings.TrimSpace(*details.DBName) == "" {
+				details.DBUser == nil || strings.TrimSpace(*details.DBUser) == "" {
 				a.sendExecutionUpdate(details.ExecutionID, "failed", "task payload missing database connection fields")
+				return
+			}
+			if dumpMode == "single" && (details.DBName == nil || strings.TrimSpace(*details.DBName) == "") {
+				a.sendExecutionUpdate(details.ExecutionID, "failed", "task payload missing db_name")
+				return
+			}
+			if dumpMode != "single" && dumpMode != "all" {
+				a.sendExecutionUpdate(details.ExecutionID, "failed", "task payload has invalid db_dump_mode")
 				return
 			}
 		case "sqlite":
 			if details.DBPath == nil || strings.TrimSpace(*details.DBPath) == "" {
 				a.sendExecutionUpdate(details.ExecutionID, "failed", "task payload missing db_path for sqlite")
+				return
+			}
+			if dumpMode != "single" {
+				a.sendExecutionUpdate(details.ExecutionID, "failed", "task payload has invalid db_dump_mode")
 				return
 			}
 		default:
@@ -761,6 +779,7 @@ func (a *Agent) executeTask(actionExecutionID string, taskData json.RawMessage) 
 		EncryptionPassword2: details.EncryptionPassword2,
 		MaxRetention:        details.MaxRetention,
 		DBEngine:            details.DBEngine,
+		DBDumpMode:          details.DBDumpMode,
 		DBHost:              details.DBHost,
 		DBPort:              details.DBPort,
 		DBUser:              details.DBUser,

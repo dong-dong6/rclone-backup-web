@@ -384,6 +384,7 @@ type TaskUpsertRequest struct {
 	SourceType      string   `json:"source_type,omitempty"`
 	SourcePath      string   `json:"source_path,omitempty"`
 	DBEngine        string   `json:"db_engine,omitempty"`
+	DBDumpMode      string   `json:"db_dump_mode,omitempty"`
 	DBHost          string   `json:"db_host,omitempty"`
 	DBPort          *int     `json:"db_port,omitempty"`
 	DBUser          string   `json:"db_user,omitempty"`
@@ -451,6 +452,17 @@ func normalizeDBEngine(engine string) (string, bool) {
 		return "mysql", true
 	case "sqlite", "sqlite3":
 		return "sqlite", true
+	default:
+		return "", false
+	}
+}
+
+func normalizeDBDumpMode(mode string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", "single", "one":
+		return "single", true
+	case "all", "all_databases", "alldatabases":
+		return "all", true
 	default:
 		return "", false
 	}
@@ -635,6 +647,7 @@ func (h *Handler) CreateTask(c *gin.Context) {
 
 	var (
 		dbEngine      *string
+		dbDumpMode    *string
 		dbHost        *string
 		dbPort        *int
 		dbUser        *string
@@ -651,6 +664,17 @@ func (h *Handler) CreateTask(c *gin.Context) {
 		}
 		dbEngine = &engine
 
+		dumpMode, ok := normalizeDBDumpMode(req.DBDumpMode)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid db_dump_mode"})
+			return
+		}
+		if engine == "sqlite" && dumpMode != "single" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "db_dump_mode must be single for sqlite"})
+			return
+		}
+		dbDumpMode = &dumpMode
+
 		if engine == "sqlite" {
 			path := strings.TrimSpace(req.DBPath)
 			if path == "" {
@@ -662,8 +686,12 @@ func (h *Handler) CreateTask(c *gin.Context) {
 			host := strings.TrimSpace(req.DBHost)
 			user := strings.TrimSpace(req.DBUser)
 			name := strings.TrimSpace(req.DBName)
-			if host == "" || user == "" || name == "" {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "db_host, db_user and db_name are required for database tasks"})
+			if host == "" || user == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "db_host and db_user are required for database tasks"})
+				return
+			}
+			if dumpMode == "single" && name == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "db_name is required when db_dump_mode is single"})
 				return
 			}
 
@@ -677,7 +705,9 @@ func (h *Handler) CreateTask(c *gin.Context) {
 
 			dbHost = &host
 			dbUser = &user
-			dbName = &name
+			if name != "" {
+				dbName = &name
+			}
 			dbPort = &port
 		}
 
@@ -702,6 +732,7 @@ func (h *Handler) CreateTask(c *gin.Context) {
 		SourceType:             sourceType,
 		SourcePath:             sourcePath,
 		DBEngine:               dbEngine,
+		DBDumpMode:             dbDumpMode,
 		DBHost:                 dbHost,
 		DBPort:                 dbPort,
 		DBUser:                 dbUser,
@@ -843,6 +874,7 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 
 	var (
 		dbEngine      *string
+		dbDumpMode    *string
 		dbHost        *string
 		dbPort        *int
 		dbUser        *string
@@ -861,6 +893,21 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 			return
 		}
 		dbEngine = &engine
+
+		dumpModeInput := strings.TrimSpace(req.DBDumpMode)
+		if dumpModeInput == "" && current.DBDumpMode != nil {
+			dumpModeInput = strings.TrimSpace(*current.DBDumpMode)
+		}
+		dumpMode, ok := normalizeDBDumpMode(dumpModeInput)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid db_dump_mode"})
+			return
+		}
+		if engine == "sqlite" && dumpMode != "single" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "db_dump_mode must be single for sqlite"})
+			return
+		}
+		dbDumpMode = &dumpMode
 
 		if engine == "sqlite" {
 			path := strings.TrimSpace(req.DBPath)
@@ -885,8 +932,12 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 			if name == "" && current.DBName != nil {
 				name = strings.TrimSpace(*current.DBName)
 			}
-			if host == "" || user == "" || name == "" {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "db_host, db_user and db_name are required for database tasks"})
+			if host == "" || user == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "db_host and db_user are required for database tasks"})
+				return
+			}
+			if dumpMode == "single" && name == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "db_name is required when db_dump_mode is single"})
 				return
 			}
 
@@ -903,7 +954,11 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 
 			dbHost = &host
 			dbUser = &user
-			dbName = &name
+			if name != "" {
+				dbName = &name
+			} else if dumpMode == "single" && current.DBName != nil {
+				dbName = current.DBName
+			}
 			dbPort = &port
 		}
 
@@ -926,6 +981,7 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 		SourceType:      sourceType,
 		SourcePath:      sourcePath,
 		DBEngine:        dbEngine,
+		DBDumpMode:      dbDumpMode,
 		DBHost:          dbHost,
 		DBPort:          dbPort,
 		DBUser:          dbUser,
