@@ -208,9 +208,9 @@
       "token_label": "注册令牌",
       "token_expires": "令牌将在 {{time}} 过期",
       "instructions": "注册说明",
-      "step1": "下载Agent二进制文件",
-      "step2": "运行以下命令注册节点",
-      "step3": "节点将自动注册到系统中"
+      "step1": "在目标机器上准备 root 权限（需要 systemd）",
+      "step2": "复制注册令牌并执行安装命令",
+      "step3": "通过 systemctl / journalctl 查看运行状态"
     },
     "detail": {
       "title": "节点详情",

@@ -6,7 +6,7 @@
 # appropriate agent binary, and installs it as a system service.
 #
 # Usage:
-#   curl -sSL https://your-hub-url/install_agent.sh | bash -s -- \
+#   curl -fsSL https://your-hub-url/api/v1/agent/install.sh | sudo bash -s -- \
 #     --hub-url "https://your-hub-url" \
 #     --token "YOUR_REGISTRATION_TOKEN" \
 #     --name "your-agent-name"

@@ -62,6 +62,8 @@ interface HeartbeatEvent {
 const Agents: React.FC = () => {
   const { t } = useTranslation();
   const { subscribe } = useSSE();
+  const suggestedHubUrl =
+    typeof window !== 'undefined' ? window.location.origin : 'http://your-hub-url';
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -665,15 +667,20 @@ const Agents: React.FC = () => {
                       <li className="mb-2">1. {t('agents.register.step1')}</li>
                       <li className="mb-2">2. {t('agents.register.step2')}</li>
                       <li className="mb-2">
-                        <code className="d-block bg-dark text-light p-2 rounded">
-                          curl -L http://hub:8080/api/v1/agent/download -o rclone-backup-agent<br />
-                          chmod +x rclone-backup-agent<br />
-                          ./rclone-backup-agent register \\<br />
-                          &nbsp;&nbsp;--hub-url http://hub:8080 \\<br />
-                          &nbsp;&nbsp;--token {registrationToken} \\<br />
-                          &nbsp;&nbsp;--name my-agent \\<br />
-                          &nbsp;&nbsp;--daemon
-                        </code>
+                        <pre className="d-block bg-dark text-light p-2 rounded mb-0">
+                          <code>
+                            {`HUB_URL="${suggestedHubUrl}"
+TOKEN="${registrationToken}"
+
+curl -fsSL "$HUB_URL/api/v1/agent/install.sh" | sudo bash -s -- \\
+  --hub-url "$HUB_URL" \\
+  --token "$TOKEN" \\
+  --name "my-agent"
+
+sudo systemctl status rclone-agent --no-pager
+sudo journalctl -u rclone-agent -f`}
+                          </code>
+                        </pre>
                       </li>
                       <li>3. {t('agents.register.step3')}</li>
                     </ol>

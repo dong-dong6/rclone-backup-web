@@ -130,9 +130,9 @@
       "token_label": "Registration Token",
       "token_expires": "Token expires at {{time}}",
       "instructions": "Registration Instructions",
-      "step1": "Download the Agent binary file",
-      "step2": "Run the following command to register the agent",
-      "step3": "The agent will automatically register to the system"
+      "step1": "On the target machine, ensure root access (systemd required)",
+      "step2": "Copy the token and run the install command",
+      "step3": "Use systemctl / journalctl to verify status"
     },
     "detail": {
       "title": "Agent Details",
