@@ -200,9 +200,6 @@ cat > agent-config.json << EOF
   "max_concurrent": ${MAX_CONCURRENT},
   "heartbeat_interval": ${HEARTBEAT_INTERVAL},
   "enable_local_fallback": true,
-  "enable_auto_update": false,
-  "enable_metrics": true,
-  "metrics_port": 9091,
   "run_as_service": false,
   "log_file": "",
   "pid_file": ""

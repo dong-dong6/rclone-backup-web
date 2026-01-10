@@ -7,7 +7,7 @@
 - Hub API 前缀：`/api/v1`
 - 认证
   - Admin：`Authorization: Bearer <jwt>`（或 SSE 使用 `/events?token=<jwt>`）
-  - Agent：`Authorization: Bearer <api-key>` 或 `Authorization: Bearer <agent-id>:<api-key>`
+  - Agent：`Authorization: Bearer <agent-id>:<api-key>`
   - Local Agent API（用于 Hub 测试 Remote）：`Authorization: Bearer <LOCAL_AGENT_TOKEN>`（可选）
 - 错误返回：通常为 `{"error":"..."}`（HTTP 4xx/5xx）
 
@@ -142,7 +142,7 @@
 ### 注册/下载（无鉴权）
 
 - `POST /api/v1/agent/register`
-  - Body：`{ "token": string, "name": string }`
+  - Body：`{ "token": string, "name": string, "is_local"?: boolean }`
   - 201：`{ "agent_id": string, "api_key": string }`
 - `GET /api/v1/agent/download`
   - Query（可选）：`platform`、`arch`
@@ -150,26 +150,11 @@
 - `GET /api/v1/agent/install.sh`
   - 200：安装脚本（`text/plain`）
 
-### 心跳/任务/上报（Agent 鉴权）
+### WebSocket（Agent 鉴权）
 
-- `POST /api/v1/agent/heartbeat`
-  - Body：`{ "status": "idle"|"running_task"|... }`（多余字段会被忽略，便于兼容旧 Agent）
-  - 200：`{ actions: [{ action, type?, execution_id?, trigger_mode?, task?, config? }] }`
-    - `EXECUTE_TASK`：下发任务（`task` 同时包含新旧字段，兼容多版本 Agent）
-    - `CANCEL_TASK`：取消执行
-    - `SYNC_CONFIG` / `SYNC_TASKS`：触发配置同步（新/旧 Agent 各取其一）
-- `GET /api/v1/agent/tasks`
-  - 默认（现代格式）：`{ tasks:[{task_id, remote_id, source_path, destination_path, schedule, rclone_args}], remotes:[{remote_id, config_b64}] }`
-  - 兼容旧格式：当使用 `Authorization: Bearer <agent-id>:<api-key>` 或 `?format=legacy` 时，返回 `[{id,name,schedule,remote_config,source_path,dest_path,rclone_args,enabled}]`
-- `PUT /api/v1/agent/executions/:executionId`
-  - Body：`{ status, log_output?, ended_at? }`
-  - 200：`{ status:"updated" }`
-- `POST /api/v1/agent/executions/:executionId/logs`
-  - Body：`{ logs:[{timestamp,message}] }`
-  - 202：`{ message:"Logs received" }`
-- 兼容旧 Agent（已保留）
-  - `POST /api/v1/agent/execution/status`：`{ execution_id, status, timestamp?, error? }`
-  - `POST /api/v1/agent/execution/logs`：`{ execution_id, logs:[string] }`
+- `GET /api/v1/agent/ws`（WebSocket Upgrade）
+  - Header：`Authorization: Bearer <agent-id>:<api-key>`
+  - Hub ↔ Agent 通过 WS 传输心跳、任务下发/取消、日志与状态上报、远程目录浏览、配置同步等消息（消息协议见代码：`hub/api/agent_ws_protocol.go`、`agent/services/ws_protocol.go`）。
 
 ---
 
@@ -184,4 +169,3 @@
   - 200：`{ status:"healthy", time:<unix> }`
 - `GET /api/version`（Bearer 可选）
   - 200：`{ agent_version, rclone_version }`
-

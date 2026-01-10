@@ -6,7 +6,7 @@ BUILD_TIME = $(shell date -u '+%Y-%m-%d %H:%M:%S UTC')
 GIT_COMMIT = $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GO = go
 BINARY = rclone-agent
-MAIN = main_standalone.go
+MAIN = main.go
 OUTPUT_DIR = ./dist
 
 # Build flags

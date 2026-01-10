@@ -49,7 +49,7 @@ for PLATFORM in "${PLATFORMS[@]}"; do
     GOOS=$GOOS GOARCH=$GOARCH go build \
         -ldflags "${LDFLAGS}" \
         -o "${OUTPUT_DIR}/${OUTPUT_NAME}" \
-        main_standalone.go
+        main.go
     
     # Compress with UPX if available (except for macOS)
     if command -v upx &> /dev/null && [ "$GOOS" != "darwin" ]; then
@@ -99,9 +99,6 @@ cat > "${OUTPUT_DIR}/agent.json.sample" <<EOF
   "max_concurrent": 3,
   "heartbeat_interval": 30,
   "enable_local_fallback": true,
-  "enable_auto_update": false,
-  "enable_metrics": true,
-  "metrics_port": 9091,
   "run_as_service": false,
   "log_file": "",
   "pid_file": ""
@@ -110,9 +107,9 @@ EOF
 echo -e "${GREEN}  ✓ Created agent.json.sample${NC}"
 
 # Copy installation script
-cp scripts/install-service.sh "${OUTPUT_DIR}/"
-chmod +x "${OUTPUT_DIR}/install-service.sh"
-echo -e "${GREEN}  ✓ Copied install-service.sh${NC}"
+cp scripts/install_agent.sh "${OUTPUT_DIR}/"
+chmod +x "${OUTPUT_DIR}/install_agent.sh"
+echo -e "${GREEN}  ✓ Copied install_agent.sh${NC}"
 
 # Create README
 cat > "${OUTPUT_DIR}/README.md" <<EOF
@@ -136,7 +133,7 @@ cp agent.json.sample agent.json
 
 ### 2. Install as System Service (Linux)
 \`\`\`bash
-sudo ./install-service.sh --hub-url https://hub.example.com --token YOUR_TOKEN
+sudo ./install_agent.sh --hub-url https://hub.example.com --token YOUR_TOKEN
 \`\`\`
 
 ### 3. Command Line Options
@@ -160,7 +157,6 @@ sudo ./install-service.sh --hub-url https://hub.example.com --token YOUR_TOKEN
 - ✅ Sandboxed task execution
 - ✅ Local fallback when hub is unreachable
 - ✅ System service integration
-- ✅ Prometheus metrics endpoint
 - ✅ Automatic retries and error recovery
 
 ## System Requirements

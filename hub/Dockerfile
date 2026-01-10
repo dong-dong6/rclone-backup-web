@@ -63,27 +63,27 @@ COPY agent/ ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s -X main.Version=${VERSION:-dev}" \
     -o rclone-backup-agent-linux-amd64 \
-    ./main_standalone.go
+    ./main.go
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
     -ldflags="-w -s -X main.Version=${VERSION:-dev}" \
     -o rclone-backup-agent-linux-arm64 \
-    ./main_standalone.go
+    ./main.go
 
 RUN CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build \
     -ldflags="-w -s -X main.Version=${VERSION:-dev}" \
     -o rclone-backup-agent-darwin-amd64 \
-    ./main_standalone.go
+    ./main.go
 
 RUN CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build \
     -ldflags="-w -s -X main.Version=${VERSION:-dev}" \
     -o rclone-backup-agent-darwin-arm64 \
-    ./main_standalone.go
+    ./main.go
 
 RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
     -ldflags="-w -s -X main.Version=${VERSION:-dev}" \
     -o rclone-backup-agent-windows-amd64.exe \
-    ./main_standalone.go
+    ./main.go
 
 # Organize binaries
 RUN mkdir -p /agent-binaries && \

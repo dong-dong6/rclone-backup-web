@@ -279,7 +279,7 @@ install_agent() {
     if [ -d "./agent" ] && command -v go &> /dev/null; then
         print_info "从源码编译Agent..."
         cd agent
-        go build -o $BINARY_NAME ./main_standalone.go
+        go build -o $BINARY_NAME ./main.go
         $SUDO cp $BINARY_NAME $AGENT_BIN
         $SUDO chmod +x $AGENT_BIN
         cd ..
