@@ -80,9 +80,6 @@ type TransferProgress struct {
 func NewTaskExecutor(workDir string, maxConcurrent int) (*TaskExecutor, error) {
 	// Initialize rclone manager
 	rcloneManager := rclone_manager.NewManager(workDir)
-	if _, err := rcloneManager.EnsureRcloneExists(); err != nil {
-		return nil, fmt.Errorf("failed to ensure rclone: %w", err)
-	}
 
 	// Initialize config manager
 	configManager := rclone_manager.NewConfigManager(workDir)
@@ -127,6 +124,14 @@ func (te *TaskExecutor) ExecuteTask(ctx context.Context, task *TaskInfo) error {
 	task.StartedAt = time.Now()
 
 	log.Printf("[Executor] Starting task %s (execution: %s)", task.TaskID, task.ExecutionID)
+
+	if _, err := te.rcloneManager.EnsureRcloneExists(); err != nil {
+		if te.logHook != nil {
+			te.logHook(task.ExecutionID, fmt.Sprintf("[rclone] ensure failed: %v", err))
+		}
+		task.Status = "failed"
+		return fmt.Errorf("failed to ensure rclone: %w", err)
+	}
 
 	// Create isolated work directory
 	taskWorkDir := filepath.Join(te.workDir, "tasks", task.ExecutionID)

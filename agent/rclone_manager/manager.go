@@ -2,60 +2,102 @@ package rclone_manager
 
 import (
 	"archive/zip"
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
 const (
 	RcloneVersion         = "v1.67.0"
 	RcloneDownloadRetries = 3
-	RcloneDownloadTimeout = 5 * time.Minute
+	RcloneDownloadTimeout = 60 * time.Minute
 )
 
 type Manager struct {
 	workDir        string
 	executablePath string
 	version        string
+
+	ensureMu       sync.Mutex
+	ensuring       bool
+	ensureWait     chan struct{}
+	lastEnsureErr  error
 }
 
 // NewManager creates a new rclone manager
 func NewManager(workDir string) *Manager {
-	return &Manager{
-		workDir: workDir,
-		version: RcloneVersion,
-	}
-}
-
-// EnsureRcloneExists checks if rclone exists and downloads it if not
-func (m *Manager) EnsureRcloneExists() (string, error) {
-	// Determine the executable name based on OS
 	execName := "rclone"
 	if runtime.GOOS == "windows" {
 		execName = "rclone.exe"
 	}
 
-	m.executablePath = filepath.Join(m.workDir, "bin", execName)
+	return &Manager{
+		workDir:        workDir,
+		executablePath: filepath.Join(workDir, "bin", execName),
+		version:        RcloneVersion,
+	}
+}
 
-	// Check if already exists
+// EnsureRcloneExists checks if rclone exists and downloads it if not
+func (m *Manager) EnsureRcloneExists() (string, error) {
 	if m.isRcloneValid() {
 		log.Printf("[RcloneManager] Found existing rclone executable: %s", m.executablePath)
 		return m.executablePath, nil
 	}
+
+	m.ensureMu.Lock()
+	if m.isRcloneValid() {
+		m.ensureMu.Unlock()
+		log.Printf("[RcloneManager] Found existing rclone executable: %s", m.executablePath)
+		return m.executablePath, nil
+	}
+
+	if m.ensuring {
+		wait := m.ensureWait
+		m.ensureMu.Unlock()
+		if wait != nil {
+			<-wait
+		}
+		if m.isRcloneValid() {
+			log.Printf("[RcloneManager] Found existing rclone executable: %s", m.executablePath)
+			return m.executablePath, nil
+		}
+		m.ensureMu.Lock()
+		err := m.lastEnsureErr
+		m.ensureMu.Unlock()
+		if err == nil {
+			err = fmt.Errorf("rclone is still missing after ensure")
+		}
+		return "", err
+	}
+
+	m.ensuring = true
+	wait := make(chan struct{})
+	m.ensureWait = wait
+	m.ensureMu.Unlock()
 
 	log.Printf("[RcloneManager] Rclone not found or invalid. Starting download...")
 
 	// Create bin directory
 	binDir := filepath.Dir(m.executablePath)
 	if err := os.MkdirAll(binDir, 0755); err != nil {
+		m.ensureMu.Lock()
+		m.lastEnsureErr = err
+		m.ensuring = false
+		close(wait)
+		m.ensureMu.Unlock()
 		return "", fmt.Errorf("failed to create bin directory: %w", err)
 	}
 
@@ -74,8 +116,19 @@ func (m *Manager) EnsureRcloneExists() (string, error) {
 		}
 
 		log.Printf("[RcloneManager] Rclone downloaded and installed successfully at: %s", m.executablePath)
+		m.ensureMu.Lock()
+		m.lastEnsureErr = nil
+		m.ensuring = false
+		close(wait)
+		m.ensureMu.Unlock()
 		return m.executablePath, nil
 	}
+
+	m.ensureMu.Lock()
+	m.lastEnsureErr = lastErr
+	m.ensuring = false
+	close(wait)
+	m.ensureMu.Unlock()
 
 	return "", fmt.Errorf("failed after %d retries: %w", RcloneDownloadRetries, lastErr)
 }
@@ -103,67 +156,140 @@ func (m *Manager) isRcloneValid() bool {
 
 // downloadRclone downloads and extracts rclone
 func (m *Manager) downloadRclone() error {
-	// Determine download URL
-	url, err := m.getRcloneDownloadURL()
+	downloadURLs, zipName, err := m.getRcloneDownloadURLs()
 	if err != nil {
 		return fmt.Errorf("failed to determine download URL: %w", err)
 	}
 
-	log.Printf("[RcloneManager] Downloading from: %s", url)
-
-	// Create temporary file for download
-	tmpFile, err := os.CreateTemp("", "rclone-*.zip")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
-
-	// Download with timeout
-	client := &http.Client{
-		Timeout: RcloneDownloadTimeout,
-	}
-
-	resp, err := client.Get(url)
-	if err != nil {
-		return fmt.Errorf("failed to download: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed with status: %s", resp.Status)
-	}
-
-	// Copy to temp file with progress reporting
-	written, err := m.copyWithProgress(tmpFile, resp.Body, resp.ContentLength)
-	if err != nil {
-		return fmt.Errorf("failed to save download: %w", err)
-	}
-
-	log.Printf("[RcloneManager] Downloaded %d bytes", written)
-
-	expectedChecksum, allowInsecure := m.getExpectedChecksum()
-	if expectedChecksum != "" {
-		if err := m.VerifyChecksum(tmpFile.Name(), expectedChecksum); err != nil {
-			return fmt.Errorf("checksum verification failed: %w", err)
+	var lastErr error
+	for _, downloadURL := range downloadURLs {
+		downloadURL = strings.TrimSpace(downloadURL)
+		if downloadURL == "" {
+			continue
 		}
-		log.Printf("[RcloneManager] Checksum verified for %s", url)
-	} else if !allowInsecure {
-		return fmt.Errorf("missing expected checksum for rclone download; set RCLONE_CHECKSUM or RCLONE_CHECKSUM_%s_%s, or set RCLONE_ALLOW_INSECURE_DOWNLOADS=true to bypass (not recommended)", strings.ToUpper(runtime.GOOS), strings.ToUpper(runtime.GOARCH))
-	} else {
-		log.Printf("[RcloneManager] Skipping checksum verification (RCLONE_ALLOW_INSECURE_DOWNLOADS=true)")
+
+		log.Printf("[RcloneManager] Downloading from: %s", downloadURL)
+
+		// Create temporary file for download
+		tmpFile, err := os.CreateTemp("", "rclone-*.zip")
+		if err != nil {
+			return fmt.Errorf("failed to create temp file: %w", err)
+		}
+		tmpPath := tmpFile.Name()
+
+		// Download with timeout
+		client := &http.Client{
+			Timeout: RcloneDownloadTimeout,
+		}
+
+		resp, err := client.Get(downloadURL)
+		if err != nil {
+			_ = tmpFile.Close()
+			_ = os.Remove(tmpPath)
+			lastErr = fmt.Errorf("failed to download: %w", err)
+			log.Printf("[RcloneManager] Download attempt failed: %v", lastErr)
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			_ = tmpFile.Close()
+			_ = os.Remove(tmpPath)
+			lastErr = fmt.Errorf("download failed with status: %s", resp.Status)
+			log.Printf("[RcloneManager] Download attempt failed: %v", lastErr)
+			continue
+		}
+
+		// Copy to temp file with progress reporting
+		written, err := m.copyWithProgress(tmpFile, resp.Body, resp.ContentLength)
+		_ = resp.Body.Close()
+		if err != nil {
+			_ = tmpFile.Close()
+			_ = os.Remove(tmpPath)
+			lastErr = fmt.Errorf("failed to save download: %w", err)
+			log.Printf("[RcloneManager] Download attempt failed: %v", lastErr)
+			continue
+		}
+
+		log.Printf("[RcloneManager] Downloaded %d bytes", written)
+
+		if err := tmpFile.Close(); err != nil {
+			_ = os.Remove(tmpPath)
+			lastErr = fmt.Errorf("failed to finalize download: %w", err)
+			log.Printf("[RcloneManager] Download attempt failed: %v", lastErr)
+			continue
+		}
+
+		requireChecksum := strings.EqualFold(strings.TrimSpace(os.Getenv("RCLONE_REQUIRE_CHECKSUM")), "true")
+		expectedChecksum, allowInsecure := m.getExpectedChecksum()
+		if allowInsecure && !requireChecksum && expectedChecksum == "" {
+			log.Printf("[RcloneManager] Skipping checksum verification (RCLONE_ALLOW_INSECURE_DOWNLOADS=true)")
+		} else {
+			checksum := expectedChecksum
+			if checksum == "" {
+				if fetched, err := m.fetchChecksum(downloadURL, zipName); err == nil {
+					checksum = fetched
+				} else if requireChecksum {
+					_ = os.Remove(tmpPath)
+					lastErr = fmt.Errorf("checksum required but not available: %w", err)
+					log.Printf("[RcloneManager] Download attempt failed: %v", lastErr)
+					continue
+				} else {
+					log.Printf("[RcloneManager] Warning: checksum unavailable, proceeding without verification (set RCLONE_REQUIRE_CHECKSUM=true to enforce)")
+				}
+			}
+
+			if checksum != "" {
+				if err := m.VerifyChecksum(tmpPath, checksum); err != nil {
+					_ = os.Remove(tmpPath)
+					lastErr = fmt.Errorf("checksum verification failed: %w", err)
+					log.Printf("[RcloneManager] Download attempt failed: %v", lastErr)
+					continue
+				}
+				log.Printf("[RcloneManager] Checksum verified for %s", downloadURL)
+			}
+		}
+
+		// Extract rclone executable from zip
+		if err := m.extractRclone(tmpPath); err != nil {
+			_ = os.Remove(tmpPath)
+			lastErr = fmt.Errorf("failed to extract: %w", err)
+			log.Printf("[RcloneManager] Download attempt failed: %v", lastErr)
+			continue
+		}
+
+		_ = os.Remove(tmpPath)
+		lastErr = nil
+
+		if lastErr == nil {
+			return nil
+		}
 	}
 
-	// Extract rclone executable from zip
-	if err := m.extractRclone(tmpFile.Name()); err != nil {
-		return fmt.Errorf("failed to extract: %w", err)
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no download URLs available")
 	}
-
-	return nil
+	return lastErr
 }
 
-// getRcloneDownloadURL constructs the download URL for the current platform
-func (m *Manager) getRcloneDownloadURL() (string, error) {
+func (m *Manager) getRcloneDownloadURLs() ([]string, string, error) {
+	if value := strings.TrimSpace(os.Getenv("RCLONE_DOWNLOAD_URLS")); value != "" {
+		parts := strings.Split(value, ",")
+		urls := make([]string, 0, len(parts))
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				urls = append(urls, part)
+			}
+		}
+		if len(urls) > 0 {
+			return urls, "", nil
+		}
+	}
+
+	if value := strings.TrimSpace(os.Getenv("RCLONE_DOWNLOAD_URL")); value != "" {
+		return []string{value}, "", nil
+	}
+
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
 
@@ -177,15 +303,24 @@ func (m *Manager) getRcloneDownloadURL() (string, error) {
 
 	rcloneArch, ok := archMap[goarch]
 	if !ok {
-		return "", fmt.Errorf("unsupported architecture: %s", goarch)
+		return nil, "", fmt.Errorf("unsupported architecture: %s", goarch)
 	}
 
 	// Construct download URL
 	// Format: https://github.com/rclone/rclone/releases/download/v1.67.0/rclone-v1.67.0-linux-amd64.zip
 	zipName := fmt.Sprintf("rclone-%s-%s-%s.zip", m.version, goos, rcloneArch)
-	url := fmt.Sprintf("https://github.com/rclone/rclone/releases/download/%s/%s", m.version, zipName)
+	downloadURLs := []string{
+		fmt.Sprintf("https://downloads.rclone.org/%s", zipName),
+	}
 
-	return url, nil
+	githubURL := fmt.Sprintf("https://github.com/rclone/rclone/releases/download/%s/%s", m.version, zipName)
+	if proxy := strings.TrimSpace(os.Getenv("RCLONE_GITHUB_PROXY")); proxy != "" {
+		proxy = strings.TrimRight(proxy, "/")
+		downloadURLs = append(downloadURLs, proxy+"/"+githubURL)
+	}
+	downloadURLs = append(downloadURLs, githubURL)
+
+	return downloadURLs, zipName, nil
 }
 
 // copyWithProgress copies from src to dst with progress reporting
@@ -307,6 +442,123 @@ func (m *Manager) getExpectedChecksum() (string, bool) {
 
 	allowInsecure := strings.EqualFold(os.Getenv("RCLONE_ALLOW_INSECURE_DOWNLOADS"), "true")
 	return "", allowInsecure
+}
+
+func (m *Manager) fetchChecksum(downloadURL, zipName string) (string, error) {
+	downloadURL = strings.TrimSpace(downloadURL)
+	if downloadURL == "" {
+		return "", fmt.Errorf("download url is empty")
+	}
+
+	zipName = strings.TrimSpace(zipName)
+	if zipName == "" {
+		if parsed, parseErr := url.Parse(downloadURL); parseErr == nil && strings.TrimSpace(parsed.Path) != "" {
+			zipName = path.Base(parsed.Path)
+		} else {
+			zipName = path.Base(downloadURL)
+		}
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	shaURL := downloadURL + ".sha256"
+	if checksum, err := fetchChecksumFromSHAFile(client, shaURL); err == nil && checksum != "" {
+		return checksum, nil
+	}
+
+	u, err := url.Parse(downloadURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid download url: %w", err)
+	}
+	u.RawQuery = ""
+	u.Fragment = ""
+	u.Path = path.Join(path.Dir(u.Path), "SHA256SUMS")
+
+	checksum, err := fetchChecksumFromSHA256SUMS(client, u.String(), zipName)
+	if err != nil {
+		return "", err
+	}
+	if checksum == "" {
+		return "", fmt.Errorf("checksum not found")
+	}
+	return checksum, nil
+}
+
+func fetchChecksumFromSHAFile(client *http.Client, shaURL string) (string, error) {
+	resp, err := client.Get(shaURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("sha256 url returned %s", resp.Status)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	if err != nil {
+		return "", err
+	}
+
+	line := strings.TrimSpace(string(body))
+	if line == "" {
+		return "", fmt.Errorf("sha256 response empty")
+	}
+
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return "", fmt.Errorf("sha256 response malformed")
+	}
+
+	sum := strings.TrimSpace(fields[0])
+	sum = strings.TrimPrefix(sum, "SHA256:")
+	sum = strings.TrimPrefix(sum, "sha256:")
+	sum = strings.TrimSpace(sum)
+	if len(sum) != 64 {
+		return "", fmt.Errorf("sha256 checksum length invalid")
+	}
+	return strings.ToLower(sum), nil
+}
+
+func fetchChecksumFromSHA256SUMS(client *http.Client, sumsURL string, zipName string) (string, error) {
+	resp, err := client.Get(sumsURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("SHA256SUMS url returned %s", resp.Status)
+	}
+
+	scanner := bufio.NewScanner(io.LimitReader(resp.Body, 8*1024*1024))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+
+		sum := strings.TrimSpace(fields[0])
+		name := strings.TrimSpace(fields[len(fields)-1])
+		name = strings.TrimPrefix(name, "*")
+		if name != zipName {
+			continue
+		}
+
+		if len(sum) != 64 {
+			continue
+		}
+		return strings.ToLower(sum), nil
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	return "", fmt.Errorf("checksum not found for %s", zipName)
 }
 
 // Cleanup removes the rclone executable
