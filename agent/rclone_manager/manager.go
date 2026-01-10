@@ -34,6 +34,9 @@ type Manager struct {
 	ensuring       bool
 	ensureWait     chan struct{}
 	lastEnsureErr  error
+
+	countryOnce sync.Once
+	countryCode string
 }
 
 // NewManager creates a new rclone manager
@@ -219,35 +222,32 @@ func (m *Manager) downloadRclone() error {
 			continue
 		}
 
-		requireChecksum := strings.EqualFold(strings.TrimSpace(os.Getenv("RCLONE_REQUIRE_CHECKSUM")), "true")
-		expectedChecksum, allowInsecure := m.getExpectedChecksum()
-		if allowInsecure && !requireChecksum && expectedChecksum == "" {
-			log.Printf("[RcloneManager] Skipping checksum verification (RCLONE_ALLOW_INSECURE_DOWNLOADS=true)")
-		} else {
-			checksum := expectedChecksum
-			if checksum == "" {
-				if fetched, err := m.fetchChecksum(downloadURL, zipName); err == nil {
-					checksum = fetched
-				} else if requireChecksum {
-					_ = os.Remove(tmpPath)
-					lastErr = fmt.Errorf("checksum required but not available: %w", err)
-					log.Printf("[RcloneManager] Download attempt failed: %v", lastErr)
-					continue
-				} else {
-					log.Printf("[RcloneManager] Warning: checksum unavailable, proceeding without verification (set RCLONE_REQUIRE_CHECKSUM=true to enforce)")
-				}
+		checksum := m.getExpectedChecksum()
+		if checksum == "" {
+			fetched, err := m.fetchChecksum(downloadURL, zipName)
+			if err != nil {
+				_ = os.Remove(tmpPath)
+				lastErr = fmt.Errorf("failed to fetch checksum: %w", err)
+				log.Printf("[RcloneManager] Download attempt failed: %v", lastErr)
+				continue
 			}
-
-			if checksum != "" {
-				if err := m.VerifyChecksum(tmpPath, checksum); err != nil {
-					_ = os.Remove(tmpPath)
-					lastErr = fmt.Errorf("checksum verification failed: %w", err)
-					log.Printf("[RcloneManager] Download attempt failed: %v", lastErr)
-					continue
-				}
-				log.Printf("[RcloneManager] Checksum verified for %s", downloadURL)
-			}
+			checksum = fetched
 		}
+
+		if strings.TrimSpace(checksum) == "" {
+			_ = os.Remove(tmpPath)
+			lastErr = fmt.Errorf("checksum is empty")
+			log.Printf("[RcloneManager] Download attempt failed: %v", lastErr)
+			continue
+		}
+
+		if err := m.VerifyChecksum(tmpPath, checksum); err != nil {
+			_ = os.Remove(tmpPath)
+			lastErr = fmt.Errorf("checksum verification failed: %w", err)
+			log.Printf("[RcloneManager] Download attempt failed: %v", lastErr)
+			continue
+		}
+		log.Printf("[RcloneManager] Checksum verified for %s", downloadURL)
 
 		// Extract rclone executable from zip
 		if err := m.extractRclone(tmpPath); err != nil {
@@ -309,16 +309,33 @@ func (m *Manager) getRcloneDownloadURLs() ([]string, string, error) {
 	// Construct download URL
 	// Format: https://github.com/rclone/rclone/releases/download/v1.67.0/rclone-v1.67.0-linux-amd64.zip
 	zipName := fmt.Sprintf("rclone-%s-%s-%s.zip", m.version, goos, rcloneArch)
-	downloadURLs := []string{
-		fmt.Sprintf("https://downloads.rclone.org/%s", zipName),
-	}
+	downloadsURL := fmt.Sprintf("https://downloads.rclone.org/%s", zipName)
 
 	githubURL := fmt.Sprintf("https://github.com/rclone/rclone/releases/download/%s/%s", m.version, zipName)
-	if proxy := strings.TrimSpace(os.Getenv("RCLONE_GITHUB_PROXY")); proxy != "" {
-		proxy = strings.TrimRight(proxy, "/")
-		downloadURLs = append(downloadURLs, proxy+"/"+githubURL)
+
+	proxy := strings.TrimSpace(os.Getenv("RCLONE_GITHUB_PROXY"))
+
+	inCN := m.isMainlandChina()
+	if inCN && proxy == "" {
+		proxy = "https://gh-proxy.com"
 	}
-	downloadURLs = append(downloadURLs, githubURL)
+
+	downloadURLs := make([]string, 0, 3)
+	if inCN {
+		if proxy != "" {
+			proxy = strings.TrimRight(proxy, "/")
+			downloadURLs = append(downloadURLs, proxy+"/"+githubURL)
+		}
+		downloadURLs = append(downloadURLs, githubURL)
+		downloadURLs = append(downloadURLs, downloadsURL)
+	} else {
+		downloadURLs = append(downloadURLs, downloadsURL)
+		if proxy != "" {
+			proxy = strings.TrimRight(proxy, "/")
+			downloadURLs = append(downloadURLs, proxy+"/"+githubURL)
+		}
+		downloadURLs = append(downloadURLs, githubURL)
+	}
 
 	return downloadURLs, zipName, nil
 }
@@ -429,19 +446,18 @@ func (m *Manager) VerifyChecksum(filePath, expectedChecksum string) error {
 	return nil
 }
 
-func (m *Manager) getExpectedChecksum() (string, bool) {
+func (m *Manager) getExpectedChecksum() string {
 	envKey := fmt.Sprintf("RCLONE_CHECKSUM_%s_%s", strings.ToUpper(runtime.GOOS), strings.ToUpper(runtime.GOARCH))
 
 	if value := strings.TrimSpace(os.Getenv(envKey)); value != "" {
-		return strings.ToLower(value), false
+		return strings.ToLower(value)
 	}
 
 	if value := strings.TrimSpace(os.Getenv("RCLONE_CHECKSUM")); value != "" {
-		return strings.ToLower(value), false
+		return strings.ToLower(value)
 	}
 
-	allowInsecure := strings.EqualFold(os.Getenv("RCLONE_ALLOW_INSECURE_DOWNLOADS"), "true")
-	return "", allowInsecure
+	return ""
 }
 
 func (m *Manager) fetchChecksum(downloadURL, zipName string) (string, error) {
@@ -559,6 +575,121 @@ func fetchChecksumFromSHA256SUMS(client *http.Client, sumsURL string, zipName st
 		return "", err
 	}
 	return "", fmt.Errorf("checksum not found for %s", zipName)
+}
+
+func (m *Manager) isMainlandChina() bool {
+	code := strings.TrimSpace(m.detectCountryCode())
+	return strings.EqualFold(code, "CN")
+}
+
+func (m *Manager) detectCountryCode() string {
+	m.countryOnce.Do(func() {
+		if value := strings.TrimSpace(os.Getenv("RCLONE_COUNTRY")); value != "" {
+			m.countryCode = strings.ToUpper(value)
+			return
+		}
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		candidates := []func(*http.Client) (string, error){
+			fetchCountryCodeCloudflareTrace,
+			fetchCountryCodeIPInfo,
+			fetchCountryCodeIPApi,
+		}
+
+		for _, candidate := range candidates {
+			code, err := candidate(client)
+			if err != nil {
+				continue
+			}
+			code = strings.ToUpper(strings.TrimSpace(code))
+			if code == "" {
+				continue
+			}
+			m.countryCode = code
+			return
+		}
+	})
+
+	return m.countryCode
+}
+
+func fetchCountryCodeCloudflareTrace(client *http.Client) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, "https://www.cloudflare.com/cdn-cgi/trace", nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("cloudflare trace returned %s", resp.Status)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 128*1024))
+	if err != nil {
+		return "", err
+	}
+
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "loc=") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "loc=")), nil
+		}
+	}
+
+	return "", fmt.Errorf("cloudflare trace missing loc")
+}
+
+func fetchCountryCodeIPInfo(client *http.Client) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, "https://ipinfo.io/country", nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("ipinfo returned %s", resp.Status)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(body)), nil
+}
+
+func fetchCountryCodeIPApi(client *http.Client) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, "https://ipapi.co/country/", nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("ipapi returned %s", resp.Status)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(body)), nil
 }
 
 // Cleanup removes the rclone executable
