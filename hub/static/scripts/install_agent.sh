@@ -176,6 +176,7 @@ create_config() {
   "max_concurrent": 3,
   "heartbeat_interval": 30,
   "enable_local_fallback": true,
+  "enable_api": false,
   "run_as_service": true,
   "log_file": "$AGENT_HOME/logs/agent.log",
   "pid_file": "/run/$SERVICE_NAME/$SERVICE_NAME.pid"
