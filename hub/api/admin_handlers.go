@@ -198,21 +198,34 @@ func (h *Handler) ListAgentDirectory(c *gin.Context) {
 		"path":       req.Path,
 		"limit":      req.Limit,
 	})
-	actionsData, _ := json.Marshal(HeartbeatResponse{
+	
+	resp := HeartbeatResponse{
 		Actions: []HeartbeatAction{{
 			Action: "FS_LIST",
 			Type:   "FS_LIST",
 			Task:   payload,
 		}},
-	})
-	if err := h.wsService.SendJSON(agentID, WSMessage{
-		Type: WSMessageTypeHubActions,
-		Data: actionsData,
-	}); err != nil {
-		log.Printf("[FSList] dispatch failed agent=%s request=%s: %v", agentID.String(), req.ID, err)
-	} else {
-		h.fsBroker.MarkDispatched(agentID, req.ID)
 	}
+	respData, _ := json.Marshal(resp)
+	
+	wsMsg := WSMessage{
+		Type: WSMessageTypeHubActions,
+		Data: respData,
+	}
+	
+	// Use longer timeout for FS_LIST requests (10s instead of default 3s)
+	// and handle send failure immediately instead of waiting for response timeout
+	msgData, _ := json.Marshal(wsMsg)
+	if err := h.wsService.SendBytesWithTimeout(agentID, msgData, 10*time.Second); err != nil {
+		log.Printf("[FSList] dispatch failed agent=%s request=%s: %v", agentID.String(), req.ID, err)
+		h.fsBroker.Cancel(agentID, req.ID)
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "Failed to send request to agent",
+			"message": err.Error(),
+		})
+		return
+	}
+	h.fsBroker.MarkDispatched(agentID, req.ID)
 
 	waitCtx, cancel := context.WithTimeout(c.Request.Context(), 40*time.Second)
 	defer cancel()
