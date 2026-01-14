@@ -68,6 +68,7 @@ const Agents: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registrationToken, setRegistrationToken] = useState('');
+  const [installCommand, setInstallCommand] = useState('');
   const [tokenExpiry, setTokenExpiry] = useState<Date | null>(null);
   const [copied, setCopied] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
@@ -81,6 +82,10 @@ const Agents: React.FC = () => {
   });
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [editName, setEditName] = useState('');
+  // New agent registration form state
+  const [newAgentName, setNewAgentName] = useState('');
+  const [runAsRoot, setRunAsRoot] = useState(false);
+  const [showConfigForm, setShowConfigForm] = useState(true);
 
   // Use ref to track selectedAgent for SSE handler without re-subscribing
   const selectedAgentRef = useRef<Agent | null>(null);
@@ -289,23 +294,37 @@ const Agents: React.FC = () => {
   // UI Helper Functions
   const generateToken = async () => {
     try {
-      const response = await apiClient.post('/admin/agents/registration-token');
+      const response = await apiClient.post('/admin/agents/registration-token', {
+        agent_name: newAgentName.trim(),
+        run_as_root: runAsRoot
+      });
       setRegistrationToken(response.data.token);
+      setInstallCommand(response.data.install_command);
 
       // Set token expiry (24 hours from now)
       const expiry = new Date();
       expiry.setHours(expiry.getHours() + 24);
       setTokenExpiry(expiry);
+      setShowConfigForm(false);
 
-      setShowRegisterModal(true);
     } catch (error) {
       console.error('Failed to generate token:', error);
       showNotification('error', t('agents.token_generation_failed'));
     }
   };
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(registrationToken);
+  const openRegisterModal = () => {
+    setNewAgentName('');
+    setRunAsRoot(false);
+    setShowConfigForm(true);
+    setRegistrationToken('');
+    setInstallCommand('');
+    setTokenExpiry(null);
+    setShowRegisterModal(true);
+  };
+
+  const copyToClipboard = (text?: string) => {
+    navigator.clipboard.writeText(text || installCommand);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -491,7 +510,7 @@ const Agents: React.FC = () => {
               </button>
 
               <button
-                onClick={generateToken}
+                onClick={openRegisterModal}
                 className="btn btn-primary btn-sm"
               >
                 <IconPlus size={16} />
@@ -599,7 +618,7 @@ const Agents: React.FC = () => {
               <h3 className="card-title">{t('agents.no_agents')}</h3>
               <p className="text-muted mb-4">{t('agents.no_agents_description')}</p>
               <button
-                onClick={generateToken}
+                onClick={openRegisterModal}
                 className="btn btn-primary"
               >
                 <IconPlus size={16} className="me-1" />
@@ -623,75 +642,111 @@ const Agents: React.FC = () => {
                   onClick={() => {
                     setShowRegisterModal(false);
                     setRegistrationToken('');
+                    setInstallCommand('');
                     setTokenExpiry(null);
                   }}
                 ></button>
               </div>
               <div className="modal-body">
-                <div className="mb-3">
-                  <label className="form-label">
-                    {t('agents.register.token_label')}
-                  </label>
-                  <div className="input-group">
-                    <input
-                      type="text"
-                      value={registrationToken}
-                      readOnly
-                      className="form-control font-monospace"
-                    />
-                    <button
-                      onClick={copyToClipboard}
-                      className="btn btn-outline-secondary"
-                    >
-                      {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
-                      <span className="ms-1">{copied ? t('common.copied') : t('common.copy')}</span>
-                    </button>
-                  </div>
-                </div>
+                {showConfigForm ? (
+                  /* Configuration Form */
+                  <>
+                    <div className="mb-3">
+                      <label className="form-label">{t('agents.register.agent_name')}</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={newAgentName}
+                        onChange={(e) => setNewAgentName(e.target.value)}
+                        placeholder={t('agents.register.agent_name_placeholder')}
+                      />
+                      <small className="text-muted">{t('agents.register.agent_name_hint')}</small>
+                    </div>
 
-                {tokenExpiry && (
-                  <div className="alert alert-warning">
-                    <IconAlertCircle className="me-1" size={16} />
-                    {t('agents.register.token_expires', {
-                      time: tokenExpiry.toLocaleString()
-                    })}
-                  </div>
-                )}
+                    <div className="mb-3">
+                      <label className="form-check">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={runAsRoot}
+                          onChange={(e) => setRunAsRoot(e.target.checked)}
+                        />
+                        <span className="form-check-label">{t('agents.register.run_as_root')}</span>
+                      </label>
+                      {runAsRoot && (
+                        <div className="alert alert-warning mt-2 mb-0">
+                          <IconAlertCircle className="me-1" size={16} />
+                          {t('agents.register.root_warning')}
+                        </div>
+                      )}
+                    </div>
 
-                <div className="card">
-                  <div className="card-header">
-                    <h3 className="card-title">{t('agents.register.instructions')}</h3>
-                  </div>
-                  <div className="card-body">
-                    <ol className="list-unstyled">
-                      <li className="mb-2">1. {t('agents.register.step1')}</li>
-                      <li className="mb-2">2. {t('agents.register.step2')}</li>
-                      <li className="mb-2">
-                        <pre className="d-block bg-dark text-light p-2 rounded mb-0">
-                          <code>
-                            {`HUB_URL="${suggestedHubUrl}"
-TOKEN="${registrationToken}"
+                    <div className="d-grid">
+                      <button
+                        onClick={generateToken}
+                        className="btn btn-primary"
+                      >
+                        <IconPlus size={16} className="me-1" />
+                        {t('agents.register.generate_command')}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* Generated Install Command */
+                  <>
+                    {tokenExpiry && (
+                      <div className="alert alert-warning mb-3">
+                        <IconAlertCircle className="me-1" size={16} />
+                        {t('agents.register.token_expires', {
+                          time: tokenExpiry.toLocaleString()
+                        })}
+                      </div>
+                    )}
 
-curl -fsSL "$HUB_URL/api/v1/agent/install.sh" | sudo bash -s -- \\
-  --hub-url "$HUB_URL" \\
-  --token "$TOKEN" \\
-  --name "my-agent"
-
-sudo systemctl status rclone-agent --no-pager
-sudo journalctl -u rclone-agent -f`}
-                          </code>
+                    <div className="mb-3">
+                      <label className="form-label">{t('agents.register.install_command')}</label>
+                      <div className="position-relative">
+                        <pre className="bg-dark text-light p-3 rounded mb-0" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                          <code>{installCommand}</code>
                         </pre>
-                      </li>
-                      <li>3. {t('agents.register.step3')}</li>
-                    </ol>
-                  </div>
-                </div>
+                        <button
+                          onClick={() => copyToClipboard(installCommand)}
+                          className="btn btn-sm btn-light position-absolute"
+                          style={{ top: '8px', right: '8px' }}
+                        >
+                          {copied ? <IconCheck size={16} className="text-success" /> : <IconCopy size={16} />}
+                          <span className="ms-1">{copied ? t('common.copied') : t('common.copy')}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="card bg-light">
+                      <div className="card-body">
+                        <h4 className="card-title">{t('agents.register.instructions')}</h4>
+                        <ol className="mb-0">
+                          <li>{t('agents.register.step1')}</li>
+                          <li>{t('agents.register.step2')}</li>
+                          <li>{t('agents.register.step3')}</li>
+                        </ol>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
               <div className="modal-footer">
+                {!showConfigForm && (
+                  <button
+                    onClick={() => setShowConfigForm(true)}
+                    className="btn btn-outline-secondary me-auto"
+                  >
+                    {t('common.back')}
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setShowRegisterModal(false);
                     setRegistrationToken('');
+                    setInstallCommand('');
                     setTokenExpiry(null);
                   }}
                   className="btn btn-secondary"

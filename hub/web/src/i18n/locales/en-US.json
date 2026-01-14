@@ -131,8 +131,15 @@
       "token_expires": "Token expires at {{time}}",
       "instructions": "Registration Instructions",
       "step1": "On the target machine, ensure root access (systemd required)",
-      "step2": "Copy the token and run the install command",
-      "step3": "Use systemctl / journalctl to verify status"
+      "step2": "Copy and run the install command above",
+      "step3": "Use systemctl / journalctl to verify status",
+      "agent_name": "Agent Name",
+      "agent_name_placeholder": "e.g., web-server-01",
+      "agent_name_hint": "Leave empty to use target machine hostname",
+      "run_as_root": "Run as Root (full filesystem access)",
+      "root_warning": "⚠️ Running as root grants full filesystem access. Make sure you understand the security implications.",
+      "generate_command": "Generate Install Command",
+      "install_command": "One-Click Install Command"
     },
     "detail": {
       "title": "Agent Details",
@@ -353,40 +360,40 @@
       "config_preview": "Generated rclone.conf snippet (will be encrypted on save).",
       "raw_help": "Paste a single remote config section (with `[name]` and `type = ...`)."
     },
-  "oauth": {
-    "button": "One-click OAuth",
-    "in_progress": "Authorizing…",
-    "missing_client_id": "Please enter Client ID first",
-    "popup_blocked": "Popup blocked. Please allow popups and try again.",
-    "start_failed": "Failed to start authorization. Check settings and network.",
-    "timeout": "Authorization timed out. Please try again.",
-    "failed": "Authorization failed: {{message}}"
-  },
-  "test": {
-    "pathLabel": "Test path (optional)",
-    "pathPlaceholder": "bucket or bucket/prefix",
-    "pathPromptS3": "For S3-compatible remotes with bucket-limited credentials, listing buckets may fail. Enter a test path (bucket or bucket/prefix). Leave empty to try listing buckets:",
-    "outputLabel": "Output",
-    "running": "Testing…"
-  },
-  "errors": {
-    "invalid_name": "Invalid storage name (no newlines / [] / :, length must be ≤ 128).",
-    "multiple_sections": "Only a single remote section is supported (do not include multiple [section] blocks).",
-    "missing_type": "Missing `type = ...` in the config. Please check what you pasted.",
-    "endpoint_required": "Endpoint is required"
-  },
-  "list": {
-    "title": "Storage List",
-    "empty": "No remote storage found",
-    "columns": {
-      "name": "Storage Name",
-      "type": "Storage Type",
-      "createdAt": "Created At",
-      "lastTest": "Last Test",
-      "usedBy": "Used by Tasks",
-      "actions": "Actions"
-    }
-  },
+    "oauth": {
+      "button": "One-click OAuth",
+      "in_progress": "Authorizing…",
+      "missing_client_id": "Please enter Client ID first",
+      "popup_blocked": "Popup blocked. Please allow popups and try again.",
+      "start_failed": "Failed to start authorization. Check settings and network.",
+      "timeout": "Authorization timed out. Please try again.",
+      "failed": "Authorization failed: {{message}}"
+    },
+    "test": {
+      "pathLabel": "Test path (optional)",
+      "pathPlaceholder": "bucket or bucket/prefix",
+      "pathPromptS3": "For S3-compatible remotes with bucket-limited credentials, listing buckets may fail. Enter a test path (bucket or bucket/prefix). Leave empty to try listing buckets:",
+      "outputLabel": "Output",
+      "running": "Testing…"
+    },
+    "errors": {
+      "invalid_name": "Invalid storage name (no newlines / [] / :, length must be ≤ 128).",
+      "multiple_sections": "Only a single remote section is supported (do not include multiple [section] blocks).",
+      "missing_type": "Missing `type = ...` in the config. Please check what you pasted.",
+      "endpoint_required": "Endpoint is required"
+    },
+    "list": {
+      "title": "Storage List",
+      "empty": "No remote storage found",
+      "columns": {
+        "name": "Storage Name",
+        "type": "Storage Type",
+        "createdAt": "Created At",
+        "lastTest": "Last Test",
+        "usedBy": "Used by Tasks",
+        "actions": "Actions"
+      }
+    },
     "types": {
       "s3": "Amazon S3",
       "gcs": "Google Cloud Storage",

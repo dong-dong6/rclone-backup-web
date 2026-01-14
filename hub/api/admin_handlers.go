@@ -370,7 +370,14 @@ func (h *Handler) GetAgentMetricsHistory(c *gin.Context) {
 
 // CreateRegistrationToken creates a new registration token
 func (h *Handler) CreateRegistrationToken(c *gin.Context) {
-	log.Printf("[CreateRegistrationToken] Generating new registration token")
+	var req struct {
+		AgentName string `json:"agent_name"`
+		RunAsRoot bool   `json:"run_as_root"`
+	}
+	// Bind JSON body (optional - for backward compatibility)
+	_ = c.ShouldBindJSON(&req)
+
+	log.Printf("[CreateRegistrationToken] Generating new registration token (agent_name=%s, run_as_root=%v)", req.AgentName, req.RunAsRoot)
 
 	token := services.GenerateRegistrationToken()
 	if h.logTokens {
@@ -387,12 +394,39 @@ func (h *Handler) CreateRegistrationToken(c *gin.Context) {
 		return
 	}
 
+	// Build install command
+	hubURL := c.Request.Host
+	scheme := "http"
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	fullHubURL := fmt.Sprintf("%s://%s", scheme, hubURL)
+
+	installCmd := fmt.Sprintf(`curl -fsSL %s/api/v1/agent/install.sh | sudo bash -s -- --hub-url "%s" --token "%s"`,
+		fullHubURL, fullHubURL, token)
+	
+	if strings.TrimSpace(req.AgentName) != "" {
+		installCmd += fmt.Sprintf(` --name "%s"`, strings.TrimSpace(req.AgentName))
+	}
+	if req.RunAsRoot {
+		installCmd += " --run-as-root"
+	}
+
 	if h.logTokens {
 		log.Printf("[CreateRegistrationToken] Token created successfully: %v", regToken)
 	} else {
 		log.Printf("[CreateRegistrationToken] Token created successfully: id=%s expires_at=%s", regToken.ID, regToken.ExpiresAt.Format(time.RFC3339))
 	}
-	c.JSON(http.StatusCreated, regToken)
+
+	c.JSON(http.StatusCreated, gin.H{
+		"id":              regToken.ID,
+		"token":           regToken.Token,
+		"expires_at":      regToken.ExpiresAt,
+		"used":            regToken.Used,
+		"install_command": installCmd,
+		"agent_name":      req.AgentName,
+		"run_as_root":     req.RunAsRoot,
+	})
 }
 
 // ListTasks returns all tasks

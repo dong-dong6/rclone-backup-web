@@ -209,8 +209,15 @@
       "token_expires": "令牌将在 {{time}} 过期",
       "instructions": "注册说明",
       "step1": "在目标机器上准备 root 权限（需要 systemd）",
-      "step2": "复制注册令牌并执行安装命令",
-      "step3": "通过 systemctl / journalctl 查看运行状态"
+      "step2": "复制并执行上方的安装命令",
+      "step3": "通过 systemctl / journalctl 查看运行状态",
+      "agent_name": "节点名称",
+      "agent_name_placeholder": "例如：web-server-01",
+      "agent_name_hint": "留空将使用目标机器的主机名",
+      "run_as_root": "以 Root 权限运行（可访问所有文件）",
+      "root_warning": "⚠️ 以 Root 权限运行将拥有完整的文件系统访问权限，请确保您了解相关安全风险。",
+      "generate_command": "生成安装命令",
+      "install_command": "一键安装命令"
     },
     "detail": {
       "title": "节点详情",
@@ -463,46 +470,46 @@
       "custom": "自定义",
       "current": "当前"
     },
-  "hints": {
-    "token_drive": "点击“一键授权”自动获取 token，或在本机执行 `rclone authorize drive` 获取 token JSON（建议粘贴单行 JSON）",
-    "token_onedrive": "点击“一键授权”自动获取 token，或在本机执行 `rclone authorize onedrive` 获取 token JSON（建议粘贴单行 JSON）",
-    "config_preview": "生成的 rclone.conf 片段（保存时会加密）",
-    "raw_help": "粘贴单个 remote 的完整配置段（包含 `[name]` 和 `type = ...`）"
-  },
-  "oauth": {
-    "button": "一键授权",
-    "in_progress": "授权中…",
-    "missing_client_id": "请先填写 Client ID",
-    "popup_blocked": "弹窗被拦截，请允许弹窗后重试",
-    "start_failed": "启动授权失败，请检查配置与网络",
-    "timeout": "授权超时，请重试",
-    "failed": "授权失败：{{message}}"
-  },
-  "test": {
-    "pathLabel": "测试路径（可选）",
-    "pathPlaceholder": "bucket 或 bucket/prefix",
-    "pathPromptS3": "S3 兼容存储如果 Key 仅授权到某个 bucket，列出 buckets 可能失败。请输入测试路径（bucket 或 bucket/prefix）；留空将尝试列出 buckets：",
-    "outputLabel": "输出",
-    "running": "测试中…"
-  },
-  "errors": {
-    "invalid_name": "存储名称不合法（不能包含换行/[]/:，且长度需 ≤ 128）",
-    "multiple_sections": "当前仅支持粘贴单个 remote 的配置段（不要包含多个 [section]）",
-    "missing_type": "配置中缺少 `type = ...`，请检查粘贴内容",
-    "endpoint_required": "请填写 Endpoint"
-  },
-  "list": {
-    "title": "存储列表",
-    "empty": "暂无远程存储",
-    "columns": {
-      "name": "存储名称",
-      "type": "存储类型",
-      "createdAt": "创建时间",
-      "lastTest": "最后测试",
-      "usedBy": "使用任务数",
-      "actions": "操作"
-    }
-  },
+    "hints": {
+      "token_drive": "点击“一键授权”自动获取 token，或在本机执行 `rclone authorize drive` 获取 token JSON（建议粘贴单行 JSON）",
+      "token_onedrive": "点击“一键授权”自动获取 token，或在本机执行 `rclone authorize onedrive` 获取 token JSON（建议粘贴单行 JSON）",
+      "config_preview": "生成的 rclone.conf 片段（保存时会加密）",
+      "raw_help": "粘贴单个 remote 的完整配置段（包含 `[name]` 和 `type = ...`）"
+    },
+    "oauth": {
+      "button": "一键授权",
+      "in_progress": "授权中…",
+      "missing_client_id": "请先填写 Client ID",
+      "popup_blocked": "弹窗被拦截，请允许弹窗后重试",
+      "start_failed": "启动授权失败，请检查配置与网络",
+      "timeout": "授权超时，请重试",
+      "failed": "授权失败：{{message}}"
+    },
+    "test": {
+      "pathLabel": "测试路径（可选）",
+      "pathPlaceholder": "bucket 或 bucket/prefix",
+      "pathPromptS3": "S3 兼容存储如果 Key 仅授权到某个 bucket，列出 buckets 可能失败。请输入测试路径（bucket 或 bucket/prefix）；留空将尝试列出 buckets：",
+      "outputLabel": "输出",
+      "running": "测试中…"
+    },
+    "errors": {
+      "invalid_name": "存储名称不合法（不能包含换行/[]/:，且长度需 ≤ 128）",
+      "multiple_sections": "当前仅支持粘贴单个 remote 的配置段（不要包含多个 [section]）",
+      "missing_type": "配置中缺少 `type = ...`，请检查粘贴内容",
+      "endpoint_required": "请填写 Endpoint"
+    },
+    "list": {
+      "title": "存储列表",
+      "empty": "暂无远程存储",
+      "columns": {
+        "name": "存储名称",
+        "type": "存储类型",
+        "createdAt": "创建时间",
+        "lastTest": "最后测试",
+        "usedBy": "使用任务数",
+        "actions": "操作"
+      }
+    },
     "types": {
       "s3": "Amazon S3",
       "gcs": "Google Cloud Storage",

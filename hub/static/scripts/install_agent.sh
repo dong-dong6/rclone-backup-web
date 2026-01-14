@@ -89,6 +89,7 @@ detect_os_arch() {
 
 # --- Main Functions ---
 parse_args() {
+    RUN_AS_ROOT="false"
     while [[ $# -gt 0 ]]; do
         case $1 in
             --hub-url) 
@@ -102,6 +103,10 @@ parse_args() {
             --name) 
                 AGENT_NAME="$2"
                 shift 2
+                ;;
+            --run-as-root)
+                RUN_AS_ROOT="true"
+                shift
                 ;;
             uninstall) 
                 ACTION="uninstall"
@@ -117,23 +122,32 @@ parse_args() {
     if [[ "$ACTION" != "uninstall" ]]; then
         if [[ -z "$HUB_URL" || -z "$REGISTRATION_TOKEN" ]]; then
             error "Missing required arguments: --hub-url and --token are required."
-            echo "Usage: $0 --hub-url <URL> --token <TOKEN> [--name <NAME>]"
+            echo "Usage: $0 --hub-url <URL> --token <TOKEN> [--name <NAME>] [--run-as-root]"
             exit 1
         fi
         if [[ -z "$AGENT_NAME" ]]; then
             AGENT_NAME=$(hostname)
             info "Agent name not provided, using hostname: $AGENT_NAME"
         fi
+        if [[ "$RUN_AS_ROOT" == "true" ]]; then
+            warn "⚠️  Running as root - agent will have full filesystem access!"
+        fi
     fi
 }
 
 setup_user_and_dirs() {
     info "Setting up user and directories..."
-    if ! id "$AGENT_USER" &>/dev/null; then
-        useradd -r -m -d "$AGENT_HOME" -s /usr/sbin/nologin "$AGENT_USER"
-        success "Created dedicated user '$AGENT_USER'."
+    
+    if [[ "$RUN_AS_ROOT" == "true" ]]; then
+        AGENT_USER="root"
+        info "Running as root user."
     else
-        info "User '$AGENT_USER' already exists."
+        if ! id "$AGENT_USER" &>/dev/null; then
+            useradd -r -m -d "$AGENT_HOME" -s /usr/sbin/nologin "$AGENT_USER"
+            success "Created dedicated user '$AGENT_USER'."
+        else
+            info "User '$AGENT_USER' already exists."
+        fi
     fi
 
     mkdir -p "$AGENT_BIN_DIR" "$AGENT_HOME/logs" "$AGENT_HOME/tasks"
@@ -190,7 +204,37 @@ EOF
 
 create_systemd_service() {
     info "Creating systemd service..."
-    cat > "$SERVICE_FILE" <<EOF
+    
+    if [[ "$RUN_AS_ROOT" == "true" ]]; then
+        # Root mode: minimal restrictions for full filesystem access
+        cat > "$SERVICE_FILE" <<EOF
+[Unit]
+Description=Rclone Backup Agent
+Documentation=https://github.com/rclone-backup-web/rclone-backup-web
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=$AGENT_HOME
+ExecStart=$AGENT_BIN --config $AGENT_CONFIG
+Restart=always
+RestartSec=10
+RuntimeDirectory=$SERVICE_NAME
+PIDFile=/run/$SERVICE_NAME/$SERVICE_NAME.pid
+
+# Minimal security (root access required)
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        warn "Systemd service configured for ROOT access."
+    else
+        # Normal mode: security hardened
+        cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Rclone Backup Agent
 Documentation=https://github.com/rclone-backup-web/rclone-backup-web
@@ -218,6 +262,9 @@ ReadWritePaths=$AGENT_HOME
 [Install]
 WantedBy=multi-user.target
 EOF
+        success "Systemd service file created with security hardening."
+    fi
+    
     success "Systemd service file created at $SERVICE_FILE."
 }
 
