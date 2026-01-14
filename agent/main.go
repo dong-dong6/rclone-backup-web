@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"github.com/rclone-backup-web/agent/executor"
+	"github.com/rclone-backup-web/agent/logging"
 	"github.com/rclone-backup-web/agent/services"
 )
 
@@ -54,6 +55,7 @@ type Config struct {
 
 	// System integration
 	RunAsService bool   `json:"run_as_service"`
+	LogLevel     string `json:"log_level,omitempty"`
 	LogFile      string `json:"log_file"`
 	PidFile      string `json:"pid_file"`
 }
@@ -167,6 +169,7 @@ func main() {
 		log.Fatalf("Failed to setup logging: %v", err)
 	}
 
+	log.Printf("Log level: %s", strings.ToLower(strings.TrimSpace(config.LogLevel)))
 	log.Printf("Starting Rclone Backup Agent %s (standalone mode)", Version)
 	log.Printf("Build: %s, Commit: %s", BuildTime, GitCommit)
 	log.Printf("Runtime: %s %s/%s", runtime.Version(), runtime.GOOS, runtime.GOARCH)
@@ -312,6 +315,9 @@ func (a *Agent) hubLoop() {
 			reconnect = time.After(delay)
 		}
 
+		// DIAGNOSTIC: Log before select
+		log.Printf("[HubWS-DIAG] hubLoop select: ws=%v incoming=%v reconnect=%v", ws != nil, incoming != nil, reconnect != nil)
+
 		select {
 		case <-a.ctx.Done():
 			if ws != nil {
@@ -319,9 +325,11 @@ func (a *Agent) hubLoop() {
 			}
 			return
 		case <-reconnect:
+			logging.Debugf("[HubWS] dialing hub=%s agent=%s", strings.TrimSpace(a.config.HubURL), strings.TrimSpace(a.config.AgentID))
 			conn, err := services.DialHubWebSocket(a.config.HubURL, a.config.AgentID, a.config.APIKey)
 			if err != nil {
 				log.Printf("WebSocket connect failed: %v", err)
+				logging.Debugf("[HubWS] dial failed: %v", err)
 				if retryBackoff < 30*time.Second {
 					retryBackoff *= 2
 				}
@@ -349,15 +357,19 @@ func (a *Agent) hubLoop() {
 			a.flushPendingExecutionUpdates(ws)
 			a.sendHeartbeatWS(ws)
 		case msg, ok := <-incoming:
+			log.Printf("[HubWS-DIAG] hubLoop received from channel ok=%v type=%s", ok, msg.Type)
 			if !ok {
 				if ws != nil {
 					ws.Close()
 				}
 				a.setWSConn(nil)
+				log.Printf("[HubWS] disconnected; will reconnect in %s", retryBackoff)
 				nextWSAttempt = time.Now().Add(retryBackoff)
 				continue
 			}
+			log.Printf("[HubWS-DIAG] hubLoop calling handleWSMessage type=%s", msg.Type)
 			a.handleWSMessage(ws, msg)
+			log.Printf("[HubWS-DIAG] hubLoop handleWSMessage returned type=%s", msg.Type)
 		case <-heartbeatTicker.C:
 			ws = a.getWSConn()
 			if ws == nil || ws.IsClosed() {
@@ -387,12 +399,14 @@ func (a *Agent) sendHeartbeatWS(ws *services.HubWSConn) {
 	}
 
 	payload := a.hubClient.BuildHeartbeat(status, activeTasks)
+	logging.Debugf("[HubWS] sending heartbeat status=%s active_tasks=%d", status, len(activeTasks))
 	if err := ws.SendJSON(services.WSMessageTypeAgentHeartbeat, payload, 3*time.Second); err != nil {
 		log.Printf("WebSocket heartbeat send failed: %v", err)
 	}
 }
 
 func (a *Agent) handleWSMessage(ws *services.HubWSConn, msg services.WSMessage) {
+	logging.Debugf("[HubWS] received message type=%s bytes=%d", strings.TrimSpace(msg.Type), len(msg.Data))
 	switch msg.Type {
 	case services.WSMessageTypeHubPing:
 		if ws != nil && !ws.IsClosed() {
@@ -417,7 +431,9 @@ func (a *Agent) handleWSMessage(ws *services.HubWSConn, msg services.WSMessage) 
 }
 
 func (a *Agent) handleActions(actions []services.Action) {
+	logging.Debugf("[HubWS] handling actions count=%d", len(actions))
 	for _, action := range actions {
+		logging.Debugf("[HubWS] action type=%s execution_id=%s", strings.TrimSpace(action.Type), strings.TrimSpace(action.ExecutionID))
 		switch strings.ToUpper(strings.TrimSpace(action.Type)) {
 		case "EXECUTE_TASK":
 			go a.executeTask(action.ExecutionID, action.Task)
@@ -545,6 +561,7 @@ func (a *Agent) sendExecutionUpdate(executionID, status string, errorMessage str
 		}
 	}
 
+	logging.Debugf("[HubWS] queueing execution update execution_id=%s status=%s", executionID, status)
 	a.queuePendingExecutionUpdate(payload)
 }
 
@@ -631,9 +648,12 @@ func (a *Agent) handleFSList(taskData json.RawMessage) {
 func (a *Agent) sendFSListResult(result services.FSListResult) {
 	ws := a.getWSConn()
 	if ws == nil || ws.IsClosed() {
+		logging.Debugf("[FSList] websocket not ready; dropping result request_id=%s path=%q", strings.TrimSpace(result.RequestID), result.Path)
 		return
 	}
-	_ = ws.SendJSON(services.WSMessageTypeFSListResult, result, 5*time.Second)
+	if err := ws.SendJSON(services.WSMessageTypeFSListResult, result, 5*time.Second); err != nil {
+		logging.Debugf("[FSList] failed sending result request_id=%s path=%q err=%v", strings.TrimSpace(result.RequestID), result.Path, err)
+	}
 }
 
 // executeTask executes a task from hub
@@ -1015,11 +1035,17 @@ func loadConfig(path string) (*Config, error) {
 	// Load from environment first
 	godotenv.Load()
 
+	logLevel := os.Getenv("AGENT_LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = os.Getenv("LOG_LEVEL")
+	}
+
 	config := &Config{
 		HubURL:            os.Getenv("HUB_URL"),
 		RegistrationToken: os.Getenv("REGISTRATION_TOKEN"),
 		AgentName:         os.Getenv("AGENT_NAME"),
 		WorkDir:           os.Getenv("WORK_DIR"),
+		LogLevel:          logLevel,
 		MaxConcurrent:     3,
 		HeartbeatInterval: 30,
 		EnableAPI:         true,
@@ -1051,6 +1077,10 @@ func loadConfig(path string) (*Config, error) {
 		}
 	}
 
+	if strings.TrimSpace(config.LogLevel) == "" {
+		config.LogLevel = "info"
+	}
+
 	return config, nil
 }
 
@@ -1063,7 +1093,13 @@ func setupLogging(config *Config) error {
 		log.SetOutput(logFile)
 	}
 
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	logging.SetLevel(logging.ParseLevel(config.LogLevel))
+
+	flags := log.Ldate | log.Ltime | log.Lshortfile
+	if logging.IsDebug() {
+		flags |= log.Lmicroseconds
+	}
+	log.SetFlags(flags)
 	return nil
 }
 

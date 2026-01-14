@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/rclone-backup-web/agent/logging"
 )
 
 var (
@@ -35,6 +37,8 @@ func DialHubWebSocket(baseURL, agentID, apiKey string) (*HubWSConn, error) {
 		return nil, err
 	}
 
+	logging.Debugf("[HubWS] websocket dial url=%s origin=%s auth=%t", wsURL, strings.TrimSpace(origin), strings.TrimSpace(agentID) != "" && strings.TrimSpace(apiKey) != "")
+
 	header := make(http.Header)
 	if apiKey != "" && agentID != "" {
 		header.Set("Authorization", fmt.Sprintf("Bearer %s:%s", agentID, apiKey))
@@ -54,7 +58,11 @@ func DialHubWebSocket(baseURL, agentID, apiKey string) (*HubWSConn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	ws, _, err := dialer.DialContext(ctx, wsURL, header)
+	ws, resp, err := dialer.DialContext(ctx, wsURL, header)
+	if resp != nil && resp.Body != nil {
+		logging.Debugf("[HubWS] websocket handshake status=%s", resp.Status)
+		_ = resp.Body.Close()
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +70,7 @@ func DialHubWebSocket(baseURL, agentID, apiKey string) (*HubWSConn, error) {
 	conn := &HubWSConn{
 		ws:     ws,
 		send:   make(chan []byte, 512),
-		recv:   make(chan WSMessage, 256),
+		recv:   make(chan WSMessage, 2048), // Increased from 256 to 2048 to prevent message drops
 		closed: make(chan struct{}),
 	}
 
@@ -145,6 +153,11 @@ func (c *HubWSConn) readLoop() {
 	for {
 		_, raw, err := c.ws.ReadMessage()
 		if err != nil {
+			if closeErr, ok := err.(*websocket.CloseError); ok {
+				logging.Debugf("[HubWS] read loop closed code=%d text=%q", closeErr.Code, closeErr.Text)
+			} else {
+				logging.Debugf("[HubWS] read loop error: %v", err)
+			}
 			return
 		}
 
@@ -153,17 +166,28 @@ func (c *HubWSConn) readLoop() {
 			continue
 		}
 
+		// DIAGNOSTIC: Log raw message received
+		log.Printf("[HubWS-DIAG] raw message received len=%d content=%s", len(rawStr), rawStr)
+
 		var msg WSMessage
 		if err := json.Unmarshal([]byte(rawStr), &msg); err != nil {
+			log.Printf("[HubWS-DIAG] failed to unmarshal: %v", err)
+			logging.Debugf("[HubWS] failed to unmarshal websocket frame len=%d err=%v", len(rawStr), err)
 			continue
 		}
 
+		// DIAGNOSTIC: Log parsed message type
+		log.Printf("[HubWS-DIAG] parsed message type=%s data_len=%d", msg.Type, len(msg.Data))
+
 		select {
 		case c.recv <- msg:
+			log.Printf("[HubWS-DIAG] message sent to recv channel type=%s", msg.Type)
 		case <-c.closed:
 			return
 		default:
 			// Drop if the consumer is too slow; heartbeats/actions will arrive again.
+			log.Printf("[HubWS-DIAG] DROPPED message type=%s (recv channel full)", msg.Type)
+			logging.Debugf("[HubWS] dropping message type=%s (consumer too slow)", strings.TrimSpace(msg.Type))
 		}
 	}
 }
@@ -178,6 +202,7 @@ func (c *HubWSConn) writeLoop() {
 		case data := <-c.send:
 			_ = c.ws.SetWriteDeadline(time.Now().Add(15 * time.Second))
 			if err := c.ws.WriteMessage(websocket.TextMessage, data); err != nil {
+				logging.Debugf("[HubWS] write loop error: %v", err)
 				return
 			}
 		}

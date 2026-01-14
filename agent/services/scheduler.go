@@ -134,8 +134,8 @@ func (s *Scheduler) UpdateTasks(tasks []Task) {
 		s.tasks[task.ID] = scheduledTask
 	}
 
-	// Save to cache
-	if err := s.saveTasks(); err != nil {
+	// Save to cache (use internal method since mutex is already held)
+	if err := s.saveTasksLocked(); err != nil {
 		log.Printf("[Scheduler] Failed to save tasks: %v", err)
 	}
 
@@ -231,11 +231,15 @@ func (s *Scheduler) loadTasks() error {
 	return nil
 }
 
-// saveTasks saves tasks to cache file
+// saveTasks saves tasks to cache file (acquires mutex)
 func (s *Scheduler) saveTasks() error {
 	s.tasksMutex.RLock()
 	defer s.tasksMutex.RUnlock()
+	return s.saveTasksLocked()
+}
 
+// saveTasksLocked saves tasks to cache file (caller must hold tasksMutex)
+func (s *Scheduler) saveTasksLocked() error {
 	// Convert map to slice
 	var tasks []*ScheduledTask
 	for _, task := range s.tasks {
