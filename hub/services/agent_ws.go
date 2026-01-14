@@ -40,7 +40,7 @@ func (s *AgentWSService) Register(agentID uuid.UUID, ws *websocket.Conn) *AgentW
 	conn := &AgentWSConn{
 		agentID: agentID,
 		ws:      ws,
-		send:    make(chan []byte, 256),
+		send:    make(chan []byte, 2048), // Increased from 256 to 2048 to prevent send queue full errors
 		closed:  make(chan struct{}),
 	}
 
@@ -113,6 +113,17 @@ func (s *AgentWSService) SendBytes(agentID uuid.UUID, data []byte) error {
 		return ErrAgentNotConnected
 	}
 	return conn.Send(data, 3*time.Second)
+}
+
+// SendBytesWithTimeout sends data to an agent with a custom timeout
+func (s *AgentWSService) SendBytesWithTimeout(agentID uuid.UUID, data []byte, timeout time.Duration) error {
+	s.mu.RLock()
+	conn := s.conns[agentID]
+	s.mu.RUnlock()
+	if conn == nil || conn.IsClosed() {
+		return ErrAgentNotConnected
+	}
+	return conn.Send(data, timeout)
 }
 
 func (c *AgentWSConn) IsClosed() bool {

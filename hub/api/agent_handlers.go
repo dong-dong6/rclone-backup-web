@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/rclone-backup-web/hub/logging"
 	"github.com/rclone-backup-web/hub/models"
 	"github.com/rclone-backup-web/hub/services"
 )
@@ -133,6 +134,15 @@ func (h *Handler) processAgentHeartbeat(ctx context.Context, agentID uuid.UUID, 
 		return HeartbeatResponse{}, &APIError{Status: http.StatusInternalServerError, Message: "Failed to update heartbeat"}
 	}
 
+	logging.Debugf(
+		"[Heartbeat] agent=%s status=%s hostname=%s platform=%s version=%s",
+		agentID.String(),
+		strings.TrimSpace(req.Status),
+		strings.TrimSpace(req.SystemInfo.Hostname),
+		strings.TrimSpace(req.SystemInfo.Platform),
+		strings.TrimSpace(req.SystemInfo.AgentVersion),
+	)
+
 	statusChanged := false
 	h.agentStatusMu.Lock()
 	if prev, ok := h.agentStatusCache[agentID]; !ok || prev != req.Status {
@@ -174,7 +184,7 @@ func (h *Handler) processAgentHeartbeat(ctx context.Context, agentID uuid.UUID, 
 	}
 
 	if err := metricsModel.Create(ctx, metric); err != nil {
-		log.Printf("Failed to persist metrics for agent %s: %v", agentID, err)
+		log.Printf("Failed to persist metrics for agent %s: %v", agentID.String(), err)
 	}
 
 	actions := []HeartbeatAction{}
@@ -184,7 +194,7 @@ func (h *Handler) processAgentHeartbeat(ctx context.Context, agentID uuid.UUID, 
 	cancelledExecutions, err := executionModel.GetCancelledForAgent(ctx, agentID)
 	if err == nil {
 		for _, exec := range cancelledExecutions {
-			log.Printf("Signaling cancellation for execution %s to agent %s", exec.ID, agentID)
+			log.Printf("Signaling cancellation for execution %s to agent %s", exec.ID.String(), agentID.String())
 			actions = append(actions, HeartbeatAction{
 				Action:      "CANCEL_TASK",
 				Type:        "CANCEL_TASK",
@@ -215,9 +225,9 @@ func (h *Handler) processAgentHeartbeat(ctx context.Context, agentID uuid.UUID, 
 		pendingTask, err := taskService.FindPendingTaskForAgent(ctx, agentID)
 
 		if err != nil {
-			log.Printf("Error finding pending task for agent %s: %v", agentID, err)
+			log.Printf("Error finding pending task for agent %s: %v", agentID.String(), err)
 		} else if pendingTask != nil {
-			log.Printf("Found pending task %s (%s) for agent %s", pendingTask.ID, pendingTask.Name, agentID)
+			log.Printf("Found pending task %s (%s) for agent %s", pendingTask.ID.String(), pendingTask.Name, agentID.String())
 
 			// Determine trigger mode
 			triggerMode := models.TriggerModeScheduled

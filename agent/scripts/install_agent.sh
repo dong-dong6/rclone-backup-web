@@ -177,6 +177,7 @@ create_config() {
   "heartbeat_interval": 30,
   "enable_local_fallback": true,
   "run_as_service": true,
+  "log_level": "info",
   "log_file": "$AGENT_HOME/logs/agent.log",
   "pid_file": "/run/$SERVICE_NAME/$SERVICE_NAME.pid"
 }

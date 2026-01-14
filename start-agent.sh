@@ -201,6 +201,7 @@ cat > agent-config.json << EOF
   "heartbeat_interval": ${HEARTBEAT_INTERVAL},
   "enable_local_fallback": true,
   "run_as_service": false,
+  "log_level": "info",
   "log_file": "",
   "pid_file": ""
 }

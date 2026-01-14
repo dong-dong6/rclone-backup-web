@@ -147,6 +147,9 @@ ls -la /opt/rclone-agent/
 # 查看配置文件
 cat /opt/rclone-agent/agent-config.json
 
+# 开启调试日志（debug）
+# 将配置文件中的 "log_level" 设置为 "debug"
+
 # 查看日志（守护进程模式）
 tail -f /opt/rclone-agent/agent.log
 ```

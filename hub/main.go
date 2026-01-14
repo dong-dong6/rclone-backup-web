@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/rclone-backup-web/hub/api"
+	"github.com/rclone-backup-web/hub/logging"
 	"github.com/rclone-backup-web/hub/models"
 	"github.com/rclone-backup-web/hub/services"
 )
@@ -23,6 +24,19 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Printf("Warning: .env file not found")
 	}
+
+	logLevel := strings.TrimSpace(os.Getenv("LOG_LEVEL"))
+	if logLevel == "" {
+		logLevel = "info"
+	}
+	logging.SetLevel(logging.ParseLevel(logLevel))
+
+	logFlags := log.Ldate | log.Ltime | log.Lshortfile
+	if logging.IsDebug() {
+		logFlags |= log.Lmicroseconds
+	}
+	log.SetFlags(logFlags)
+	log.Printf("Hub log level: %s", strings.ToLower(logLevel))
 
 	// Set Gin mode based on environment
 	ginMode := os.Getenv("GIN_MODE")

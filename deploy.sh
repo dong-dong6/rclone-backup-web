@@ -366,12 +366,13 @@ install_agent() {
     "max_concurrent": 3,
     "heartbeat_interval": 30,
     "is_local": true,
-    "enable_api": true,
-    "api_bind_addr": "0.0.0.0",
-    "api_port": 9092,
-    "api_token": "$LOCAL_API_TOKEN",
-    "registration_token": ""
-}
+	    "enable_api": true,
+	    "api_bind_addr": "0.0.0.0",
+	    "api_port": 9092,
+	    "api_token": "$LOCAL_API_TOKEN",
+	    "log_level": "info",
+	    "registration_token": ""
+	}
 EOF
 
         print_success "Agent已安装到 $AGENT_DIR（未注册/未启动）"
@@ -395,12 +396,13 @@ EOF
     "max_concurrent": 3,
     "heartbeat_interval": 30,
     "is_local": true,
-    "enable_api": true,
-    "api_bind_addr": "0.0.0.0",
-    "api_port": 9092,
-    "api_token": "$LOCAL_API_TOKEN",
-    "registration_token": "$REG_TOKEN"
-}
+	    "enable_api": true,
+	    "api_bind_addr": "0.0.0.0",
+	    "api_port": 9092,
+	    "api_token": "$LOCAL_API_TOKEN",
+	    "log_level": "info",
+	    "registration_token": "$REG_TOKEN"
+	}
 EOF
     
     print_success "Agent已安装到 $AGENT_DIR"

@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/rclone-backup-web/hub/logging"
 )
 
 var agentWSUpgrader = websocket.Upgrader{
@@ -36,6 +37,8 @@ func (h *Handler) AgentWebSocket(c *gin.Context) {
 	conn := h.wsService.Register(agentID, ws)
 	defer h.wsService.UnregisterConn(agentID, conn)
 
+	logging.Debugf("[AgentWS] upgraded agent=%s remote=%s", agentID.String(), strings.TrimSpace(c.Request.RemoteAddr))
+
 	// Best-effort announce connection.
 	_ = h.wsService.SendJSON(agentID, WSMessage{Type: WSMessageTypeHubPing})
 
@@ -55,6 +58,7 @@ func (h *Handler) AgentWebSocket(c *gin.Context) {
 
 		var msg WSMessage
 		if err := json.Unmarshal([]byte(rawStr), &msg); err != nil {
+			logging.Debugf("[AgentWS] invalid json agent=%s bytes=%d err=%v", agentID.String(), len(rawStr), err)
 			_ = h.wsService.SendJSON(agentID, WSMessage{
 				Type: WSMessageTypeHubError,
 				Data: json.RawMessage(`{"message":"invalid json"}`),
@@ -62,7 +66,9 @@ func (h *Handler) AgentWebSocket(c *gin.Context) {
 			continue
 		}
 
+		logging.Debugf("[AgentWS] received agent=%s type=%s data_bytes=%d", agentID.String(), strings.TrimSpace(msg.Type), len(msg.Data))
 		if err := h.handleAgentWSMessage(reqCtx, agentID, msg); err != nil {
+			log.Printf("[AgentWS] message failed agent=%s type=%s: %v", agentID.String(), strings.TrimSpace(msg.Type), err)
 			apiErr := err.Error()
 			if typed, ok := err.(*APIError); ok {
 				apiErr = typed.Message
@@ -94,6 +100,23 @@ func (h *Handler) handleAgentWSMessage(ctx context.Context, agentID uuid.UUID, m
 			return err
 		}
 
+		if logging.IsDebug() {
+			types := make([]string, 0, len(resp.Actions))
+			for _, action := range resp.Actions {
+				actionType := strings.TrimSpace(action.Type)
+				if actionType == "" {
+					actionType = strings.TrimSpace(action.Action)
+				}
+				if strings.TrimSpace(action.ExecutionID) != "" {
+					actionType = actionType + "(" + strings.TrimSpace(action.ExecutionID) + ")"
+				}
+				if actionType != "" {
+					types = append(types, actionType)
+				}
+			}
+			logging.Debugf("[AgentWS] heartbeat agent=%s status=%s actions=%d types=%s", agentID.String(), strings.TrimSpace(req.Status), len(resp.Actions), strings.Join(types, ","))
+		}
+
 		data, err := json.Marshal(resp)
 		if err != nil {
 			return err
@@ -108,6 +131,8 @@ func (h *Handler) handleAgentWSMessage(ctx context.Context, agentID uuid.UUID, m
 		if err := json.Unmarshal(msg.Data, &req); err != nil {
 			return &APIError{Status: 400, Message: "Invalid execution.update payload"}
 		}
+
+		logging.Debugf("[AgentWS] execution.update agent=%s execution=%s status=%s ended_at=%s", agentID.String(), strings.TrimSpace(req.ExecutionID), strings.TrimSpace(req.Status), strings.TrimSpace(req.EndedAt))
 
 		execID, err := uuid.Parse(req.ExecutionID)
 		if err != nil {
@@ -130,6 +155,8 @@ func (h *Handler) handleAgentWSMessage(ctx context.Context, agentID uuid.UUID, m
 		if err := json.Unmarshal(msg.Data, &req); err != nil {
 			return &APIError{Status: 400, Message: "Invalid execution.logs payload"}
 		}
+
+		logging.Debugf("[AgentWS] execution.logs agent=%s execution=%s entries=%d", agentID.String(), strings.TrimSpace(req.ExecutionID), len(req.Logs))
 
 		execID, err := uuid.Parse(req.ExecutionID)
 		if err != nil {

@@ -100,6 +100,7 @@ cat > "${OUTPUT_DIR}/agent.json.sample" <<EOF
   "heartbeat_interval": 30,
   "enable_local_fallback": true,
   "run_as_service": false,
+  "log_level": "info",
   "log_file": "",
   "pid_file": ""
 }
