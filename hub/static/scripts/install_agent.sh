@@ -90,6 +90,9 @@ detect_os_arch() {
 # --- Main Functions ---
 parse_args() {
     RUN_AS_ROOT="false"
+    LOG_LEVEL="info"
+    ENABLE_API="false"
+    API_PORT="9092"
     while [[ $# -gt 0 ]]; do
         case $1 in
             --hub-url) 
@@ -107,6 +110,18 @@ parse_args() {
             --run-as-root)
                 RUN_AS_ROOT="true"
                 shift
+                ;;
+            --log-level)
+                LOG_LEVEL="$2"
+                shift 2
+                ;;
+            --enable-api)
+                ENABLE_API="true"
+                shift
+                ;;
+            --api-port)
+                API_PORT="$2"
+                shift 2
                 ;;
             uninstall) 
                 ACTION="uninstall"
@@ -189,10 +204,13 @@ create_config() {
   "work_dir": "$AGENT_HOME",
   "max_concurrent": 3,
   "heartbeat_interval": 30,
+  "heartbeat_interval": 30,
   "enable_local_fallback": true,
-  "enable_api": false,
+  "enable_api": $ENABLE_API,
+  "api_bind_addr": "0.0.0.0",
+  "api_port": $API_PORT,
   "run_as_service": true,
-  "log_level": "info",
+  "log_level": "$LOG_LEVEL",
   "log_file": "$AGENT_HOME/logs/agent.log",
   "pid_file": "/run/$SERVICE_NAME/$SERVICE_NAME.pid"
 }

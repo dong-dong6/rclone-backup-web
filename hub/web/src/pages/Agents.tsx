@@ -85,6 +85,9 @@ const Agents: React.FC = () => {
   // New agent registration form state
   const [newAgentName, setNewAgentName] = useState('');
   const [runAsRoot, setRunAsRoot] = useState(false);
+  const [logLevel, setLogLevel] = useState('info');
+  const [enableApi, setEnableApi] = useState(false);
+  const [apiPort, setApiPort] = useState(9092);
   const [showConfigForm, setShowConfigForm] = useState(true);
 
   // Use ref to track selectedAgent for SSE handler without re-subscribing
@@ -296,7 +299,10 @@ const Agents: React.FC = () => {
     try {
       const response = await apiClient.post('/admin/agents/registration-token', {
         agent_name: newAgentName.trim(),
-        run_as_root: runAsRoot
+        run_as_root: runAsRoot,
+        log_level: logLevel,
+        enable_api: enableApi,
+        api_port: apiPort
       });
       setRegistrationToken(response.data.token);
       setInstallCommand(response.data.install_command);
@@ -316,6 +322,9 @@ const Agents: React.FC = () => {
   const openRegisterModal = () => {
     setNewAgentName('');
     setRunAsRoot(false);
+    setLogLevel('info');
+    setEnableApi(false);
+    setApiPort(9092);
     setShowConfigForm(true);
     setRegistrationToken('');
     setInstallCommand('');
@@ -324,9 +333,47 @@ const Agents: React.FC = () => {
   };
 
   const copyToClipboard = (text?: string) => {
-    navigator.clipboard.writeText(text || installCommand);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const val = text || installCommand;
+
+    // Try Modern Async API first
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(val).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(err => {
+        console.error('Failed to copy: ', err);
+        fallbackCopyTextToClipboard(val);
+      });
+    } else {
+      // Fallback for HTTP / non-secure contexts
+      fallbackCopyTextToClipboard(val);
+    }
+  };
+
+  const fallbackCopyTextToClipboard = (text: string) => {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    // Avoid scrolling to bottom
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.position = "fixed";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        console.error('Fallback: Copying text command was unsuccessful');
+        showNotification('error', 'Copy failed');
+      }
+    } catch (err) {
+      console.error('Fallback: Oops, unable to copy', err);
+      showNotification('error', 'Copy failed');
+    }
+    document.body.removeChild(textArea);
   };
 
   const deleteAgent = async (id: string, name: string) => {
@@ -677,6 +724,45 @@ const Agents: React.FC = () => {
                         <div className="alert alert-warning mt-2 mb-0">
                           <IconAlertCircle className="me-1" size={16} />
                           {t('agents.register.root_warning')}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="form-label">{t('agents.register.log_level')}</label>
+                      <select
+                        className="form-select"
+                        value={logLevel}
+                        onChange={(e) => setLogLevel(e.target.value)}
+                      >
+                        <option value="debug">DEBUG</option>
+                        <option value="info">INFO</option>
+                        <option value="warn">WARN</option>
+                        <option value="error">ERROR</option>
+                      </select>
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="form-check">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={enableApi}
+                          onChange={(e) => setEnableApi(e.target.checked)}
+                        />
+                        <span className="form-check-label">{t('agents.register.enable_api')}</span>
+                      </label>
+                      {enableApi && (
+                        <div className="mt-2 ms-4">
+                          <label className="form-label mb-1">{t('agents.register.api_port')}</label>
+                          <input
+                            type="number"
+                            className="form-control"
+                            value={apiPort}
+                            onChange={(e) => setApiPort(parseInt(e.target.value) || 9092)}
+                            min={1024}
+                            max={65535}
+                          />
                         </div>
                       )}
                     </div>

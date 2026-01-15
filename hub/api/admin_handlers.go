@@ -373,6 +373,9 @@ func (h *Handler) CreateRegistrationToken(c *gin.Context) {
 	var req struct {
 		AgentName string `json:"agent_name"`
 		RunAsRoot bool   `json:"run_as_root"`
+		LogLevel  string `json:"log_level"`
+		EnableAPI bool   `json:"enable_api"`
+		APIPort   int    `json:"api_port"`
 	}
 	// Bind JSON body (optional - for backward compatibility)
 	_ = c.ShouldBindJSON(&req)
@@ -411,6 +414,15 @@ func (h *Handler) CreateRegistrationToken(c *gin.Context) {
 	if req.RunAsRoot {
 		installCmd += " --run-as-root"
 	}
+	if req.LogLevel != "" && req.LogLevel != "info" {
+		installCmd += fmt.Sprintf(` --log-level "%s"`, strings.TrimSpace(req.LogLevel))
+	}
+	if req.EnableAPI {
+		installCmd += " --enable-api"
+		if req.APIPort > 0 && req.APIPort != 9092 {
+			installCmd += fmt.Sprintf(" --api-port %d", req.APIPort)
+		}
+	}
 
 	if h.logTokens {
 		log.Printf("[CreateRegistrationToken] Token created successfully: %v", regToken)
@@ -426,6 +438,9 @@ func (h *Handler) CreateRegistrationToken(c *gin.Context) {
 		"install_command": installCmd,
 		"agent_name":      req.AgentName,
 		"run_as_root":     req.RunAsRoot,
+		"log_level":       req.LogLevel,
+		"enable_api":      req.EnableAPI,
+		"api_port":        req.APIPort,
 	})
 }
 

@@ -216,6 +216,9 @@
       "agent_name_hint": "留空将使用目标机器的主机名",
       "run_as_root": "以 Root 权限运行（可访问所有文件）",
       "root_warning": "⚠️ 以 Root 权限运行将拥有完整的文件系统访问权限，请确保您了解相关安全风险。",
+      "log_level": "日志级别",
+      "enable_api": "启用本地 API",
+      "api_port": "API 端口",
       "generate_command": "生成安装命令",
       "install_command": "一键安装命令"
     },
