@@ -2,7 +2,7 @@
 
 /* Page Layout */
 .page {
-  background: var(--tblr-bg-surface);
+  background: transparent !important;
   min-height: 100vh;
 }
 
@@ -32,6 +32,7 @@
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
@@ -109,11 +110,11 @@
   .card-body {
     padding: 1rem;
   }
-  
+
   .h1 {
     font-size: 1.5rem;
   }
-  
+
   .subheader {
     font-size: 0.75rem;
   }
@@ -137,11 +138,10 @@
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
   }
+
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -338,7 +338,7 @@
 .ant-card-head {
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   padding: 16px 24px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: transparent;
   border-radius: 12px 12px 0 0;
 }
 
@@ -353,14 +353,14 @@
   background: transparent;
 }
 
-.ant-table-thead > tr > th {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+.ant-table-thead>tr>th {
+  background: transparent;
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   font-weight: 600;
   color: #212529;
 }
 
-.ant-table-tbody > tr:hover > td {
+.ant-table-tbody>tr:hover>td {
   background: rgba(0, 0, 0, 0.03);
 }
 

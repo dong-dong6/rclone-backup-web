@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { IconSettings, IconDatabase, IconShield, IconBell } from '@tabler/icons-react';
+import { IconSettings, IconDatabase, IconShield, IconBell, IconMoon, IconSun, IconDeviceDesktop } from '@tabler/icons-react';
+import { useTheme } from '../contexts/ThemeContext';
 
 const Settings: React.FC = () => {
   const { t } = useTranslation();
+  const { theme, setTheme } = useTheme();
   const [activeTab, setActiveTab] = useState('general');
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState({
@@ -68,7 +70,7 @@ const Settings: React.FC = () => {
                         type="text"
                         className="form-control"
                         value={settings.hub_name}
-                        onChange={(e) => setSettings({...settings, hub_name: e.target.value})}
+                        onChange={(e) => setSettings({ ...settings, hub_name: e.target.value })}
                       />
                     </div>
                     <div className="mb-3">
@@ -77,7 +79,7 @@ const Settings: React.FC = () => {
                         type="number"
                         className="form-control"
                         value={settings.session_timeout}
-                        onChange={(e) => setSettings({...settings, session_timeout: parseInt(e.target.value)})}
+                        onChange={(e) => setSettings({ ...settings, session_timeout: parseInt(e.target.value) })}
                       />
                     </div>
                     <div className="mb-3">
@@ -85,7 +87,7 @@ const Settings: React.FC = () => {
                       <select
                         className="form-select"
                         value={settings.log_level}
-                        onChange={(e) => setSettings({...settings, log_level: e.target.value})}
+                        onChange={(e) => setSettings({ ...settings, log_level: e.target.value })}
                       >
                         <option value="debug">Debug</option>
                         <option value="info">Info</option>
@@ -94,40 +96,94 @@ const Settings: React.FC = () => {
                       </select>
                     </div>
                     <div className="mb-3">
+                      <label className="form-label">{t('settings.theme') || 'Theme'}</label>
+                      <div className="row g-2">
+                        <div className="col-4">
+                          <label className={`form-selectgroup-item`}>
+                            <input
+                              type="radio"
+                              name="theme"
+                              value="light"
+                              className="form-selectgroup-input"
+                              checked={theme === 'light'}
+                              onChange={() => setTheme('light')}
+                            />
+                            <span className="form-selectgroup-label d-flex align-items-center p-3 justify-content-center">
+                              <IconSun size={18} className="me-2" />
+                              Light
+                            </span>
+                          </label>
+                        </div>
+                        <div className="col-4">
+                          <label className="form-selectgroup-item">
+                            <input
+                              type="radio"
+                              name="theme"
+                              value="dark"
+                              className="form-selectgroup-input"
+                              checked={theme === 'dark'}
+                              onChange={() => setTheme('dark')}
+                            />
+                            <span className="form-selectgroup-label d-flex align-items-center p-3 justify-content-center">
+                              <IconMoon size={18} className="me-2" />
+                              Dark
+                            </span>
+                          </label>
+                        </div>
+                        <div className="col-4">
+                          <label className="form-selectgroup-item">
+                            <input
+                              type="radio"
+                              name="theme"
+                              value="auto"
+                              className="form-selectgroup-input"
+                              checked={theme === 'auto'}
+                              onChange={() => setTheme('auto')}
+                            />
+                            <span className="form-selectgroup-label d-flex align-items-center p-3 justify-content-center">
+                              <IconDeviceDesktop size={18} className="me-2" />
+                              Auto
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mb-3">
                       <div className="form-check">
                         <input
                           type="checkbox"
                           className="form-check-input"
                           checked={settings.enable_metrics}
-                          onChange={(e) => setSettings({...settings, enable_metrics: e.target.checked})}
+                          onChange={(e) => setSettings({ ...settings, enable_metrics: e.target.checked })}
                         />
                         <label className="form-check-label">Enable Metrics</label>
                       </div>
                     </div>
                   </div>
                 )}
-                
+
                 {activeTab === 'security' && (
                   <div>
                     <h4>Security Settings</h4>
                     <p className="text-muted">Security configuration options will be displayed here.</p>
                   </div>
                 )}
-                
+
                 {activeTab === 'database' && (
                   <div>
                     <h4>Database Settings</h4>
                     <p className="text-muted">Database configuration options will be displayed here.</p>
                   </div>
                 )}
-                
+
                 {activeTab === 'notifications' && (
                   <div>
                     <h4>Notification Settings</h4>
                     <p className="text-muted">Notification configuration options will be displayed here.</p>
                   </div>
                 )}
-                
+
                 <div className="mt-4">
                   <button
                     className="btn btn-primary"

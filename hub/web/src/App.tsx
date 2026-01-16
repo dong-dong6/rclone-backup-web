@@ -14,12 +14,15 @@ import {
   IconChevronLeft,
 } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
-import Dashboard from './pages/Dashboard';
-import Agents from './pages/Agents';
-import Tasks from './pages/Tasks';
-import Remotes from './pages/Remotes';
-import Executions, { ExecutionDetail } from './pages/Executions';
-import SettingsPage from './pages/Settings';
+import {
+  DashboardPage,
+  AgentsPage,
+  TasksPage,
+  RemotesPage,
+  ExecutionsPage,
+  ExecutionDetailPage,
+  SettingsPage,
+} from './features';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SSEProvider } from './contexts/SSEContext';
@@ -120,12 +123,12 @@ const AppLayout: React.FC = () => {
         <div className="page-body">
           <div className="container-xl">
             <Routes>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/agents" element={<Agents />} />
-              <Route path="/tasks" element={<Tasks />} />
-              <Route path="/remotes" element={<Remotes />} />
-              <Route path="/executions" element={<Executions />} />
-              <Route path="/executions/:id" element={<ExecutionDetail />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/agents" element={<AgentsPage />} />
+              <Route path="/tasks" element={<TasksPage />} />
+              <Route path="/remotes" element={<RemotesPage />} />
+              <Route path="/executions" element={<ExecutionsPage />} />
+              <Route path="/executions/:id" element={<ExecutionDetailPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/" element={<Navigate to="/dashboard" />} />
             </Routes>

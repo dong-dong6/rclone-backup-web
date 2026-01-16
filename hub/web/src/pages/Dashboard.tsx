@@ -220,7 +220,7 @@ const Dashboard: React.FC = () => {
             <div className="progress progress-sm">
               <div
                 className="progress-bar bg-primary"
-                style={{ width: stats.totalAgents > 0 ? (stats.onlineAgents / stats.totalAgents) * 100 : 0 + '%' }}
+                style={{ width: `${stats.totalAgents > 0 ? (stats.onlineAgents / stats.totalAgents) * 100 : 0}%` }}
               ></div>
             </div>
           </div>
@@ -240,12 +240,12 @@ const Dashboard: React.FC = () => {
             <div className="progress progress-sm">
               <div
                 className="progress-bar bg-success"
-                style={{ width: stats.totalTasks > 0 ? (stats.activeTasks / stats.totalTasks) * 100 : 0 + '%' }}
+                style={{ width: `${stats.totalTasks > 0 ? (stats.activeTasks / stats.totalTasks) * 100 : 0}%` }}
               ></div>
             </div>
           </div>
         </div>
-      </div>
+      </div >
 
       <div className="col-sm-6 col-lg-3">
         <div className="card">
@@ -325,7 +325,7 @@ const Dashboard: React.FC = () => {
                   <div className="progress progress-sm">
                     <div
                       className="progress-bar bg-success"
-                      style={{ width: stats.totalAgents > 0 ? (stats.onlineAgents / stats.totalAgents) * 100 : 0 + '%' }}
+                      style={{ width: `${stats.totalAgents > 0 ? (stats.onlineAgents / stats.totalAgents) * 100 : 0}%` }}
                     ></div>
                   </div>
                 </div>
@@ -353,10 +353,10 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+      </div >
 
       {/* Recent Executions Table */}
-      <div className="col-12">
+      < div className="col-12" >
         <div className="card">
           <div className="card-header">
             <h3 className="card-title">{t('dashboard.recent_executions.title')}</h3>
@@ -396,8 +396,8 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 };
 

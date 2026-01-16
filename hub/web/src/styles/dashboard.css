@@ -15,9 +15,12 @@
 }
 
 @keyframes gradient-shift {
-  0%, 100% {
+
+  0%,
+  100% {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   }
+
   50% {
     background: linear-gradient(135deg, #764ba2 0%, #f093fb 100%);
   }
@@ -56,19 +59,17 @@
 /* Card Hover Effects */
 .neu-card:hover {
   transform: translateY(-2px);
-  box-shadow: 
+  box-shadow:
     12px 12px 24px rgba(0, 0, 0, 0.15),
     -12px -12px 24px rgba(255, 255, 255, 0.8);
 }
 
 /* Loading Skeleton */
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--neu-background) 25%,
-    rgba(255, 255, 255, 0.2) 50%,
-    var(--neu-background) 75%
-  );
+  background: linear-gradient(90deg,
+      var(--neu-background) 25%,
+      rgba(255, 255, 255, 0.2) 50%,
+      var(--neu-background) 75%);
   background-size: 200% 100%;
   animation: loading 1.5s infinite;
 }
@@ -77,6 +78,7 @@
   0% {
     background-position: 200% 0;
   }
+
   100% {
     background-position: -200% 0;
   }
@@ -135,12 +137,10 @@
   left: 0;
   right: 0;
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.3),
-    transparent
-  );
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(255, 255, 255, 0.3),
+      transparent);
   animation: shimmer 2s infinite;
 }
 
@@ -148,6 +148,7 @@
   0% {
     transform: translateX(-100%);
   }
+
   100% {
     transform: translateX(100%);
   }
@@ -166,7 +167,7 @@
   left: -50%;
   width: 200%;
   height: 200%;
-  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
   opacity: 0;
   transition: opacity 0.3s ease;
 }
@@ -180,11 +181,11 @@
   .dashboard-container {
     padding: 1rem;
   }
-  
+
   .grid {
     gap: 1rem !important;
   }
-  
+
   .neu-card {
     padding: 1rem !important;
   }
@@ -193,11 +194,11 @@
 /* Dark Mode Adjustments */
 @media (prefers-color-scheme: dark) {
   .neu-card:hover {
-    box-shadow: 
+    box-shadow:
       12px 12px 24px rgba(0, 0, 0, 0.5),
       -12px -12px 24px rgba(255, 255, 255, 0.05);
   }
-  
+
   .gradient-text {
     background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
   }
@@ -219,11 +220,10 @@
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
   }
+
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -232,6 +232,7 @@
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -243,6 +244,7 @@
     opacity: 0;
     transform: scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
