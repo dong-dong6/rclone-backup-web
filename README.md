@@ -1,72 +1,122 @@
 # 🚀 Rclone Backup Web V2.0
 
-一个强大的分布式备份管理系统，基于Hub-and-Spoke架构设计。
+一个强大的分布式备份管理系统，基于 Hub-and-Spoke 架构设计。
 
-## ✨ 特性
+## ✨ 核心特性
 
-- 🌐 **分布式架构** - 中央Hub管理，多Agent执行
-- 📅 **智能调度** - Cron表达式支持，防重复执行
-- 🔄 **实时监控** - SSE推送，实时日志流
-- 🛡️ **高可用性** - Agent本地回退机制
-- 🎨 **现代UI** - React + TypeScript，响应式设计
-- 🔒 **安全加密** - JWT认证，AES-256加密存储
-- 📦 **容器化部署** - Docker Compose一键部署
+- 🌐 **分布式架构** - 中央 Hub 管理，多 Agent 执行
+- 📅 **智能调度** - Cron 表达式支持，防重复执行机制
+- 🔄 **实时监控** - WebSocket 双向通信 + SSE 实时日志流
+- 🛡️ **高可用性** - Agent 本地回退机制，离线可用
+- 🎨 **现代 UI** - React 18 + TypeScript + Vite，响应式设计
+- 🔒 **安全加密** - JWT 认证 + AES-256 加密存储
+- 📦 **容器化部署** - Docker Compose 一键部署
+- 🔌 **一键 OAuth** - Google Drive / OneDrive 快速授权
+- 📂 **远程浏览** - 通过 WebSocket 远程浏览 Agent 文件系统
+- 📊 **指标监控** - 实时 CPU/内存/磁盘监控
+
+## 🏗️ 技术栈
+
+### 后端
+- **语言**: Go 1.23+
+- **框架**: Gin
+- **数据库**: PostgreSQL 15
+- **认证**: JWT (golang-jwt/jwt)
+- **加密**: AES-256 (golang.org/x/crypto)
+- **调度**: Cron (robfig/cron)
+- **通信**: WebSocket (gorilla/websocket)
+
+### 前端
+- **框架**: React 18
+- **语言**: TypeScript 5.3
+- **构建**: Vite 5
+- **图标**: Tabler Icons / Lucide React
+- **图表**: Recharts
+- **国际化**: i18next
+
+### 基础设施
+- **容器**: Docker + Docker Compose
+- **反向代理**: Nginx（可选）
+- **部署**: 本地构建，无需外部镜像仓库
 
 ## 🏗️ 架构
 
 ```
 ┌─────────────────────────────────────────────┐
-│                  Hub (中央节点)               │
+│                Hub (中央节点)                 │
 │  ┌─────────┐  ┌─────────┐  ┌─────────────┐ │
-│  │ Web UI  │  │ API     │  │ PostgreSQL  │ │
+│  │ Web UI  │  │  API    │  │ PostgreSQL  │ │
+│  │ (内嵌)  │  │ (Go)    │  │             │ │
 │  └─────────┘  └─────────┘  └─────────────┘ │
 └───────────────────┬─────────────────────────┘
-                    │ HTTPS/WSS
+                    │ WebSocket (双向)
     ┌───────────────┴───────────────┐
     │                               │
 ┌───▼────┐                    ┌────▼───┐
 │ Agent  │                    │ Agent  │
 │   +    │                    │   +    │
-│Sidecar │                    │Sidecar │
+│ Rclone │                    │ Rclone │
 └────────┘                    └────────┘
 ```
 
-Agent 与 Hub 默认通过 WebSocket（`/api/v1/agent/ws`）建立双向长连接，用于任务下发/取消、日志与状态回传、远程目录浏览；HTTP 仅用于下载/注册等必要引导流程。
-
-如果 Hub 部署在 Nginx 等反向代理后，需要开启 WebSocket Upgrade（示例已包含在 `hub/web/nginx.conf`、`hub/web/nginx.conf.template`、`docker/hub/nginx.conf`）。
+### 通信机制
+- **WebSocket**: Agent 与 Hub 通过 `/api/v1/agent/ws` 建立长连接
+  - 任务下发/取消
+  - 心跳与状态上报
+  - 日志实时流传输
+  - 文件系统远程浏览
+  - 配置同步
+- **SSE**: 前端通过 `/events` 接收实时事件推送
+- **HTTP**: 注册、下载、OAuth 回调等无状态操作
 
 ## 🚀 快速开始
 
-### 使用部署脚本（推荐）
+### 方式一：使用部署脚本（推荐）
 
 ```bash
-# 克隆仓库
+# 1. 克隆仓库
 git clone https://github.com/yourusername/rclone-backup-web.git
-cd rclone-backup-web/v2
+cd rclone-backup-web
 
-# 部署Hub服务
+# 2. 部署 Hub 服务
 ./deploy.sh hub
 
-# 或部署Hub + 本地Agent（自我备份）
+# 或部署 Hub + 本地 Agent（Hub 自我备份）
 ./deploy.sh hub-with-agent
 ```
 
-### 部署脚本功能
+### 方式二：使用 Makefile
+
+```bash
+# 1. 初始化环境（生成 .env）
+make init
+
+# 2. 生成安全密钥
+make gen-keys >> .env
+
+# 3. 构建镜像
+make build
+
+# 4. 启动服务
+make up                # 仅 Hub
+```
+
+## 📋 部署脚本命令
 
 ```bash
 ./deploy.sh [命令] [选项]
 
 命令：
-  hub              # 部署Hub服务
-  hub-with-agent   # 部署Hub和本地Agent
-  agent            # 部署独立Agent
+  hub              # 部署 Hub 服务
+  hub-with-agent   # 部署 Hub 和本地 Agent
+  agent            # 部署独立 Agent
   build            # 构建镜像
-  status           # 查看状态
+  status           # 查看服务状态
   logs [service]   # 查看日志
   stop             # 停止服务
   restart          # 重启服务
-  clean            # 交互式清理数据
-  backup           # 备份数据
+  clean            # 交互式清理数据（自动备份）
+  backup           # 备份数据库
   restore <file>   # 恢复备份
   help             # 显示帮助
 
@@ -74,33 +124,61 @@ cd rclone-backup-web/v2
   --clean          # 部署前清理数据
 ```
 
-### 核心特性
+## 🔧 环境配置
 
-- ✅ **透明数据管理** - 所有数据存储在 `./data` 目录
-- ✅ **智能清理** - 交互式数据清理，自动备份
-- ✅ **版本兼容** - 自动检测Docker Compose V1/V2
-- ✅ **本地构建** - 所有镜像本地构建，无需外部仓库
-- ✅ **交互配置** - 首次运行自动生成配置
+### 必需的环境变量
 
-### 使用Makefile（可选）
+创建 `.env` 文件（或复制 `.env.example`）：
 
 ```bash
-# 初始化环境
-make init
+# 数据库配置
+DB_PASSWORD=your_strong_password
+DB_USER=rclone
+DB_NAME=rclone_backup
 
-# 构建镜像
-make build
+# 安全密钥（使用 make gen-keys 生成）
+JWT_SECRET=your_64_character_random_string
+ENCRYPTION_KEY=your_32_character_random_string
 
-# 启动服务
-make up                # 仅Hub
-make up-with-agent     # Hub + 本地Agent
+# 服务端口
+WEB_PORT=3000
+
+# 可选：日志级别
+LOG_LEVEL=info
+GIN_MODE=release
 ```
 
-## 📋 部署方案
+### 生成安全密钥
 
-### 方案1：仅Hub部署
+```bash
+# 自动生成并追加到 .env
+make gen-keys >> .env
 
-适合集中管理，Agent部署在其他服务器：
+# 或手动生成
+openssl rand -hex 32  # JWT_SECRET
+openssl rand -hex 16  # ENCRYPTION_KEY
+```
+
+## 🌐 访问系统
+
+启动后访问：
+
+- **Web UI**: http://localhost:3000
+- **API 文档**: [docs/api-interface-catalog.md](docs/api-interface-catalog.md)
+- **健康检查**: http://localhost:3000/health
+
+### 默认管理员账号
+
+- **用户名**: `admin`
+- **密码**: `admin`
+
+⚠️ **重要**: 首次登录后必须立即修改默认密码！
+
+## 📦 部署方案
+
+### 方案 1：仅 Hub 部署
+
+适合集中管理，Agent 部署在其他服务器：
 
 ```bash
 # 1. 配置环境变量
@@ -111,177 +189,259 @@ vim .env  # 编辑配置
 make build
 make up
 
-# 3. 访问Web UI
+# 3. 访问 Web UI
 # http://localhost:3000
 ```
 
-### 方案2：Hub + 本地Agent
+### 方案 2：Hub + 本地 Agent
 
-Hub可以备份自身数据：
+Hub 可以备份自身数据：
 
 ```bash
-# 1. 先启动Hub
-make up
+# 使用部署脚本（推荐）
+./deploy.sh hub-with-agent
 
-# 2. 获取注册令牌
-# 在Web UI的Agents页面生成令牌
-
-# 3. 配置本地Agent
-echo "LOCAL_AGENT_REGISTRATION_TOKEN=xxx" >> .env
-
-# 4. 重启服务
-make down
+# 或使用 Makefile
+make build
+# 在 .env 中添加 LOCAL_AGENT_REGISTRATION_TOKEN
 make up-with-agent
 ```
 
-### 方案3：独立Agent部署
+### 方案 3：远程 Agent 部署
 
-在远程服务器部署Agent：
-
-```bash
-# 1. 复制Agent配置
-scp -r v2/agent v2/docker-compose.agent.yml remote-server:
-
-# 2. 在远程服务器
-cd agent
-docker-compose -f docker-compose.agent.yml up -d
-```
-
-## 🔧 配置说明
-
-### 必需的环境变量
-
-| 变量 | 说明 | 示例 |
-|------|------|------|
-| `DB_PASSWORD` | 数据库密码 | `strong_password` |
-| `JWT_SECRET` | JWT签名密钥 | 64位随机字符串 |
-| `ENCRYPTION_KEY` | 加密密钥 | 32位随机字符串 |
-
-### 生成安全密钥
+在远程服务器部署 Agent：
 
 ```bash
-# 自动生成所有密钥
-make gen-keys >> .env
+# 方式 A：使用安装脚本（推荐）
+# 1. 在 Hub Web UI 生成注册令牌
+# 2. 在远程服务器执行：
+curl -fsSL http://your-hub:3000/api/v1/agent/install.sh | bash -s -- \
+  --token YOUR_TOKEN \
+  --hub-url http://your-hub:3000
 
-# 或手动生成
-openssl rand -hex 32  # JWT_SECRET
-openssl rand -hex 16  # ENCRYPTION_KEY
+# 方式 B：手动部署
+# 详见 AGENT-SETUP.md
+./start-agent.sh --token YOUR_TOKEN --hub-url http://your-hub:3000
 ```
 
-## 📦 镜像构建
+## 📊 数据管理
 
-所有镜像都在本地构建，无需依赖外部镜像仓库：
+### 数据存储位置
+
+所有数据透明存储在 `./data` 目录：
+
+```
+data/
+├── postgres/         # PostgreSQL 数据库文件
+├── hub/
+│   ├── data/        # Hub 运行时数据
+│   └── logs/        # Hub 日志
+├── local-agent/     # 本地 Agent 数据（如果启用）
+└── backups/         # 数据库备份文件
+```
+
+### 备份与恢复
 
 ```bash
-# 构建所有镜像
-make build
+# 手动备份
+make backup
+# 或
+./deploy.sh backup
 
-# 查看构建的镜像
-docker images | grep rclone-backup
+# 自动备份（每 24 小时）
+make backup-auto
 
-# 输出:
-# rclone-backup-hub      latest    xxx    1.2GB
-# rclone-backup-web      latest    xxx    45MB
-# rclone-backup-agent    latest    xxx    850MB
+# 恢复备份
+make restore FILE=data/backups/backup-20260117-120000.sql.gz
+# 或
+./deploy.sh restore data/backups/backup-20260117-120000.sql.gz
 ```
 
-## 🌐 访问地址
-
-启动后可以访问：
-
-- **Web UI**: http://localhost:3000
-- **API**: http://localhost:8080
-- **Metrics**: http://localhost:9090/metrics
-
-默认管理员账号：
-- 用户名：`admin`
-- 密码：`admin` （首次登录后请修改）
-
-## 📊 监控与维护
+## 🔧 维护与监控
 
 ### 查看服务状态
 
 ```bash
-make status           # 服务状态
-make logs            # 查看日志
-make local-agent-logs # 本地Agent日志
+# 使用部署脚本
+./deploy.sh status
+
+# 使用 Makefile
+make status
+
+# 直接使用 Docker Compose
+docker compose ps
 ```
 
-### 数据库备份
+### 查看日志
 
 ```bash
-make backup          # 手动备份
-make backup-auto     # 启动自动备份
-make restore FILE=backups/xxx.sql.gz  # 恢复
+# 所有服务日志
+make logs
+
+# 特定服务日志
+make logs-hub
+docker compose logs -f hub
+
+# Hub 内部日志文件
+tail -f data/hub/logs/hub.log
 ```
 
 ### 健康检查
 
 ```bash
-curl http://localhost:8080/health
+# Hub 健康检查
+curl http://localhost:3000/health
+
+# 响应示例：
+# {"status":"healthy","time":1705493200}
 ```
 
 ## 🔄 更新升级
 
 ```bash
-# 更新代码
+# 1. 备份数据
+./deploy.sh backup
+
+# 2. 拉取最新代码
 git pull
 
-# 重新构建并更新
-make update              # 更新Hub
-make update-with-agent   # 更新Hub和Agent
+# 3. 重新构建并更新
+./deploy.sh build
+./deploy.sh restart
 ```
 
 ## 🛠️ 故障排查
 
-更完整的 Hub ↔ Agent / 监控 / 路径浏览排查步骤见：`docs/troubleshooting.md`。
+完整的故障排查指南请参考：[docs/troubleshooting.md](docs/troubleshooting.md)
 
-### Hub无法启动
+### 常见问题
+
+#### Hub 无法启动
 
 ```bash
-# 检查日志
-docker-compose logs hub-api
+# 查看日志
+docker compose logs hub
 
 # 检查数据库连接
-docker-compose exec postgres pg_isready
+docker compose exec postgres pg_isready
 
-# 重置环境（谨慎）
-make clean
+# 检查环境变量
+docker compose config
 ```
 
-### Agent无法连接
+#### Agent 无法连接
 
 ```bash
-# 检查网络
-docker-compose exec local-agent curl http://hub-api:8080/health
+# 检查 WebSocket 连接
+# 查看 Hub 日志中的 [AgentWS] 相关信息
+docker compose logs hub | grep AgentWS
 
-# 重新注册
-make down
-rm -rf agent_data
-make up-with-agent
+# 检查网络连通性
+docker compose exec hub ping agent-hostname
+
+# 重新注册 Agent
+# 删除 Agent 数据并使用新令牌重新注册
+```
+
+#### 前端无法加载
+
+```bash
+# 检查静态文件是否存在
+ls -la hub/static/web/
+
+# 重新构建前端
+cd hub/web
+npm install
+npm run build
 ```
 
 ## 📚 文档
 
+- [Agent 设置指南](AGENT-SETUP.md)
+- [API 接口清单](docs/api-interface-catalog.md)
+- [Rclone 配置模板](docs/rclone-remote-templates.md)
+- [故障排查指南](docs/troubleshooting.md)
 - [部署指南](deploy/README.md)
-- [本地Agent配置](deploy/LOCAL_AGENT.md)
-- [API文档](docs/API.md)
-- [架构设计](docs/ARCHITECTURE.md)
+- [本地 Agent 配置](deploy/LOCAL_AGENT.md)
+
+## 🔐 安全建议
+
+1. **修改默认密码**: 首次登录后立即修改 admin 密码
+2. **使用强密钥**: JWT_SECRET 和 ENCRYPTION_KEY 应使用随机生成
+3. **限制 CORS**: 生产环境修改 `hub/main.go` 中的 CORS 配置
+4. **HTTPS 部署**: 生产环境使用 Nginx + Let's Encrypt
+5. **定期备份**: 启用自动备份或设置定时任务
+6. **网络隔离**: 使用防火墙限制 Hub 和 Agent 的访问
+
+## 🌟 功能清单
+
+### 已实现
+
+- ✅ Hub-and-Spoke 分布式架构
+- ✅ WebSocket 双向通信
+- ✅ JWT 认证与 AES-256 加密
+- ✅ Cron 调度与防重复执行
+- ✅ 实时日志流（SSE）
+- ✅ Agent 健康监控（CPU/内存/磁盘）
+- ✅ 远程文件系统浏览
+- ✅ Remote 配置管理与测试
+- ✅ 任务触发与取消
+- ✅ 执行历史与统计
+- ✅ Dashboard 可视化
+- ✅ Google Drive / OneDrive 一键 OAuth
+- ✅ 多语言支持（中文/英文）
+- ✅ 配置导入/导出
+- ✅ 自动备份与恢复
+- ✅ Docker 一键部署
+
+### 计划中
+
+- 🔲 多用户权限管理
+- 🔲 Webhook 通知（企业微信/钉钉/Slack）
+- 🔲 S3 兼容存储直接备份
+- 🔲 备份版本管理
+- 🔲 增量备份支持
+- 🔲 Prometheus 指标导出
+- 🔲 高可用 Hub 部署方案
 
 ## 🤝 贡献
 
-欢迎提交Issue和Pull Request！
+欢迎提交 Issue 和 Pull Request！
 
-## 📄 许可
+### 开发环境
 
-MIT License
+```bash
+# 后端开发
+cd hub
+go run main.go
+
+# 前端开发
+cd hub/web
+npm install
+npm run dev
+
+# Agent 开发
+cd agent
+go run main.go
+```
+
+## 📄 许可证
+
+MIT License - 详见 [LICENSE](LICENSE)
 
 ## 🙏 致谢
 
-- [Rclone](https://rclone.org/) - 强大的云存储工具
+- [Rclone](https://rclone.org/) - 强大的云存储同步工具
+- [Gin](https://github.com/gin-gonic/gin) - 高性能 Go Web 框架
+- [React](https://reactjs.org/) - 用户界面库
+- [PostgreSQL](https://www.postgresql.org/) - 强大的开源数据库
 - [Docker](https://www.docker.com/) - 容器化平台
-- 所有贡献者
+- 所有贡献者和用户
 
 ---
+
+**项目版本**: 2.0
+**最后更新**: 2026-01-17
+**开发分支**: v2-dev
 
 **Made with ❤️ by the Community**

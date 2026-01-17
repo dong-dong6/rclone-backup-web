@@ -1,151 +1,165 @@
-/* Dashboard Page - Matching templates/dashboard.html style */
+/* Dashboard Page - Ceramic Aurora & Deep Space Obsidian Compatible */
 
 .dashboard-stats-card {
-  background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
   padding: 24px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Use variable shadow by default, but we will override for specific states */
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
   position: relative;
   overflow: hidden;
+  backdrop-filter: blur(20px);
 }
 
-.dashboard-stats-card::before {
+/* We replace the "Top Bar" with a subtle glow or gradient border effect for a more modern feel */
+.dashboard-stats-card::after {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(135deg, #000000 0%, #434343 100%);
+  width: 4px;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0.8;
 }
 
-.dashboard-stats-card.success::before {
-  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+.dashboard-stats-card.success::after {
+  background: linear-gradient(to bottom, #22c55e, transparent);
+  /* Green to transparent */
+  box-shadow: 4px 0 24px rgba(34, 197, 94, 0.4);
 }
 
-.dashboard-stats-card.warning::before {
-  background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+.dashboard-stats-card.warning::after {
+  background: linear-gradient(to bottom, #f59e0b, transparent);
+  /* Amber */
+  box-shadow: 4px 0 24px rgba(245, 158, 11, 0.4);
 }
 
-.dashboard-stats-card.danger::before {
-  background: linear-gradient(135deg, #dc3545 0%, #e83e8c 100%);
+.dashboard-stats-card.danger::after {
+  background: linear-gradient(to bottom, #ef4444, transparent);
+  /* Red */
+  box-shadow: 4px 0 24px rgba(239, 68, 68, 0.4);
 }
 
+/* Hover Effects */
 .dashboard-stats-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  border-color: rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(var(--primary-rgb), 0.2);
 }
 
 /* Chart container */
 .chart-container {
-  background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
   padding: 24px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(20px);
 }
 
-/* Override Ant Design Card for dashboard */
-.ant-card.dashboard-card {
-  background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+/* Generic Dashboard Card */
+.dashboard-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(20px);
 }
 
 /* Statistic value colors */
-.ant-statistic-content-value {
-  color: #000000;
+.statistic-value {
+  color: var(--text-primary);
   font-weight: 700;
+  font-family: var(--font-family-title);
+  font-size: 2rem;
+  letter-spacing: -0.05em;
 }
 
-.ant-statistic-content-value.success {
-  color: #28a745;
+.statistic-value.success {
+  color: #22c55e;
 }
 
-.ant-statistic-content-value.warning {
-  color: #ffc107;
+.statistic-value.warning {
+  color: #f59e0b;
 }
 
-.ant-statistic-content-value.danger {
-  color: #dc3545;
+.statistic-value.danger {
+  color: #ef4444;
 }
 
 /* Status tags */
-.ant-tag {
+.status-tag {
   border-radius: 50px;
   padding: 4px 12px;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-/* Progress bars */
-.ant-progress-line {
-  font-size: 14px;
-}
-
-.ant-progress-bg {
-  border-radius: 100px;
+  letter-spacing: 0.05em;
+  background: rgba(var(--primary-rgb), 0.1);
+  color: var(--primary-color);
 }
 
 /* Table in dashboard */
-.dashboard-table .ant-table {
-  background: transparent;
-  border-radius: 12px;
-  overflow: hidden;
+.dashboard-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
-.dashboard-table .ant-table-thead > tr > th {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border: none;
+.dashboard-table th {
+  background: rgba(var(--primary-rgb), 0.02);
+  border-bottom: 1px solid var(--border-color);
   font-weight: 600;
-  color: #212529;
+  color: var(--text-secondary);
   padding: 16px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  text-align: left;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.dashboard-table .ant-table-tbody > tr > td {
-  border: none;
+.dashboard-table td {
+  border-bottom: 1px solid var(--border-color);
   padding: 16px;
   vertical-align: middle;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  color: var(--text-primary);
+  font-size: 0.9375rem;
 }
 
-.dashboard-table .ant-table-tbody > tr:hover > td {
-  background: rgba(0, 0, 0, 0.03);
+.dashboard-table tr:last-child td {
+  border-bottom: none;
 }
 
-/* Animation */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.dashboard-table tr:hover td {
+  background: rgba(var(--primary-rgb), 0.02);
 }
 
+/* Animations & Utils */
 .fade-in-up {
-  animation: fadeInUp 0.6s ease-out;
-}
-
-/* Pulse animation for running status */
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+  animation: fadeInUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
 .pulse {
   animation: pulse 2s infinite;
+}
+
+/* Reusing Animation Keyframes from index.css or redefining if private */
+@keyframes pulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.7;
+    transform: scale(0.95);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

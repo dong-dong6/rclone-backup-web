@@ -1,8 +1,8 @@
 /* ============================================
-   Rclone Backup Web V2.0 - Dual Theme System
+   Rclone Backup Web V2.0 - Ceramic Aurora System
    ============================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import '@tabler/core/dist/css/tabler.min.css';
 @import '@tabler/core/dist/css/tabler-vendors.min.css';
 
@@ -11,83 +11,105 @@
    --------------------------------------------
 */
 :root {
-  /* Common Variables */
-  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  --border-radius: 12px;
+  /* Motion & Dimensions */
+  --transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --border-radius: 16px;
   --border-radius-sm: 8px;
+
+  /* Typography */
   --font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
   --font-family-title: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-family-mono: 'JetBrains Mono', monospace;
 }
 
-/* LIGHT THEME (Frost Glass) */
+/* LIGHT THEME: Ceramic Aurora */
 [data-theme="light"] {
   /* Backgrounds */
-  --bg-body: #f0f2f5;
-  --bg-surface: rgba(255, 255, 255, 0.7);
-  --bg-surface-hover: rgba(255, 255, 255, 0.85);
-  --bg-surface-active: rgba(255, 255, 255, 0.95);
-  --glass-border: rgba(255, 255, 255, 0.5);
+  --bg-body: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-surface-hover: #f8fafc;
+  --bg-surface-active: #f1f5f9;
 
-  /* Text */
-  --text-primary: #1a1a1a;
-  --text-secondary: #5e6c84;
-  --text-muted: #8993a4;
+  /* Glass & Borders */
+  --glass-border: rgba(0, 0, 0, 0.04);
+  --border-color: rgba(0, 0, 0, 0.06);
 
-  /* Accents */
-  --primary-color: #0066ff;
-  --primary-rgb: 0, 102, 255;
-  --accent-gradient: linear-gradient(135deg, #0066ff 0%, #00ccff 100%);
+  /* Text: High Contrast */
+  --text-primary: #0f172a;
+  /* Slate 900 */
+  --text-secondary: #64748b;
+  /* Slate 500 */
+  --text-muted: #94a3b8;
+  /* Slate 400 */
 
-  /* Shadows */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.08);
+  /* Accents: Klein Blue */
+  --primary-color: #0047FF;
+  --primary-rgb: 0, 71, 255;
+  --accent-gradient: linear-gradient(135deg, #0047FF 0%, #00C2FF 100%);
 
-  /* Borders */
-  --border-color: rgba(0, 0, 0, 0.08);
+  /* Shadows: The "Aurora" Effect */
+  /* SM: Cyan Tint */
+  --shadow-sm: 0 4px 20px -2px rgba(6, 182, 212, 0.08);
+  /* MD: Violet/Blue Tint */
+  --shadow-md: 0 12px 40px -8px rgba(56, 189, 248, 0.12),
+    0 4px 12px -4px rgba(139, 92, 246, 0.08);
+  /* LG: Deep Aurora */
+  --shadow-lg: 0 20px 60px -12px rgba(6, 182, 212, 0.15),
+    0 12px 24px -8px rgba(0, 71, 255, 0.1);
+
+  --section-bg-gradient: linear-gradient(to bottom, #ffffff, #f8fafc);
 }
 
-/* DARK THEME (Deep Space) */
+/* DARK THEME: Deep Space Obsidian */
 [data-theme="dark"] {
   /* Backgrounds */
-  --bg-body: #050a14;
-  --bg-surface: rgba(20, 25, 40, 0.6);
-  --bg-surface-hover: rgba(30, 35, 50, 0.7);
-  --bg-surface-active: rgba(40, 45, 60, 0.8);
+  --bg-body: #09090b;
+  /* Zinc 950 */
+  --bg-surface: rgba(9, 9, 11, 0.6);
+  --bg-surface-hover: rgba(39, 39, 42, 0.5);
+  --bg-surface-active: rgba(63, 63, 70, 0.5);
+
+  /* Glass & Borders */
   --glass-border: rgba(255, 255, 255, 0.08);
+  --border-color: rgba(255, 255, 255, 0.08);
 
   /* Text */
-  --text-primary: #e6e6e6;
-  --text-secondary: #a0aec0;
-  --text-muted: #6b7a90;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
 
-  /* Accents */
-  --primary-color: #3b82f6;
-  --primary-rgb: 59, 130, 246;
-  --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  /* Accents: Neon Cyan */
+  --primary-color: #22d3ee;
+  --primary-rgb: 34, 211, 238;
+  --accent-gradient: linear-gradient(135deg, #22d3ee 0%, #0ea5e9 100%);
 
-  /* Shadows */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+  /* Shadows: Glows */
+  --shadow-sm: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 10px 40px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 20px 60px rgba(0, 0, 0, 0.8);
 
-  /* Borders */
-  --border-color: rgba(255, 255, 255, 0.06);
+  --section-bg-gradient: linear-gradient(to bottom, #09090b, #000000);
 }
 
 /* 
    BASE STYLES 
    --------------------------------------------
 */
+::selection {
+  background: rgba(var(--primary-rgb), 0.2);
+  color: var(--primary-color);
+}
+
 body {
   background-color: var(--bg-body);
+  background-image: var(--section-bg-gradient);
+  background-attachment: fixed;
   color: var(--text-primary);
   font-family: var(--font-family-base);
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background-color 0.4s ease, color 0.3s ease;
   min-height: 100vh;
-  background-image:
-    radial-gradient(circle at 15% 50%, rgba(var(--primary-rgb), 0.08) 0%, transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(var(--primary-rgb), 0.08) 0%, transparent 25%);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 h1,
@@ -99,155 +121,139 @@ h6,
 .card-title {
   font-family: var(--font-family-title);
   color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+code,
+kbd,
+pre,
+.mono {
+  font-family: var(--font-family-mono);
 }
 
 /* 
-   GLASSMORPHISM COMPONENTS
+   COMPONENTS
    --------------------------------------------
 */
+
+/* Card: Pure clean surface */
 .card {
   background: var(--bg-surface);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  /* The Secret Sauce for Light Mode: No heavy borders, just shadow */
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
   border-radius: var(--border-radius);
-  transition: var(--transition);
+  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  backdrop-filter: blur(20px);
 }
 
 .card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
-  border-color: rgba(var(--primary-rgb), 0.3);
+  border-color: rgba(var(--primary-rgb), 0.2);
 }
 
 .card-header {
   border-bottom: 1px solid var(--border-color);
   background: transparent;
+  padding: 1.5rem 1.5rem;
 }
 
-.card-modal {
-  background: var(--bg-surface-active);
+.card-body {
+  padding: 1.5rem;
 }
 
-/* 
-   FORM ELEMENTS
-   --------------------------------------------
-*/
+/* Navbar */
+.navbar {
+  background: rgba(var(--bg-body), 0.8);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.navbar-brand {
+  font-family: var(--font-family-title);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+/* Inputs */
 .form-control,
 .form-select {
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: var(--bg-surface);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
   border-radius: var(--border-radius-sm);
+  padding: 0.625rem 1rem;
   transition: var(--transition);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .form-control:focus,
 .form-select:focus {
-  background-color: rgba(var(--primary-rgb), 0.05);
+  background-color: var(--bg-surface);
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.1);
+  box-shadow: 0 0 0 4px rgba(var(--primary-rgb), 0.1);
   color: var(--text-primary);
 }
 
-[data-theme="dark"] .form-control::placeholder {
-  color: rgba(255, 255, 255, 0.3);
-}
-
-/* 
-   BUTTONS
-   --------------------------------------------
-*/
+/* Buttons */
 .btn {
   border-radius: var(--border-radius-sm);
-  font-weight: 500;
-  padding: 0.5rem 1rem;
-  transition: var(--transition);
+  font-weight: 600;
+  padding: 0.625rem 1.25rem;
+  transition: all 0.3s ease;
+  letter-spacing: 0.01em;
 }
 
 .btn-primary {
+  background: var(--primary-color);
+  /* Fallback */
   background: var(--accent-gradient);
   border: none;
-  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.3);
+  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.25);
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(var(--primary-rgb), 0.4);
+  box-shadow: 0 8px 20px rgba(var(--primary-rgb), 0.35);
 }
 
-.btn-outline-primary {
-  border-color: var(--primary-color);
+.btn-ghost-primary {
   color: var(--primary-color);
-  background: transparent;
+  background: rgba(var(--primary-rgb), 0.05);
+  border: none;
 }
 
-.btn-outline-primary:hover {
+.btn-ghost-primary:hover {
   background: rgba(var(--primary-rgb), 0.1);
-  color: var(--primary-color);
-  border-color: var(--primary-color);
 }
 
-/* 
-   TABLER OVERRIDES
-   --------------------------------------------
-*/
-.page-wrapper {
-  background: transparent;
-}
-
-.nav-link {
-  color: var(--text-secondary);
-  transition: var(--transition);
-}
-
-.nav-link:hover {
-  color: var(--text-primary);
-}
-
-.nav-link.active {
-  color: var(--primary-color);
-  background: rgba(var(--primary-rgb), 0.1);
-  border-radius: var(--border-radius-sm);
-}
-
-.navbar {
-  background: var(--bg-surface);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--border-color);
-}
-
-/* 
-   UTILITY CLASSES
-   --------------------------------------------
-*/
+/* Utility Utilities */
 .text-muted {
   color: var(--text-muted) !important;
 }
 
-.bg-glass {
-  background: var(--bg-surface);
-  backdrop-filter: blur(12px);
+/* Status Badges */
+.badge {
+  font-family: var(--font-family-mono);
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 /* Animations */
-@keyframes fadeIn {
+@keyframes fadeInUp {
   from {
     opacity: 0;
+    transform: translateY(10px);
   }
 
   to {
     opacity: 1;
+    transform: translateY(0);
   }
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.4s ease-out forwards;
-}
-
-/* Badge Tweaks */
-.badge {
-  font-weight: 600;
-  letter-spacing: 0.5px;
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }

@@ -7,14 +7,9 @@
 }
 
 /* Custom Card Styles */
-.card {
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-}
+/* .card styles inherited from index.css */
 
-.card:hover {
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 4px 12px 0 rgba(0, 0, 0, 0.15);
-}
+/* .card:hover styles inherited from index.css */
 
 /* Custom Badge Styles */
 .badge {
@@ -627,7 +622,7 @@
 .app-layout {
   display: flex;
   min-height: 100vh;
-  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 50%, #ffffff 100%);
+  background: transparent;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -638,23 +633,26 @@
   position: fixed;
   left: 0;
   top: 0;
-  background: linear-gradient(180deg, #1f1f1f 0%, #2d2d2d 100%);
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-color);
   padding: 0;
   display: flex;
   flex-direction: column;
-  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 1000;
   overflow-y: auto;
+  backdrop-filter: blur(20px);
 }
 
 /* Override neu-card styles for sidebar */
 .sidebar.neu-card {
-  background: linear-gradient(180deg, #1f1f1f 0%, #2d2d2d 100%) !important;
+  background: var(--bg-surface) !important;
   padding: 0 !important;
   border-radius: 0 !important;
-  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1) !important;
+  box-shadow: none !important;
   border: none !important;
+  border-right: 1px solid var(--border-color) !important;
 }
 
 .sidebar.neu-card:hover {
@@ -699,14 +697,14 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--border-color);
+  background: transparent;
 }
 
 .logo {
   font-size: 20px;
   font-weight: 700;
-  color: white;
+  color: var(--text-primary);
   font-family: 'Inter', sans-serif;
   letter-spacing: -0.5px;
   display: flex;
@@ -750,7 +748,7 @@
   gap: 12px;
   padding: 12px 16px;
   border-radius: 12px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-secondary);
   text-decoration: none;
   font-weight: 500;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -763,28 +761,28 @@
 .menu-item.neu-button {
   background: transparent !important;
   box-shadow: none !important;
-  color: rgba(255, 255, 255, 0.7) !important;
+  color: var(--text-secondary) !important;
   padding: 12px 16px !important;
 }
 
 .menu-item:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
-  color: white;
+  background: rgba(var(--primary-rgb), 0.05) !important;
+  color: var(--primary-color);
   transform: translateX(4px) !important;
   box-shadow: none !important;
 }
 
 .menu-item.active {
-  background: linear-gradient(135deg, #000000 0%, #434343 100%) !important;
-  color: white !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  background: rgba(var(--primary-rgb), 0.1) !important;
+  color: var(--primary-color) !important;
+  box-shadow: none !important;
 }
 
 /* Override neu-button styles for active menu-item */
 .menu-item.neu-button.active {
-  background: linear-gradient(135deg, #000000 0%, #434343 100%) !important;
-  color: white !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  background: rgba(var(--primary-rgb), 0.1) !important;
+  color: var(--primary-color) !important;
+  box-shadow: none !important;
 }
 
 .menu-label {
