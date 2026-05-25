@@ -1,0 +1,561 @@
+{
+  "app": {
+    "title": "Distributed Backup System",
+    "version": "Version 2.0",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "success": "Operation successful",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "import": "Import",
+    "refresh": "Refresh",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "close": "Close"
+  },
+  "common": {
+    "loading": "Loading...",
+    "saving": "Saving...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "confirm": "Confirm",
+    "actions": "Actions",
+    "status": "Status",
+    "online": "Online",
+    "offline": "Offline",
+    "running": "Running",
+    "active": "Active",
+    "inactive": "Inactive",
+    "success": "Success",
+    "failed": "Failed",
+    "error": "Error",
+    "warning": "Warning",
+    "info": "Info",
+    "search": "Search",
+    "refresh": "Refresh",
+    "export": "Export",
+    "import": "Import",
+    "back": "Back",
+    "download": "Download",
+    "previous": "Previous",
+    "next": "Next",
+    "page_of": "Page {{current}} of {{total}}",
+    "never": "Never",
+    "close": "Close",
+    "copy": "Copy",
+    "copied": "Copied",
+    "online": "Online",
+    "offline": "Offline",
+    "running": "Running",
+    "edit": "Edit",
+    "cancel": "Cancel",
+    "save": "Save"
+  },
+  "menu": {
+    "dashboard": "Dashboard",
+    "agents": "Agents",
+    "tasks": "Tasks",
+    "remotes": "Remotes",
+    "executions": "Executions",
+    "settings": "Settings",
+    "profile": "Profile",
+    "logout": "Logout"
+  },
+  "dashboard": {
+    "title": "System Overview",
+    "stats": {
+      "totalAgents": "Total Agents",
+      "onlineAgents": "Online Agents",
+      "activeTasks": "Active Tasks",
+      "totalTasks": "Total Tasks",
+      "recentExecutions": "Recent Executions",
+      "successRate": "Success Rate"
+    },
+    "charts": {
+      "backupTrend": "Backup Trend (24h)",
+      "agentStatus": "Agent Status Distribution",
+      "taskDistribution": "Task Distribution"
+    },
+    "recentActivity": "Recent Activity",
+    "systemHealth": "System Health",
+    "quickActions": "Quick Actions"
+  },
+  "agents": {
+    "title": "Agent Management",
+    "stats": {
+      "total": "Total Agents",
+      "online": "Online Agents",
+      "running": "Running"
+    },
+    "no_agents": "No Agents",
+    "no_agents_description": "No agents have been registered yet, please register an agent first",
+    "list": {
+      "title": "Agent List",
+      "empty": "No agents found",
+      "columns": {
+        "name": "Agent Name",
+        "status": "Status",
+        "lastHeartbeat": "Last Heartbeat",
+        "tasks": "Tasks",
+        "createdAt": "Created At",
+        "actions": "Actions"
+      }
+    },
+    "status": {
+      "online": "Online",
+      "offline": "Offline",
+      "running_task": "Running"
+    },
+    "register": {
+      "title": "Register New Agent",
+      "new": "Register New Agent",
+      "first_agent": "Register First Agent",
+      "generateToken": "Generate Token",
+      "tokenGenerated": "Token Generated",
+      "copyToken": "Copy Token",
+      "tokenHint": "Please use this token within 24 hours",
+      "name": "Agent Name",
+      "namePlaceholder": "e.g., web-server-01",
+      "token_label": "Registration Token",
+      "token_expires": "Token expires at {{time}}",
+      "instructions": "Registration Instructions",
+      "step1": "On the target machine, ensure root access (systemd required)",
+      "step2": "Copy and run the install command above",
+      "step3": "Use systemctl / journalctl to verify status",
+      "agent_name": "Agent Name",
+      "agent_name_placeholder": "e.g., web-server-01",
+      "agent_name_hint": "Leave empty to use target machine hostname",
+      "run_as_root": "Run as Root (full filesystem access)",
+      "root_warning": "⚠️ Running as root grants full filesystem access. Make sure you understand the security implications.",
+      "generate_command": "Generate Install Command",
+      "install_command": "One-Click Install Command"
+    },
+    "detail": {
+      "title": "Agent Details",
+      "info": "Basic Information",
+      "assignedTasks": "Assigned Tasks",
+      "executionHistory": "Execution History",
+      "systemInfo": "System Information"
+    },
+    "actions": {
+      "delete": "Delete Agent",
+      "deleteConfirm": "Are you sure you want to delete agent {{name}}?",
+      "restart": "Restart Agent",
+      "syncConfig": "Sync Config",
+      "sync_config": "Sync Config",
+      "sync": "Sync",
+      "view_details": "View Details",
+      "details": "Details"
+    },
+    "load_failed": "Failed to load agents",
+    "went_offline": "went offline",
+    "came_online": "came online",
+    "task_dispatched": "Task dispatched",
+    "new_agent_registered": "New agent registered",
+    "token_generation_failed": "Token generation failed",
+    "deleted_successfully": "Deleted successfully",
+    "delete_failed": "Delete failed",
+    "config_sync_triggered": "Config sync triggered",
+    "config_sync_failed": "Config sync failed",
+    "last_heartbeat": "Last Heartbeat",
+    "assigned_tasks": "Assigned Tasks",
+    "updated_successfully": "Agent updated successfully",
+    "update_failed": "Failed to update agent",
+    "edit": {
+      "title": "Edit Agent",
+      "name_label": "Agent Name",
+      "name_placeholder": "Enter agent name"
+    }
+  },
+  "tasks": {
+    "title": "Task Management",
+    "source_type": "Source Type",
+    "source_type_path": "Filesystem Path",
+    "source_type_database": "Database",
+    "source_type_help": "Choose a filesystem path to back up, or export a database before uploading an archive.",
+    "source_path_required": "Source path is required.",
+    "db_engine": "Database Engine",
+    "db_engine_postgres": "PostgreSQL",
+    "db_engine_mysql": "MySQL/MariaDB",
+    "db_engine_sqlite": "SQLite",
+    "db_engine_required": "Database engine is required.",
+    "db_dump_mode": "Dump Scope",
+    "db_dump_mode_single": "Single database",
+    "db_dump_mode_all": "All databases",
+    "db_dump_mode_help": "Export one database or the entire instance (requires higher privileges).",
+    "db_all_warning_title": "Privilege warning: all-database dump usually needs elevated permissions",
+    "db_all_warning_body": "PostgreSQL: must be able to connect to and read objects from all databases; managed services may require elevated/superuser permissions. We use pg_dumpall and do not export role passwords by default (--no-role-passwords). MySQL: requires read privileges across all databases (at least SELECT/SHOW VIEW, etc). Insufficient privileges will fail.",
+    "db_host": "Host",
+    "db_port": "Port",
+    "db_user": "User",
+    "db_name": "Database Name",
+    "db_name_required": "Database name is required.",
+    "db_name_placeholder_postgres_all": "Optional: maintenance DB to connect (defaults to postgres)",
+    "db_name_help_postgres_all": "Optional: database name used for connection/maintenance; if empty it usually defaults to postgres.",
+    "db_password": "Database Password",
+    "db_password_help": "Leave empty to keep existing password (or to indicate no password).",
+    "db_password_placeholder_edit": "Leave empty to keep unchanged",
+    "db_path": "SQLite File Path",
+    "db_path_required": "SQLite file path is required.",
+    "db_conn_fields_required": "Database host and user are required.",
+    "db_port_invalid": "Port must be a positive integer.",
+    "backup_mode": "Backup Mode",
+    "backup_mode_sync": "Sync (Mirror)",
+    "backup_mode_archive": "Archive (Compressed File)",
+    "backup_mode_help_sync": "Sync mode mirrors the source directory to the destination path.",
+    "backup_mode_help_archive": "Archive mode uploads a single compressed file; you can enable max retention to auto-delete old backups.",
+    "backup_mode_help_database": "Database backups always use archive mode: dump the database, then upload a single archive file.",
+    "archive_format": "Archive Format",
+    "max_retention": "Max Retention (count)",
+    "max_retention_placeholder": "Leave empty for unlimited",
+    "max_retention_help": "Only applies to archive mode; deletes oldest backups beyond the limit.",
+    "max_retention_invalid": "Max retention must be a positive integer.",
+    "enable_encryption": "Enable Encryption",
+    "encryption_help": "Sync mode uses rclone crypt; archive mode uses 7z(AES) password encryption (archive format will be forced to 7z). Keep the password safe; losing it means the data cannot be decrypted.",
+    "encryption_password": "Encryption Password",
+    "encryption_password_keep": "Leave empty to keep existing password",
+    "encryption_password_required": "Encryption password is required.",
+    "destination_path_placeholder": "backups/website",
+    "destination_path_placeholder_s3": "bucket-name/backups/website",
+    "destination_path_required": "Destination path is required.",
+    "destination_path_no_remote": "Destination path should not include a remote prefix (e.g. 's3:').",
+    "destination_path_help_s3": "S3/R2 destination path must start with the bucket name (e.g. wordpress-backup/gogs).",
+    "destination_path_help_sync": "Sync mode mirrors the source directory to the destination path.",
+    "destination_path_help_archive": "Archive mode uploads a single compressed file to the destination path (name: task-YYYYMMDDHHMMSS.ext).",
+    "assigned_agents_help": "Source paths live on agents; the browse button uses the first selected agent.",
+    "args": {
+      "dry_run": "Simulate only; no data is transferred.",
+      "verbose": "Show verbose output.",
+      "checksum": "Use checksums to verify files.",
+      "delete_after": "Delete destination files that no longer exist on source.",
+      "exclude_tmp": "Exclude temporary files.",
+      "s3_no_check_bucket": "S3: Skip bucket existence check (recommended for R2 / object-only credentials)."
+    },
+    "list": {
+      "title": "Task List",
+      "empty": "No tasks found",
+      "columns": {
+        "name": "Task Name",
+        "remote": "Remote Storage",
+        "schedule": "Schedule",
+        "source": "Source Path",
+        "destination": "Destination",
+        "status": "Status",
+        "assignedAgents": "Assigned Agents",
+        "actions": "Actions"
+      }
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "running": "Running",
+      "pending": "Pending"
+    },
+    "create": {
+      "title": "Create Task",
+      "basic": "Basic Info",
+      "agents": "Agents",
+      "paths": "Paths",
+      "agents_paths": "Agents & Paths",
+      "schedule": "Schedule",
+      "advanced": "Advanced"
+    },
+    "edit": {
+      "title": "Edit Task"
+    },
+    "form": {
+      "name": "Task Name",
+      "namePlaceholder": "e.g., Daily Website Backup",
+      "remote": "Remote Storage",
+      "remotePlaceholder": "Select remote storage",
+      "sourcePath": "Source Path",
+      "sourcePathPlaceholder": "/var/www/html",
+      "destinationPath": "Destination Path",
+      "destinationPathPlaceholder": "backups/website",
+      "schedule": "Cron Expression",
+      "schedulePlaceholder": "0 2 * * *",
+      "scheduleHelp": "Use cron expression to set execution time",
+      "assignAgents": "Assign Agents",
+      "rcloneArgs": "Rclone Arguments",
+      "rcloneArgsPlaceholder": "--fast-list --transfers 4",
+      "isActive": "Enable Task"
+    },
+    "actions": {
+      "run": "Run Now",
+      "runConfirm": "Are you sure you want to run task {{name}} now?",
+      "enable": "Enable",
+      "disable": "Disable",
+      "delete": "Delete Task",
+      "deleteConfirm": "Are you sure you want to delete task {{name}}?",
+      "duplicate": "Duplicate"
+    },
+    "browse": {
+      "title": "Browse Agent Directories",
+      "button": "Browse",
+      "agent": "Agent",
+      "up": "Up",
+      "pathPlaceholder": "/path/to/source",
+      "go": "Go",
+      "empty": "No directories",
+      "use": "Use this path",
+      "select_agent_first": "Please select an agent first.",
+      "only_local": "Directory browsing requires the agent to be online and connected."
+    }
+  },
+  "remotes": {
+    "title": "Remote Storage",
+    "mode": {
+      "label": "Configuration Mode",
+      "guided": "Guided",
+      "raw": "Raw Paste"
+    },
+    "preset": {
+      "label": "Storage Type",
+      "drive": "Google Drive",
+      "onedrive": "OneDrive",
+      "cloudflare_r2": "Cloudflare R2",
+      "aliyun_oss": "Alibaba OSS",
+      "tencent_cos": "Tencent COS"
+    },
+    "fields": {
+      "client_id": "Client ID",
+      "client_secret": "Client Secret",
+      "scope": "Scope",
+      "token": "OAuth Token (JSON)",
+      "team_drive": "Shared Drive ID",
+      "root_folder_id": "Root Folder ID",
+      "region": "Region",
+      "drive_type": "Drive Type",
+      "drive_id": "Drive ID",
+      "access_key_id": "Access Key ID",
+      "secret_access_key": "Secret Access Key",
+      "endpoint": "Endpoint"
+    },
+    "placeholders": {
+      "client_id": "Leave blank for default",
+      "client_secret": "Leave blank for default",
+      "team_drive": "Optional: Shared Drive (Team Drive) ID",
+      "root_folder_id": "Optional: Root folder ID",
+      "endpoint_custom": "Custom endpoint, e.g. oss-cn-hangzhou.aliyuncs.com"
+    },
+    "values": {
+      "default": "Default",
+      "custom": "Custom",
+      "current": "Current"
+    },
+    "hints": {
+      "token_drive": "Use “One-click OAuth” to fetch the token automatically, or run `rclone authorize drive` to get token JSON (single-line JSON recommended).",
+      "token_onedrive": "Use “One-click OAuth” to fetch the token automatically, or run `rclone authorize onedrive` to get token JSON (single-line JSON recommended).",
+      "config_preview": "Generated rclone.conf snippet (will be encrypted on save).",
+      "raw_help": "Paste a single remote config section (with `[name]` and `type = ...`)."
+    },
+    "oauth": {
+      "button": "One-click OAuth",
+      "in_progress": "Authorizing…",
+      "missing_client_id": "Please enter Client ID first",
+      "popup_blocked": "Popup blocked. Please allow popups and try again.",
+      "start_failed": "Failed to start authorization. Check settings and network.",
+      "timeout": "Authorization timed out. Please try again.",
+      "failed": "Authorization failed: {{message}}"
+    },
+    "test": {
+      "pathLabel": "Test path (optional)",
+      "pathPlaceholder": "bucket or bucket/prefix",
+      "pathPromptS3": "For S3-compatible remotes with bucket-limited credentials, listing buckets may fail. Enter a test path (bucket or bucket/prefix). Leave empty to try listing buckets:",
+      "outputLabel": "Output",
+      "running": "Testing…"
+    },
+    "errors": {
+      "invalid_name": "Invalid storage name (no newlines / [] / :, length must be ≤ 128).",
+      "multiple_sections": "Only a single remote section is supported (do not include multiple [section] blocks).",
+      "missing_type": "Missing `type = ...` in the config. Please check what you pasted.",
+      "endpoint_required": "Endpoint is required"
+    },
+    "list": {
+      "title": "Storage List",
+      "empty": "No remote storage found",
+      "columns": {
+        "name": "Storage Name",
+        "type": "Storage Type",
+        "createdAt": "Created At",
+        "lastTest": "Last Test",
+        "usedBy": "Used by Tasks",
+        "actions": "Actions"
+      }
+    },
+    "types": {
+      "s3": "Amazon S3",
+      "gcs": "Google Cloud Storage",
+      "azure": "Azure Blob",
+      "dropbox": "Dropbox",
+      "gdrive": "Google Drive",
+      "onedrive": "OneDrive",
+      "ftp": "FTP",
+      "sftp": "SFTP",
+      "webdav": "WebDAV",
+      "local": "Local Storage"
+    },
+    "create": {
+      "title": "Add Remote Storage",
+      "selectType": "Select Type",
+      "configure": "Configure"
+    },
+    "edit": {
+      "title": "Edit Remote Storage"
+    },
+    "form": {
+      "name": "Storage Name",
+      "namePlaceholder": "e.g., Company S3 Storage",
+      "type": "Storage Type",
+      "config": "Configuration",
+      "configPlaceholder": "Paste rclone configuration",
+      "testConnection": "Test Connection",
+      "encrypt": "Encrypt Configuration"
+    },
+    "actions": {
+      "delete": "Delete Storage",
+      "deleteConfirm": "Are you sure you want to delete remote {{name}}?",
+      "test": "Test Connection"
+    }
+  },
+  "executions": {
+    "title": "Execution History",
+    "list": {
+      "title": "Execution Records",
+      "empty": "No executions found",
+      "columns": {
+        "task": "Task",
+        "agent": "Agent",
+        "status": "Status",
+        "triggerMode": "Trigger",
+        "startedAt": "Started At",
+        "duration": "Duration",
+        "actions": "Actions"
+      }
+    },
+    "status": {
+      "pending": "Pending",
+      "running": "Running",
+      "success": "Success",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "triggerMode": {
+      "scheduled": "Scheduled",
+      "central": "Central",
+      "local_fallback": "Local Fallback",
+      "manual": "Manual"
+    },
+    "detail": {
+      "title": "Execution Details",
+      "info": "Basic Information",
+      "logs": "Execution Logs",
+      "metrics": "Metrics"
+    },
+    "logs": {
+      "title": "Log Output",
+      "empty": "No logs available",
+      "realtime": "Realtime Logs",
+      "download": "Download Logs",
+      "filter": "Filter Logs",
+      "search": "Search Logs"
+    },
+    "actions": {
+      "view": "View Details",
+      "retry": "Retry",
+      "cancel": "Cancel"
+    }
+  },
+  "settings": {
+    "title": "System Settings",
+    "tabs": {
+      "general": "General",
+      "security": "Security",
+      "database": "Database",
+      "notifications": "Notifications",
+      "backup": "Backup & Restore",
+      "about": "About"
+    },
+    "general": {
+      "language": "Language",
+      "theme": "Theme",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "themeAuto": "Auto",
+      "timezone": "Timezone",
+      "dateFormat": "Date Format"
+    },
+    "security": {
+      "changePassword": "Change Password",
+      "twoFactor": "Two-Factor Auth",
+      "apiKeys": "API Keys",
+      "sessionTimeout": "Session Timeout",
+      "loginHistory": "Login History"
+    },
+    "notifications": {
+      "email": "Email Notifications",
+      "webhook": "Webhook",
+      "slack": "Slack Integration",
+      "telegram": "Telegram Notifications"
+    },
+    "backup": {
+      "export": "Export Config",
+      "import": "Import Config",
+      "autoBackup": "Auto Backup",
+      "restore": "Restore System"
+    }
+  },
+  "user": {
+    "profile": "Profile",
+    "logout": "Logout",
+    "role": {
+      "admin": "Administrator",
+      "user": "User",
+      "viewer": "Viewer"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Login",
+      "username": "Username",
+      "password": "Password",
+      "rememberMe": "Remember Me",
+      "forgotPassword": "Forgot Password?",
+      "submit": "Login",
+      "error": "Invalid username or password"
+    },
+    "logout": {
+      "success": "Successfully logged out"
+    }
+  },
+  "errors": {
+    "network": "Network Error",
+    "server": "Server Error",
+    "notFound": "Resource Not Found",
+    "unauthorized": "Unauthorized",
+    "forbidden": "Forbidden",
+    "validation": "Validation Failed",
+    "unknown": "Unknown Error"
+  },
+  "time": {
+    "just_now": "Just now",
+    "seconds_ago": "{{count}} seconds ago",
+    "minutes_ago": "{{count}} minutes ago",
+    "hours_ago": "{{count}} hours ago",
+    "days_ago": "{{count}} days ago",
+    "weeks_ago": "{{count}} weeks ago",
+    "months_ago": "{{count}} months ago",
+    "years_ago": "{{count}} years ago"
+  }
+}

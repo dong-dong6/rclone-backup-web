@@ -1,0 +1,133 @@
+upstream hub_backend {
+    server hub-api:${HUB_API_PORT};
+}
+
+server {
+    listen 80;
+    server_name localhost;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript 
+               application/json application/javascript application/xml+rss 
+               application/rss+xml application/atom+xml image/svg+xml 
+               text/x-js text/x-cross-domain-policy application/x-font-ttf 
+               application/x-font-opentype application/vnd.ms-fontobject;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # API proxy to Hub backend
+    location /api {
+        proxy_pass http://hub_backend;
+        proxy_http_version 1.1;
+        
+        # Headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Timeout settings
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        
+        # Disable buffering for better real-time response
+        proxy_buffering off;
+        
+        # Handle errors
+        proxy_intercept_errors off;
+    }
+
+    # WebSocket endpoint for agent connections
+    location /api/v1/agent/ws {
+        proxy_pass http://hub_backend;
+        proxy_http_version 1.1;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+        proxy_buffering off;
+    }
+    
+    # SSE endpoint for real-time events
+    location /events {
+        proxy_pass http://hub_backend/events;
+        proxy_http_version 1.1;
+        
+        # SSE requires these settings
+        proxy_set_header Connection '';
+        proxy_set_header Cache-Control 'no-cache';
+        proxy_set_header X-Accel-Buffering 'no';
+        
+        # Headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # SSE specific settings - no buffering, no cache
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 86400s;
+        keepalive_timeout 86400s;
+        
+        # Required for SSE
+        chunked_transfer_encoding on;
+    }
+    
+    # Metrics endpoint proxy (metrics runs on hub-api:9090)
+    location /metrics {
+        proxy_pass http://hub-api:${HUB_METRICS_PORT}/metrics;
+        proxy_http_version 1.1;
+        
+        # Headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Access control - could add IP restrictions here
+        # allow 10.0.0.0/8;
+        # deny all;
+    }
+    
+    # Health check endpoint (for web-ui container itself)
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+    
+    # Hub API health check proxy
+    location /api/health {
+        proxy_pass http://hub_backend/health;
+        proxy_http_version 1.1;
+        access_log off;
+    }
+
+    # Static files with caching
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # SPA routing - all other routes fallback to index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

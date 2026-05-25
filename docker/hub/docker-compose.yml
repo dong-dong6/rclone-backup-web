@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: rclone-hub-db
+    environment:
+      POSTGRES_DB: rclone_backup
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../../database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - hub-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Hub API Server
+  hub-api:
+    build:
+      context: ../../hub
+      dockerfile: Dockerfile
+    container_name: rclone-hub-api
+    environment:
+      DATABASE_URL: postgres://postgres:${DB_PASSWORD:-changeme}@postgres:5432/rclone_backup?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-your-secret-jwt-key-change-this}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-your-encryption-key-change-this}
+      PORT: 8080
+      GIN_MODE: release
+    volumes:
+      - ../../hub:/app:ro
+    ports:
+      - "8080:8080"
+    networks:
+      - hub-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Web UI (Nginx)
+  web-ui:
+    build:
+      context: ../../hub/web
+      dockerfile: Dockerfile
+    container_name: rclone-hub-web
+    environment:
+      API_URL: http://hub-api:8080
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - hub-network
+    depends_on:
+      - hub-api
+    restart: unless-stopped
+
+  # Redis for caching and session management (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: rclone-hub-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - hub-network
+    restart: unless-stopped
+
+networks:
+  hub-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
