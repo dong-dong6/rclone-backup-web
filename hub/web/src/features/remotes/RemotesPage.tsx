@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { Button, Card, Space } from 'antd';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { IconRefresh, IconPlus } from '@tabler/icons-react';
 import { Loading } from '../../components/ui';
 import { useRemotes, useRemoteForm, useOAuthFlow, useRemoteTest } from './hooks';
 import { RemoteCard, RemoteTestModal, RemoteModal, RemoteEmptyState } from './components';
@@ -66,47 +67,39 @@ export const RemotesPage: React.FC = () => {
   };
 
   if (loading && remotes.length === 0) {
-    return (
-      <div className="row">
-        <div className="col-12">
-          <div className="card">
-            <div className="card-body">
-              <Loading text={t('common.loading')} />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <Loading text={t('common.loading')} />;
   }
 
   return (
-    <div className="row row-deck row-cards">
-      <div className="col-12">
-        <div className="card">
-          <div className="card-body d-flex justify-content-end gap-2">
-            <button onClick={fetchRemotes} className="btn btn-outline-primary" disabled={loading}>
-              <IconRefresh size={16} className={loading ? 'spinner' : undefined} />
-              <span className="ms-1">{t('common.refresh')}</span>
-            </button>
-            <button onClick={form.openCreate} className="btn btn-primary">
-              <IconPlus size={16} />
-              <span className="ms-1">{t('remotes.create.title')}</span>
-            </button>
-          </div>
-        </div>
-      </div>
+    <div className="rbw-page">
+      <Card>
+        <Space wrap>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={fetchRemotes}
+            loading={loading}
+          >
+            {t('common.refresh')}
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={form.openCreate}>
+            {t('remotes.create.title')}
+          </Button>
+        </Space>
+      </Card>
 
       {remotes.length > 0 ? (
-        remotes.map((remote) => (
-          <RemoteCard
-            key={remote.id}
-            remote={remote}
-            testing={testingRemoteId === remote.id && test.submitting}
-            onTest={handleTest}
-            onEdit={form.openEdit}
-            onDelete={handleDelete}
-          />
-        ))
+        <div className="rbw-card-grid">
+          {remotes.map((remote) => (
+            <RemoteCard
+              key={remote.id}
+              remote={remote}
+              testing={testingRemoteId === remote.id && test.submitting}
+              onTest={handleTest}
+              onEdit={form.openEdit}
+              onDelete={handleDelete}
+            />
+          ))}
+        </div>
       ) : (
         <RemoteEmptyState onCreate={form.openCreate} />
       )}

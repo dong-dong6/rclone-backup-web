@@ -1,6 +1,7 @@
 import React from 'react';
+import { Alert, Button, Form, Input, Space, Typography } from 'antd';
+import { ExperimentOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { IconPlugConnected, IconRefresh } from '@tabler/icons-react';
 import { Modal } from '../../../components/ui';
 import type { RcloneRemote, RemoteTestResponse } from '../../../types';
 
@@ -35,79 +36,61 @@ export const RemoteTestModal: React.FC<RemoteTestModalProps> = ({
       onClose={onClose}
       title={`${t('remotes.actions.test')}: ${remote.name}`}
       footer={
-        <>
-          <button
-            type="button"
-            className="btn btn-outline-secondary"
-            onClick={onClose}
-            disabled={submitting}
-          >
+        <Space>
+          <Button onClick={onClose} disabled={submitting}>
             {t('common.cancel')}
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
+          </Button>
+          <Button
+            type="primary"
+            icon={<ExperimentOutlined />}
             onClick={onTest}
-            disabled={submitting}
+            loading={submitting}
           >
-            {submitting ? (
-              <>
-                <IconRefresh className="spinner" size={16} />
-                <span className="ms-1">{t('remotes.test.running')}</span>
-              </>
-            ) : (
-              <>
-                <IconPlugConnected size={16} />
-                <span className="ms-1">{t('remotes.actions.test')}</span>
-              </>
-            )}
-          </button>
-        </>
+            {submitting ? t('remotes.test.running') : t('remotes.actions.test')}
+          </Button>
+        </Space>
       }
     >
-      {remote.type === 's3' && (
-        <div className="mb-3">
-          <label className="form-label">{t('remotes.test.pathLabel')}</label>
-          <input
-            type="text"
-            className="form-control"
-            value={testPath}
-            onChange={(e) => onPathChange(e.target.value)}
-            placeholder={t('remotes.test.pathPlaceholder')}
-            disabled={submitting}
-          />
-          <div className="form-text">{t('remotes.test.pathPromptS3')}</div>
-        </div>
-      )}
-
-      {result && (
-        <div className={`alert ${result.success ? 'alert-success' : 'alert-danger'}`} role="alert">
-          <div className="fw-semibold mb-1">
-            {result.success ? t('common.success') : t('common.failed')}
-            {typeof result.duration_ms === 'number' ? ` (${result.duration_ms}ms)` : ''}
-          </div>
-          {result.message && <div className="mb-2">{result.message}</div>}
-
-          {result.error && (
-            <div className="mb-2">
-              <div className="fw-semibold">{t('common.error')}</div>
-              <div className="font-monospace small">{result.error}</div>
-            </div>
-          )}
-
-          {result.output && (
-            <div>
-              <div className="fw-semibold">{t('remotes.test.outputLabel')}</div>
-              <textarea
-                className="form-control font-monospace mt-1"
-                rows={6}
-                value={result.output}
-                readOnly
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        {remote.type === 's3' && (
+          <Form layout="vertical">
+            <Form.Item
+              label={t('remotes.test.pathLabel')}
+              extra={t('remotes.test.pathPromptS3')}
+            >
+              <Input
+                value={testPath}
+                onChange={(e) => onPathChange(e.target.value)}
+                placeholder={t('remotes.test.pathPlaceholder')}
+                disabled={submitting}
               />
-            </div>
-          )}
-        </div>
-      )}
+            </Form.Item>
+          </Form>
+        )}
+
+        {result && (
+          <Alert
+            type={result.success ? 'success' : 'error'}
+            showIcon
+            message={`${result.success ? t('common.success') : t('common.failed')}${
+              typeof result.duration_ms === 'number' ? ` (${result.duration_ms}ms)` : ''
+            }`}
+            description={
+              <Space direction="vertical" style={{ width: '100%' }}>
+                {result.message && <Typography.Text>{result.message}</Typography.Text>}
+                {result.error && (
+                  <Typography.Text code copyable>
+                    {result.error}
+                  </Typography.Text>
+                )}
+                {result.output && (
+                  <Input.TextArea rows={6} value={result.output} readOnly />
+                )}
+              </Space>
+            }
+          />
+        )}
+      </Space>
     </Modal>
   );
 };

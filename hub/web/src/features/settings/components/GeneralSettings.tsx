@@ -1,4 +1,5 @@
 import React from 'react';
+import { Checkbox, Form, Input, InputNumber, Select } from 'antd';
 import { ThemeSelector } from './ThemeSelector';
 import type { Settings } from '../hooks';
 
@@ -12,59 +13,46 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   onSettingChange,
 }) => {
   return (
-    <div>
-      <h4>General Settings</h4>
-
-      <div className="mb-3">
-        <label className="form-label">Hub Name</label>
-        <input
-          type="text"
-          className="form-control"
+    <Form layout="vertical" className="settings-form">
+      <Form.Item label="Hub Name">
+        <Input
           value={settings.hub_name}
           onChange={(e) => onSettingChange('hub_name', e.target.value)}
         />
-      </div>
+      </Form.Item>
 
-      <div className="mb-3">
-        <label className="form-label">Session Timeout (hours)</label>
-        <input
-          type="number"
-          className="form-control"
+      <Form.Item label="Session Timeout (hours)">
+        <InputNumber
           value={settings.session_timeout}
-          onChange={(e) => onSettingChange('session_timeout', parseInt(e.target.value) || 0)}
+          min={1}
+          style={{ width: '100%' }}
+          onChange={(value) => onSettingChange('session_timeout', value || 0)}
         />
-      </div>
+      </Form.Item>
 
-      <div className="mb-3">
-        <label className="form-label">Log Level</label>
-        <select
-          className="form-select"
+      <Form.Item label="Log Level">
+        <Select
           value={settings.log_level}
-          onChange={(e) => onSettingChange('log_level', e.target.value)}
-        >
-          <option value="debug">Debug</option>
-          <option value="info">Info</option>
-          <option value="warn">Warning</option>
-          <option value="error">Error</option>
-        </select>
-      </div>
+          onChange={(value) => onSettingChange('log_level', value)}
+          options={[
+            { value: 'debug', label: 'Debug' },
+            { value: 'info', label: 'Info' },
+            { value: 'warn', label: 'Warning' },
+            { value: 'error', label: 'Error' },
+          ]}
+        />
+      </Form.Item>
 
       <ThemeSelector />
 
-      <div className="mb-3">
-        <div className="form-check">
-          <input
-            type="checkbox"
-            className="form-check-input"
-            id="enableMetrics"
-            checked={settings.enable_metrics}
-            onChange={(e) => onSettingChange('enable_metrics', e.target.checked)}
-          />
-          <label className="form-check-label" htmlFor="enableMetrics">
-            Enable Metrics
-          </label>
-        </div>
-      </div>
-    </div>
+      <Form.Item>
+        <Checkbox
+          checked={settings.enable_metrics}
+          onChange={(e) => onSettingChange('enable_metrics', e.target.checked)}
+        >
+          Enable Metrics
+        </Checkbox>
+      </Form.Item>
+    </Form>
   );
 };

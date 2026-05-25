@@ -1,8 +1,16 @@
 import React, { useState } from 'react';
+import { App, Button, Card, Space, Tabs } from 'antd';
+import type { TabsProps } from 'antd';
+import {
+  BellOutlined,
+  DatabaseOutlined,
+  SaveOutlined,
+  SecurityScanOutlined,
+  SettingOutlined,
+} from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from './hooks';
 import {
-  SettingsTabs,
   GeneralSettings,
   SecuritySettings,
   DatabaseSettings,
@@ -12,70 +20,88 @@ import {
 
 export const SettingsPage: React.FC = () => {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const { settings, loading, updateSetting, saveSettings } = useSettings();
 
   const handleSave = async () => {
     const success = await saveSettings();
     if (success) {
-      alert(t('app.success'));
+      message.success(t('app.success'));
     } else {
-      alert(t('errors.server'));
+      message.error(t('errors.server'));
     }
   };
 
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'general':
-        return (
-          <GeneralSettings
-            settings={settings}
-            onSettingChange={updateSetting}
-          />
-        );
-      case 'security':
-        return <SecuritySettings />;
-      case 'database':
-        return <DatabaseSettings />;
-      case 'notifications':
-        return <NotificationSettings />;
-      default:
-        return null;
-    }
-  };
+  const tabItems: TabsProps['items'] = [
+    {
+      key: 'general',
+      label: (
+        <Space>
+          <SettingOutlined />
+          {t('settings.tabs.general')}
+        </Space>
+      ),
+      children: (
+        <GeneralSettings
+          settings={settings}
+          onSettingChange={updateSetting}
+        />
+      ),
+    },
+    {
+      key: 'security',
+      label: (
+        <Space>
+          <SecurityScanOutlined />
+          {t('settings.tabs.security')}
+        </Space>
+      ),
+      children: <SecuritySettings />,
+    },
+    {
+      key: 'database',
+      label: (
+        <Space>
+          <DatabaseOutlined />
+          {t('settings.tabs.database')}
+        </Space>
+      ),
+      children: <DatabaseSettings />,
+    },
+    {
+      key: 'notifications',
+      label: (
+        <Space>
+          <BellOutlined />
+          {t('settings.tabs.notifications')}
+        </Space>
+      ),
+      children: <NotificationSettings />,
+    },
+  ];
 
   return (
-    <div className="row row-deck row-cards">
-      <div className="col-12">
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">{t('settings.title')}</h3>
-          </div>
-          <div className="card-body">
-            <div className="row">
-              <div className="col-md-3">
-                <SettingsTabs
-                  activeTab={activeTab}
-                  onTabChange={setActiveTab}
-                />
-              </div>
-              <div className="col-md-9">
-                {renderTabContent()}
-
-                <div className="mt-4">
-                  <button
-                    className="btn btn-primary"
-                    onClick={handleSave}
-                    disabled={loading}
-                  >
-                    {loading ? t('common.saving') : t('common.save')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="rbw-page">
+      <Card
+        title={t('settings.title')}
+        extra={
+          <Button
+            type="primary"
+            icon={<SaveOutlined />}
+            onClick={handleSave}
+            loading={loading}
+          >
+            {loading ? t('common.saving') : t('common.save')}
+          </Button>
+        }
+      >
+        <Tabs
+          activeKey={activeTab}
+          items={tabItems}
+          onChange={(key) => setActiveTab(key as SettingsTab)}
+        />
+      </Card>
     </div>
   );
 };

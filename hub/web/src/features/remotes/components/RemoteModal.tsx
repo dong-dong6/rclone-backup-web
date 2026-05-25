@@ -1,7 +1,8 @@
 import React from 'react';
-import { useTranslation } from 'react-i18next';
-import { IconRefresh, IconKey } from '@tabler/icons-react';
+import { Button, Form, Input, Select, Segmented, Space, Typography } from 'antd';
+import { KeyOutlined } from '@ant-design/icons';
 import { Modal, Loading } from '../../../components/ui';
+import { useTranslation } from 'react-i18next';
 import type { RemotePreset, RemotePresetKey } from '../constants';
 import type { ConfigMode, RemoteFormState } from '../hooks';
 
@@ -50,189 +51,156 @@ export const RemoteModal: React.FC<RemoteModalProps> = ({
 }) => {
   const { t } = useTranslation();
 
+  const handleModeChange = (value: string | number) => {
+    if (value === 'guided') {
+      onSwitchToGuided();
+    } else {
+      onSwitchToRaw();
+    }
+  };
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={isEditing ? t('remotes.edit.title') : t('remotes.create.title')}
       size="lg"
+      footer={null}
     >
       <form onSubmit={onSubmit}>
         {modalLoading ? (
-          <div className="text-center py-5">
-            <Loading text={t('common.loading')} />
-          </div>
+          <Loading text={t('common.loading')} />
         ) : (
-          <>
-            <div className="mb-3">
-              <label className="form-label">{t('remotes.form.name')}</label>
-              <input
-                type="text"
+          <Form layout="vertical">
+            <Form.Item label={t('remotes.form.name')} required>
+              <Input
                 value={formData.name}
                 onChange={(e) => onFormDataChange('name', e.target.value)}
-                className="form-control"
                 placeholder={t('remotes.form.namePlaceholder')}
                 required
               />
-            </div>
+            </Form.Item>
 
-            <div className="mb-3">
-              <label className="form-label">{t('remotes.mode.label')}</label>
-              <div className="d-flex gap-2">
-                <button
-                  type="button"
-                  className={`btn btn-sm ${configMode === 'guided' ? 'btn-primary' : 'btn-outline-primary'}`}
-                  onClick={onSwitchToGuided}
-                >
-                  {t('remotes.mode.guided')}
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-sm ${configMode === 'raw' ? 'btn-primary' : 'btn-outline-primary'}`}
-                  onClick={onSwitchToRaw}
-                >
-                  {t('remotes.mode.raw')}
-                </button>
-              </div>
-            </div>
+            <Form.Item label={t('remotes.mode.label')}>
+              <Segmented
+                value={configMode}
+                onChange={handleModeChange}
+                options={[
+                  { value: 'guided', label: t('remotes.mode.guided') },
+                  { value: 'raw', label: t('remotes.mode.raw') },
+                ]}
+              />
+            </Form.Item>
 
             {configMode === 'guided' ? (
               <>
-                <div className="mb-3">
-                  <label className="form-label">{t('remotes.preset.label')}</label>
-                  <select
-                    className="form-select"
+                <Form.Item label={t('remotes.preset.label')}>
+                  <Select
                     value={presetKey}
-                    onChange={(e) => onPresetChange(e.target.value as RemotePresetKey)}
-                  >
-                    {Object.values(presets).map((preset) => (
-                      <option key={preset.key} value={preset.key}>
-                        {preset.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    onChange={(value) => onPresetChange(value as RemotePresetKey)}
+                    options={Object.values(presets).map((preset) => ({
+                      value: preset.key,
+                      label: preset.label,
+                    }))}
+                  />
+                </Form.Item>
 
                 {currentPreset.fields.map((field) => {
                   const value = guidedValues[field.key] ?? '';
-                  return (
-                    <div key={field.key} className="mb-3">
-                      <label className="form-label">
-                        {field.label}
-                        {field.required && <span className="text-danger ms-1">*</span>}
-                      </label>
+                  const required =
+                    Boolean(field.required) &&
+                    !(field.key === 'endpoint' && (presetKey === 's3_alibaba_oss' || presetKey === 's3_tencent_cos'));
 
+                  return (
+                    <Form.Item
+                      key={field.key}
+                      label={field.label}
+                      required={required}
+                      extra={field.help}
+                    >
                       {field.kind === 'select' ? (
-                        <>
-                          <select
-                            className="form-select"
+                        <Space direction="vertical" style={{ width: '100%' }}>
+                          <Select
                             value={value}
-                            onChange={(e) => onGuidedValueChange(field.key, e.target.value)}
-                            required={
-                              Boolean(field.required) &&
-                              !(field.key === 'endpoint' && (presetKey === 's3_alibaba_oss' || presetKey === 's3_tencent_cos'))
-                            }
-                          >
-                            {(() => {
+                            onChange={(selected) => onGuidedValueChange(field.key, selected)}
+                            options={(() => {
                               const options = field.options || [];
                               const hasValue = value && options.some((opt) => opt.value === value);
                               const normalizedOptions =
                                 value && !hasValue
                                   ? [{ value, label: `${t('remotes.values.current')}: ${value}` }, ...options]
                                   : options;
-
-                              return normalizedOptions.map((opt) => (
-                                <option key={opt.value || '__empty'} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ));
+                              return normalizedOptions;
                             })()}
-                          </select>
-
+                          />
                           {field.key === 'endpoint' &&
                             value === '' &&
                             (presetKey === 's3_alibaba_oss' || presetKey === 's3_tencent_cos') && (
-                              <input
-                                type="text"
-                                className="form-control mt-2"
+                              <Input
                                 placeholder={t('remotes.placeholders.endpoint_custom')}
                                 value={guidedValues.endpoint_custom || ''}
                                 onChange={(e) => onGuidedValueChange('endpoint_custom', e.target.value)}
                               />
                             )}
-                        </>
+                        </Space>
                       ) : field.kind === 'textarea' ? (
-                        <>
-                          <textarea
-                            className="form-control font-monospace"
+                        <Space direction="vertical" style={{ width: '100%' }}>
+                          <Input.TextArea
                             rows={6}
                             value={value}
                             placeholder={field.placeholder}
                             onChange={(e) => onGuidedValueChange(field.key, e.target.value)}
                             required={field.required}
                           />
-
                           {field.key === 'token' && (currentPreset.type === 'drive' || currentPreset.type === 'onedrive') && (
-                            <div className="d-flex justify-content-end mt-2">
-                              <button
-                                type="button"
-                                className="btn btn-outline-primary btn-sm"
-                                onClick={() => onStartOAuth(currentPreset.type as 'drive' | 'onedrive')}
-                                disabled={oauthPending}
-                              >
-                                <IconKey size={16} />
-                                <span className="ms-1">
-                                  {oauthPending ? t('remotes.oauth.in_progress') : t('remotes.oauth.button')}
-                                </span>
-                              </button>
-                            </div>
+                            <Button
+                              icon={<KeyOutlined />}
+                              onClick={() => onStartOAuth(currentPreset.type as 'drive' | 'onedrive')}
+                              loading={oauthPending}
+                            >
+                              {oauthPending ? t('remotes.oauth.in_progress') : t('remotes.oauth.button')}
+                            </Button>
                           )}
-                        </>
+                        </Space>
                       ) : (
-                        <input
+                        <Input
                           type={field.kind === 'password' ? 'password' : 'text'}
-                          className={field.key === 'secret_access_key' ? 'form-control font-monospace' : 'form-control'}
                           value={value}
                           placeholder={field.placeholder}
                           onChange={(e) => onGuidedValueChange(field.key, e.target.value)}
                           required={field.required}
                         />
                       )}
-
-                      {field.help && <div className="form-text">{field.help}</div>}
-                    </div>
+                    </Form.Item>
                   );
                 })}
 
-                <div className="mb-3">
-                  <label className="form-label">{t('remotes.hints.config_preview')}</label>
-                  <textarea className="form-control font-monospace" rows={8} value={previewConfig} readOnly />
-                </div>
+                <Form.Item label={t('remotes.hints.config_preview')}>
+                  <Input.TextArea rows={8} value={previewConfig} readOnly />
+                </Form.Item>
               </>
             ) : (
-              <div className="mb-3">
-                <label className="form-label">{t('remotes.form.config')}</label>
-                <textarea
+              <Form.Item label={t('remotes.form.config')} required>
+                <Input.TextArea
                   value={formData.config_data}
                   onChange={(e) => onFormDataChange('config_data', e.target.value)}
-                  className="form-control font-monospace"
                   placeholder={t('remotes.hints.raw_help')}
                   rows={10}
                   required
                 />
-              </div>
+              </Form.Item>
             )}
-          </>
+          </Form>
         )}
 
-        <div className="d-flex justify-content-end gap-2 mt-4">
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
+        <Space className="rbw-modal-actions">
+          <Button onClick={onClose}>
             {t('common.cancel')}
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={modalLoading}>
+          </Button>
+          <Button type="primary" htmlType="submit" loading={modalLoading}>
             {isEditing ? t('common.save') : t('common.create')}
-          </button>
-        </div>
+          </Button>
+        </Space>
       </form>
     </Modal>
   );

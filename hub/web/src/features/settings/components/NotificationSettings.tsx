@@ -1,10 +1,6 @@
 import React from 'react';
+import { Empty } from 'antd';
 
 export const NotificationSettings: React.FC = () => {
-  return (
-    <div>
-      <h4>Notification Settings</h4>
-      <p className="text-muted">Notification configuration options will be displayed here.</p>
-    </div>
-  );
+  return <Empty description="Notification configuration options will be displayed here." />;
 };

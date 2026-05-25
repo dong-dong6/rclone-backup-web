@@ -1,10 +1,6 @@
 import React from 'react';
+import { Empty } from 'antd';
 
 export const DatabaseSettings: React.FC = () => {
-  return (
-    <div>
-      <h4>Database Settings</h4>
-      <p className="text-muted">Database configuration options will be displayed here.</p>
-    </div>
-  );
+  return <Empty description="Database configuration options will be displayed here." />;
 };

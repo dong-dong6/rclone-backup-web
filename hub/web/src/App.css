@@ -714,7 +714,7 @@ body {
 .rbw-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 .rbw-grid {
@@ -733,13 +733,29 @@ body {
 .rbw-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+  gap: 20px;
 }
 
 .rbw-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.rbw-page > .ant-card,
+.rbw-card-grid > .ant-card {
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+
+.settings-form {
+  max-width: 560px;
+}
+
+.rbw-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  margin-top: 24px;
 }
 
 @media (max-width: 992px) {
