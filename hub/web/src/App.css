@@ -647,3 +647,111 @@
     justify-content: center;
   }
 }
+body {
+  margin: 0;
+  background: #f4f6fb;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-sider {
+  box-shadow: 2px 0 12px rgba(15, 23, 42, 0.08);
+}
+
+.app-brand {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.app-brand-icon {
+  font-size: 22px;
+  color: #60a5fa;
+}
+
+.app-header {
+  height: 64px;
+  padding: 0 24px;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.app-page-title {
+  margin: 0 !important;
+}
+
+.app-user-button {
+  height: 48px;
+}
+
+.app-user-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+}
+
+.app-content {
+  padding: 24px;
+  min-height: calc(100vh - 64px);
+}
+
+.rbw-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rbw-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.rbw-grid-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  gap: 16px;
+}
+
+.rbw-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.rbw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 992px) {
+  .app-content {
+    padding: 16px;
+  }
+
+  .rbw-grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .app-user-meta {
+    display: none;
+  }
+}

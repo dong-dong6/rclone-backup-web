@@ -1,4 +1,5 @@
 import React from 'react';
+import { Modal as AntModal } from 'antd';
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -13,11 +14,11 @@ export interface ModalProps {
   closeOnOverlayClick?: boolean;
 }
 
-const sizeClasses: Record<ModalSize, string> = {
-  sm: 'modal-sm',
-  md: '',
-  lg: 'modal-lg',
-  xl: 'modal-xl',
+const widthMap: Record<ModalSize, number> = {
+  sm: 420,
+  md: 560,
+  lg: 760,
+  xl: 960,
 };
 
 export const Modal: React.FC<ModalProps> = ({
@@ -30,42 +31,20 @@ export const Modal: React.FC<ModalProps> = ({
   loading = false,
   closeOnOverlayClick = true,
 }) => {
-  if (!isOpen) return null;
-
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    if (closeOnOverlayClick && e.target === e.currentTarget && !loading) {
-      onClose();
-    }
-  };
-
   return (
-    <div
-      className="modal modal-blur fade show"
-      style={{ display: 'block' }}
-      tabIndex={-1}
-      role="dialog"
-      onClick={handleOverlayClick}
+    <AntModal
+      open={isOpen}
+      onCancel={onClose}
+      title={title}
+      width={widthMap[size]}
+      footer={footer}
+      confirmLoading={loading}
+      maskClosable={closeOnOverlayClick && !loading}
+      closable={!loading}
+      destroyOnHidden
     >
-      <div
-        className={`modal-dialog modal-dialog-centered modal-dialog-scrollable ${sizeClasses[size]}`}
-        role="document"
-      >
-        <div className="modal-content">
-          <div className="modal-header">
-            <h5 className="modal-title">{title}</h5>
-            <button
-              type="button"
-              className="btn-close"
-              onClick={onClose}
-              disabled={loading}
-              aria-label="Close"
-            />
-          </div>
-          <div className="modal-body">{children}</div>
-          {footer && <div className="modal-footer">{footer}</div>}
-        </div>
-      </div>
-    </div>
+      {children}
+    </AntModal>
   );
 };
 

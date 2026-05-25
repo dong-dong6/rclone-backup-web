@@ -36,11 +36,11 @@ export interface AgentStats {
 }
 
 export interface AgentRegistrationConfig {
-  agentName: string;
-  runAsRoot: boolean;
-  logLevel: 'debug' | 'info' | 'warn' | 'error';
-  enableApi: boolean;
-  apiPort: number;
+  agent_name: string;
+  run_as_root: boolean;
+  log_level: 'debug' | 'info' | 'warn' | 'error';
+  enable_api: boolean;
+  api_port: number;
 }
 
 export interface AgentRegistrationResponse {

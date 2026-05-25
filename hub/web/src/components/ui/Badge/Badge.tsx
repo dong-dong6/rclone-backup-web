@@ -1,4 +1,5 @@
 import React from 'react';
+import { Tag } from 'antd';
 
 export type BadgeVariant = 'primary' | 'secondary' | 'success' | 'danger' | 'warning' | 'info';
 
@@ -9,13 +10,13 @@ export interface BadgeProps {
   className?: string;
 }
 
-const variantClasses: Record<BadgeVariant, string> = {
-  primary: 'bg-primary',
-  secondary: 'bg-secondary',
-  success: 'bg-success',
-  danger: 'bg-danger',
-  warning: 'bg-warning',
-  info: 'bg-info',
+const variantColors: Record<BadgeVariant, string> = {
+  primary: 'blue',
+  secondary: 'default',
+  success: 'green',
+  danger: 'red',
+  warning: 'gold',
+  info: 'cyan',
 };
 
 export const Badge: React.FC<BadgeProps> = ({
@@ -25,10 +26,9 @@ export const Badge: React.FC<BadgeProps> = ({
   className = '',
 }) => {
   return (
-    <span className={`badge ${variantClasses[variant]} text-white ${className}`}>
-      {icon && <span className="me-1">{icon}</span>}
+    <Tag color={variantColors[variant]} icon={icon} className={className}>
       {children}
-    </span>
+    </Tag>
   );
 };
 

@@ -48,20 +48,12 @@ export const AgentsPage: React.FC = () => {
 
   if (loading && agents.length === 0) {
     return (
-      <div className="row">
-        <div className="col-12">
-          <div className="card">
-            <div className="card-body">
-              <Loading text={t('common.loading')} />
-            </div>
-          </div>
-        </div>
-      </div>
+      <Loading text={t('common.loading')} />
     );
   }
 
   return (
-    <div className="row row-deck row-cards">
+    <div className="rbw-page">
       <AgentStatsBar
         stats={stats}
         loading={loading}

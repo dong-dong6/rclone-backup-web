@@ -1,13 +1,13 @@
 import React from 'react';
 import {
-  IconCheck,
-  IconX,
-  IconRefresh,
-  IconClockHour4,
-  IconWifi,
-  IconWifiOff,
-  IconPlayerPlay,
-} from '@tabler/icons-react';
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  CloseCircleOutlined,
+  LoadingOutlined,
+  PlayCircleOutlined,
+  WifiOutlined,
+  DisconnectOutlined,
+} from '@ant-design/icons';
 import { Badge, BadgeVariant } from './Badge';
 
 export type StatusType = 'online' | 'offline' | 'running' | 'running_task' | 'pending' | 'success' | 'failed';
@@ -28,37 +28,37 @@ interface StatusConfig {
 const statusConfigs: Record<StatusType, StatusConfig> = {
   online: {
     variant: 'success',
-    icon: <IconWifi size={14} />,
+    icon: <WifiOutlined />,
     defaultLabel: 'Online',
   },
   offline: {
     variant: 'secondary',
-    icon: <IconWifiOff size={14} />,
+    icon: <DisconnectOutlined />,
     defaultLabel: 'Offline',
   },
   running: {
     variant: 'primary',
-    icon: <IconRefresh size={14} className="spinner" />,
+    icon: <LoadingOutlined spin />,
     defaultLabel: 'Running',
   },
   running_task: {
     variant: 'primary',
-    icon: <IconPlayerPlay size={14} />,
+    icon: <PlayCircleOutlined />,
     defaultLabel: 'Running Task',
   },
   pending: {
     variant: 'warning',
-    icon: <IconClockHour4 size={14} />,
+    icon: <ClockCircleOutlined />,
     defaultLabel: 'Pending',
   },
   success: {
     variant: 'success',
-    icon: <IconCheck size={14} />,
+    icon: <CheckCircleOutlined />,
     defaultLabel: 'Success',
   },
   failed: {
     variant: 'danger',
-    icon: <IconX size={14} />,
+    icon: <CloseCircleOutlined />,
     defaultLabel: 'Failed',
   },
 };

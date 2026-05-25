@@ -1,7 +1,28 @@
-/* Login Page Styles 
-   Most styles are now handled by global index.css and utility classes.
-*/
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px;
+  background: #f4f6fb;
+}
 
-.page-center {
-  background: transparent !important;
+.login-header {
+  text-align: center;
+}
+
+.login-header .ant-typography {
+  margin-bottom: 4px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+}
+
+.login-hint {
+  text-align: center;
 }

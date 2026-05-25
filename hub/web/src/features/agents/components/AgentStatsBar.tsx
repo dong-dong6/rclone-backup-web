@@ -1,6 +1,7 @@
 import React from 'react';
+import { Button, Card, Col, Row, Space, Statistic } from 'antd';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { IconRefresh, IconPlus } from '@tabler/icons-react';
 import type { AgentStats } from '../../../types';
 
 export interface AgentStatsBarProps {
@@ -19,64 +20,29 @@ export const AgentStatsBar: React.FC<AgentStatsBarProps> = ({
   const { t } = useTranslation();
 
   return (
-    <>
-      <div className="col-sm-6 col-lg-3">
-        <div className="card">
-          <div className="card-body">
-            <div className="d-flex align-items-center">
-              <div className="subheader">{t('agents.stats.total')}</div>
-            </div>
-            <div className="h1 mb-3">{stats.total}</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="col-sm-6 col-lg-3">
-        <div className="card">
-          <div className="card-body">
-            <div className="d-flex align-items-center">
-              <div className="subheader">{t('agents.stats.online')}</div>
-            </div>
-            <div className="h1 mb-3 text-success">{stats.online}</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="col-sm-6 col-lg-3">
-        <div className="card">
-          <div className="card-body">
-            <div className="d-flex align-items-center">
-              <div className="subheader">{t('agents.stats.running')}</div>
-            </div>
-            <div className="h1 mb-3 text-primary">{stats.running}</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="col-sm-6 col-lg-3">
-        <div className="card">
-          <div className="card-body">
-            <div className="d-flex align-items-center">
-              <div className="subheader">{t('common.actions')}</div>
-            </div>
-            <div className="d-flex gap-2">
-              <button
-                onClick={onRefresh}
-                className="btn btn-outline-primary btn-sm"
-                disabled={loading}
-              >
-                <IconRefresh size={16} className={loading ? 'spinner' : undefined} />
-                {t('common.refresh')}
-              </button>
-
-              <button onClick={onRegister} className="btn btn-primary btn-sm">
-                <IconPlus size={16} />
-                {t('agents.register.new')}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
+    <Row gutter={[16, 16]}>
+      <Col xs={24} sm={12} lg={6}>
+        <Card><Statistic title={t('agents.stats.total')} value={stats.total} /></Card>
+      </Col>
+      <Col xs={24} sm={12} lg={6}>
+        <Card><Statistic title={t('agents.stats.online')} value={stats.online} valueStyle={{ color: '#16a34a' }} /></Card>
+      </Col>
+      <Col xs={24} sm={12} lg={6}>
+        <Card><Statistic title={t('agents.stats.running')} value={stats.running} valueStyle={{ color: '#2563eb' }} /></Card>
+      </Col>
+      <Col xs={24} sm={12} lg={6}>
+        <Card>
+          <Statistic title={t('common.actions')} value=" " />
+          <Space wrap>
+            <Button icon={<ReloadOutlined />} onClick={onRefresh} loading={loading}>
+              {t('common.refresh')}
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={onRegister}>
+              {t('agents.register.new')}
+            </Button>
+          </Space>
+        </Card>
+      </Col>
+    </Row>
   );
 };

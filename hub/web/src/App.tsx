@@ -1,18 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import {
-  IconDashboard,
-  IconCloud,
-  IconListCheck,
-  IconDatabase,
-  IconHistory,
-  IconSettings,
-  IconUser,
-  IconLogout,
-  IconBell,
-  IconMenu2,
-  IconChevronLeft,
-} from '@tabler/icons-react';
+  Avatar,
+  Button,
+  Dropdown,
+  Layout,
+  Menu,
+  Space,
+  Typography,
+} from 'antd';
+import type { MenuProps } from 'antd';
+import {
+  CloudOutlined,
+  DashboardOutlined,
+  DatabaseOutlined,
+  HistoryOutlined,
+  LogoutOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  SettingOutlined,
+  UnorderedListOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import {
   DashboardPage,
@@ -30,9 +39,13 @@ import ProtectedRoute from './components/ProtectedRoute';
 
 import './App.css';
 
+const { Header, Sider, Content } = Layout;
+const { Text, Title } = Typography;
+
 const AppLayout: React.FC = () => {
   const { user, logout } = useAuth();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const [collapsed, setCollapsed] = useState(false);
   const [selectedKey, setSelectedKey] = useState('dashboard');
   const location = useLocation();
 
@@ -41,101 +54,106 @@ const AppLayout: React.FC = () => {
     setSelectedKey(pathSegment || 'dashboard');
   }, [location.pathname]);
 
-  const menuItems = [
-    { key: 'dashboard', icon: <IconDashboard size={20} />, label: t('menu.dashboard'), path: '/dashboard' },
-    { key: 'agents', icon: <IconCloud size={20} />, label: t('menu.agents'), path: '/agents' },
-    { key: 'tasks', icon: <IconListCheck size={20} />, label: t('menu.tasks'), path: '/tasks' },
-    { key: 'remotes', icon: <IconDatabase size={20} />, label: t('menu.remotes'), path: '/remotes' },
-    { key: 'executions', icon: <IconHistory size={20} />, label: t('menu.executions'), path: '/executions' },
-    { key: 'settings', icon: <IconSettings size={20} />, label: t('menu.settings'), path: '/settings' },
+  const menuItems = useMemo<MenuProps['items']>(
+    () => [
+      { key: 'dashboard', icon: <DashboardOutlined />, label: <Link to="/dashboard">{t('menu.dashboard')}</Link> },
+      { key: 'agents', icon: <CloudOutlined />, label: <Link to="/agents">{t('menu.agents')}</Link> },
+      { key: 'tasks', icon: <UnorderedListOutlined />, label: <Link to="/tasks">{t('menu.tasks')}</Link> },
+      { key: 'remotes', icon: <DatabaseOutlined />, label: <Link to="/remotes">{t('menu.remotes')}</Link> },
+      { key: 'executions', icon: <HistoryOutlined />, label: <Link to="/executions">{t('menu.executions')}</Link> },
+      { key: 'settings', icon: <SettingOutlined />, label: <Link to="/settings">{t('menu.settings')}</Link> },
+    ],
+    [t]
+  );
+
+  const pageTitle = t(`menu.${selectedKey}`, { defaultValue: t('app.title') });
+
+  const userMenu: MenuProps['items'] = [
+    {
+      key: 'profile',
+      icon: <UserOutlined />,
+      label: 'Profile',
+    },
+    {
+      key: 'settings',
+      icon: <SettingOutlined />,
+      label: <Link to="/settings">Settings</Link>,
+    },
+    {
+      type: 'divider',
+    },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: 'Logout',
+      danger: true,
+      onClick: logout,
+    },
   ];
 
   return (
-    <div className="page">
-      <div className="page-wrapper">
-        {/* Navbar */}
-        <header className="navbar navbar-expand-md navbar-light d-print-none">
-          <div className="container-xl">
-            <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar-menu">
-              <span className="navbar-toggler-icon"></span>
-            </button>
-            <h1 className="navbar-brand navbar-brand-autodark d-none-navbar-horizontal pe-0 pe-md-3">
-              <a href=".">
-                {t('app.title')}
-              </a>
-            </h1>
-            <div className="navbar-nav flex-row order-md-last">
-              <div className="nav-item dropdown">
-                <a href="#" className="nav-link d-flex lh-1 text-reset p-0" data-bs-toggle="dropdown">
-                  <span className="avatar avatar-sm" style={{backgroundImage: 'url(./static/avatars/000m.jpg)'}}></span>
-                  <div className="d-none d-xl-block ps-2">
-                    <div>{user?.name || 'Admin'}</div>
-                    <div className="mt-1 small text-muted">Administrator</div>
-                  </div>
-                </a>
-                <div className="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
-                  <a href="#" className="dropdown-item">Profile</a>
-                  <a href="#" className="dropdown-item">Settings</a>
-                  <div className="dropdown-divider"></div>
-                  <a href="#" className="dropdown-item" onClick={logout}>Logout</a>
-                </div>
-              </div>
-            </div>
-            <div className="collapse navbar-collapse" id="navbar-menu">
-              <div className="d-flex flex-column flex-md-row flex-fill align-items-stretch align-items-md-center">
-                <ul className="navbar-nav">
-                  {menuItems.map(item => (
-                    <li key={item.key} className="nav-item">
-                      <Link
-                        to={item.path}
-                        className={`nav-link ${selectedKey === item.key ? 'active' : ''}`}
-                        onClick={() => setSelectedKey(item.key)}
-                      >
-                        <span className="nav-link-icon d-md-none d-lg-inline-block">
-                          {item.icon}
-                        </span>
-                        <span className="nav-link-title">
-                          {item.label}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Page header */}
-        <div className="page-header d-print-none">
-          <div className="container-xl">
-            <div className="row g-2 align-items-center">
-              <div className="col">
-                <h2 className="page-title">
-                  {menuItems.find(item => item.key === selectedKey)?.label || t('app.title')}
-                </h2>
-              </div>
-            </div>
-          </div>
+    <Layout className="app-shell">
+      <Sider
+        className="app-sider"
+        collapsible
+        collapsed={collapsed}
+        trigger={null}
+        breakpoint="lg"
+        onBreakpoint={setCollapsed}
+      >
+        <div className="app-brand">
+          <CloudOutlined className="app-brand-icon" />
+          {!collapsed && <span>{t('app.title')}</span>}
         </div>
+        <Menu
+          theme="dark"
+          mode="inline"
+          selectedKeys={[selectedKey]}
+          items={menuItems}
+          onClick={({ key }) => setSelectedKey(key)}
+        />
+      </Sider>
 
-        {/* Page body */}
-        <div className="page-body">
-          <div className="container-xl">
-            <Routes>
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/agents" element={<AgentsPage />} />
-              <Route path="/tasks" element={<TasksPage />} />
-              <Route path="/remotes" element={<RemotesPage />} />
-              <Route path="/executions" element={<ExecutionsPage />} />
-              <Route path="/executions/:id" element={<ExecutionDetailPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/" element={<Navigate to="/dashboard" />} />
-            </Routes>
-          </div>
-        </div>
-      </div>
-    </div>
+      <Layout>
+        <Header className="app-header">
+          <Space size={16}>
+            <Button
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed((value) => !value)}
+            />
+            <Title level={4} className="app-page-title">
+              {pageTitle}
+            </Title>
+          </Space>
+
+          <Dropdown menu={{ items: userMenu }} placement="bottomRight">
+            <Button type="text" className="app-user-button">
+              <Space>
+                <Avatar size="small" icon={<UserOutlined />} />
+                <span className="app-user-meta">
+                  <Text strong>{user?.name || 'Admin'}</Text>
+                  <Text type="secondary">Administrator</Text>
+                </span>
+              </Space>
+            </Button>
+          </Dropdown>
+        </Header>
+
+        <Content className="app-content">
+          <Routes>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/agents" element={<AgentsPage />} />
+            <Route path="/tasks" element={<TasksPage />} />
+            <Route path="/remotes" element={<RemotesPage />} />
+            <Route path="/executions" element={<ExecutionsPage />} />
+            <Route path="/executions/:id" element={<ExecutionDetailPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/" element={<Navigate to="/dashboard" />} />
+          </Routes>
+        </Content>
+      </Layout>
+    </Layout>
   );
 };
 

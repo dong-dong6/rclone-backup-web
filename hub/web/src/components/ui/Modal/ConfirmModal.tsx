@@ -1,4 +1,5 @@
 import React from 'react';
+import { Button, Space } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Modal } from './Modal';
 
@@ -28,24 +29,19 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   const { t } = useTranslation();
 
   const footer = (
-    <>
-      <button
-        type="button"
-        className="btn btn-secondary"
-        onClick={onCancel}
-        disabled={loading}
-      >
+    <Space>
+      <Button onClick={onCancel} disabled={loading}>
         {cancelText || t('common.cancel')}
-      </button>
-      <button
-        type="button"
-        className={`btn btn-${confirmVariant}`}
+      </Button>
+      <Button
+        type="primary"
+        danger={confirmVariant === 'danger'}
         onClick={onConfirm}
-        disabled={loading}
+        loading={loading}
       >
         {confirmText || t('common.confirm')}
-      </button>
-    </>
+      </Button>
+    </Space>
   );
 
   return (

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Col, Progress, Row, Statistic, Card, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type { DashboardStats as DashboardStatsType } from '../hooks';
 
@@ -9,86 +10,47 @@ export interface DashboardStatsBarProps {
 export const DashboardStatsBar: React.FC<DashboardStatsBarProps> = ({ stats }) => {
   const { t } = useTranslation();
 
+  const cards = [
+    {
+      title: t('dashboard.stats.totalAgents'),
+      value: stats.totalAgents,
+      subtitle: `${t('dashboard.agents.online')}: ${stats.onlineAgents}`,
+      percent: stats.totalAgents > 0 ? (stats.onlineAgents / stats.totalAgents) * 100 : 0,
+      color: '#2563eb',
+    },
+    {
+      title: t('dashboard.stats.activeTasks'),
+      value: stats.activeTasks,
+      subtitle: `${t('dashboard.stats.totalTasks')}: ${stats.totalTasks}`,
+      percent: stats.totalTasks > 0 ? (stats.activeTasks / stats.totalTasks) * 100 : 0,
+      color: '#16a34a',
+    },
+    {
+      title: t('dashboard.stats.recentExecutions'),
+      value: stats.recentExecutions,
+      subtitle: t('dashboard.time_range.24h'),
+    },
+    {
+      title: t('dashboard.stats.successRate'),
+      value: `${stats.successRate.toFixed(1)}%`,
+      percent: Math.round(stats.successRate),
+      color: stats.successRate >= 90 ? '#16a34a' : stats.successRate >= 70 ? '#f59e0b' : '#dc2626',
+    },
+  ];
+
   return (
-    <>
-      <div className="col-sm-6 col-lg-3">
-        <div className="card">
-          <div className="card-body">
-            <div className="d-flex align-items-center">
-              <div className="subheader">{t('dashboard.stats.totalAgents')}</div>
-            </div>
-            <div className="h1 mb-3">{stats.totalAgents}</div>
-            <div className="d-flex mb-2">
-              <div>{t('dashboard.agents.online')}: {stats.onlineAgents}</div>
-            </div>
-            <div className="progress progress-sm">
-              <div
-                className="progress-bar bg-primary"
-                style={{ width: `${stats.totalAgents > 0 ? (stats.onlineAgents / stats.totalAgents) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="col-sm-6 col-lg-3">
-        <div className="card">
-          <div className="card-body">
-            <div className="d-flex align-items-center">
-              <div className="subheader">{t('dashboard.stats.activeTasks')}</div>
-            </div>
-            <div className="h1 mb-3 text-success">{stats.activeTasks}</div>
-            <div className="d-flex mb-2">
-              <div>{t('dashboard.stats.totalTasks')}: {stats.totalTasks}</div>
-            </div>
-            <div className="progress progress-sm">
-              <div
-                className="progress-bar bg-success"
-                style={{ width: `${stats.totalTasks > 0 ? (stats.activeTasks / stats.totalTasks) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="col-sm-6 col-lg-3">
-        <div className="card">
-          <div className="card-body">
-            <div className="d-flex align-items-center">
-              <div className="subheader">{t('dashboard.stats.recentExecutions')}</div>
-            </div>
-            <div className="h1 mb-3">{stats.recentExecutions}</div>
-            <div className="d-flex mb-2">
-              <div>{t('dashboard.time_range.24h')}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="col-sm-6 col-lg-3">
-        <div className="card">
-          <div className="card-body">
-            <div className="d-flex align-items-center">
-              <div className="subheader">{t('dashboard.stats.successRate')}</div>
-            </div>
-            <div className="h1 mb-3">{stats.successRate.toFixed(1)}%</div>
-            <div className="d-flex mb-2">
-              <div className="progress progress-sm w-100">
-                <div
-                  className={`progress-bar ${
-                    stats.successRate >= 90
-                      ? 'bg-success'
-                      : stats.successRate >= 70
-                        ? 'bg-warning'
-                        : 'bg-danger'
-                  }`}
-                  style={{ width: Math.round(stats.successRate) + '%' }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
+    <Row gutter={[16, 16]}>
+      {cards.map((card) => (
+        <Col xs={24} sm={12} lg={6} key={card.title}>
+          <Card>
+            <Statistic title={card.title} value={card.value} valueStyle={{ color: card.color }} />
+            {card.subtitle && <Typography.Text type="secondary">{card.subtitle}</Typography.Text>}
+            {typeof card.percent === 'number' && (
+              <Progress percent={card.percent} showInfo={false} strokeColor={card.color} size="small" />
+            )}
+          </Card>
+        </Col>
+      ))}
+    </Row>
   );
 };

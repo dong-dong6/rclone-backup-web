@@ -1,7 +1,10 @@
 import React from 'react';
+import { Card, Table } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
-import { IconCheck, IconX, IconRefresh, IconClockHour4 } from '@tabler/icons-react';
+import { StatusBadge } from '../../../components/ui';
 import type { RecentExecution } from '../hooks';
+import type { StatusType } from '../../../components/ui';
 
 export interface RecentExecutionsTableProps {
   executions: RecentExecution[];
@@ -12,68 +15,43 @@ export const RecentExecutionsTable: React.FC<RecentExecutionsTableProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  const getStatusTag = (status: string) => {
-    const config: Record<string, { color: string; icon: React.ReactNode }> = {
-      success: { color: 'success', icon: <IconCheck size={16} /> },
-      failed: { color: 'danger', icon: <IconX size={16} /> },
-      running: { color: 'primary', icon: <IconRefresh size={16} className="spinner" /> },
-      pending: { color: 'warning', icon: <IconClockHour4 size={16} /> },
-    };
-
-    const { color, icon } = config[status] || config.pending;
-    return (
-      <span className={`badge bg-${color} text-white`}>
-        {icon}
-        <span className="ms-1">{t(`executions.status.${status}`) || status.toUpperCase()}</span>
-      </span>
-    );
-  };
+  const columns: ColumnsType<RecentExecution> = [
+    {
+      title: t('executions.list.columns.task'),
+      dataIndex: 'taskName',
+    },
+    {
+      title: t('executions.list.columns.agent'),
+      dataIndex: 'agentName',
+    },
+    {
+      title: t('executions.list.columns.status'),
+      dataIndex: 'status',
+      render: (status: RecentExecution['status']) => (
+        <StatusBadge status={status as StatusType} label={t(`executions.status.${status}`)} />
+      ),
+    },
+    {
+      title: t('executions.list.columns.startedAt'),
+      dataIndex: 'startedAt',
+      render: (startedAt?: string) => (startedAt ? new Date(startedAt).toLocaleString() : '-'),
+    },
+    {
+      title: t('executions.list.columns.duration'),
+      dataIndex: 'duration',
+      render: (duration: number) => `${Math.round(duration)}s`,
+    },
+  ];
 
   return (
-    <div className="col-12">
-      <div className="card">
-        <div className="card-header">
-          <h3 className="card-title">{t('dashboard.recent_executions.title')}</h3>
-        </div>
-        <div className="card-body">
-          <div className="table-responsive">
-            <table className="table table-vcenter card-table">
-              <thead>
-                <tr>
-                  <th>{t('executions.list.columns.task')}</th>
-                  <th>{t('executions.list.columns.agent')}</th>
-                  <th>{t('executions.list.columns.status')}</th>
-                  <th>{t('executions.list.columns.startedAt')}</th>
-                  <th>{t('executions.list.columns.duration')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {executions.length > 0 ? (
-                  executions.map((execution) => (
-                    <tr key={execution.id}>
-                      <td>{execution.taskName}</td>
-                      <td>{execution.agentName}</td>
-                      <td>{getStatusTag(execution.status)}</td>
-                      <td>
-                        {execution.startedAt
-                          ? new Date(execution.startedAt).toLocaleString()
-                          : '-'}
-                      </td>
-                      <td>{Math.round(execution.duration)}s</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={5} className="text-center text-muted py-4">
-                      {t('dashboard.recent_executions.no_executions')}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+    <Card title={t('dashboard.recent_executions.title')}>
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={executions}
+        pagination={false}
+        locale={{ emptyText: t('dashboard.recent_executions.no_executions') }}
+      />
+    </Card>
   );
 };

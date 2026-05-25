@@ -1,5 +1,5 @@
 import React from 'react';
-import { IconMoodEmpty } from '@tabler/icons-react';
+import { Button, Card, Empty } from 'antd';
 
 export interface EmptyStateProps {
   icon?: React.ReactNode;
@@ -18,20 +18,23 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   action,
 }) => {
   return (
-    <div className="card">
-      <div className="card-body text-center py-5">
-        <div className="mb-3 text-muted">
-          {icon || <IconMoodEmpty size={48} />}
-        </div>
-        <h3 className="mb-2">{title}</h3>
-        {description && <p className="text-muted mb-3">{description}</p>}
+    <Card>
+      <Empty
+        image={icon || Empty.PRESENTED_IMAGE_SIMPLE}
+        description={
+          <span>
+            <strong>{title}</strong>
+            {description && <small style={{ display: 'block', marginTop: 4 }}>{description}</small>}
+          </span>
+        }
+      >
         {action && (
-          <button className="btn btn-primary" onClick={action.onClick}>
+          <Button type="primary" onClick={action.onClick}>
             {action.label}
-          </button>
+          </Button>
         )}
-      </div>
-    </div>
+      </Empty>
+    </Card>
   );
 };
 

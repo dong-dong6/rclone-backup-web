@@ -1,5 +1,5 @@
 import React from 'react';
-import { IconRefresh } from '@tabler/icons-react';
+import { Flex, Spin, Typography } from 'antd';
 
 export type LoadingSize = 'sm' | 'md' | 'lg';
 
@@ -9,10 +9,10 @@ export interface LoadingProps {
   fullPage?: boolean;
 }
 
-const sizeMap: Record<LoadingSize, number> = {
-  sm: 24,
-  md: 48,
-  lg: 64,
+const sizeMap: Record<LoadingSize, 'small' | 'default' | 'large'> = {
+  sm: 'small',
+  md: 'default',
+  lg: 'large',
 };
 
 export const Loading: React.FC<LoadingProps> = ({
@@ -21,17 +21,17 @@ export const Loading: React.FC<LoadingProps> = ({
   fullPage = false,
 }) => {
   const content = (
-    <div className="text-center py-5">
-      <IconRefresh className="spinner text-primary mb-3" size={sizeMap[size]} />
-      {text && <p className="text-muted">{text}</p>}
-    </div>
+    <Flex vertical align="center" justify="center" gap={12} style={{ padding: 48 }}>
+      <Spin size={sizeMap[size]} />
+      {text && <Typography.Text type="secondary">{text}</Typography.Text>}
+    </Flex>
   );
 
   if (fullPage) {
     return (
-      <div className="d-flex align-items-center justify-content-center min-vh-100">
+      <Flex align="center" justify="center" style={{ minHeight: '100vh' }}>
         {content}
-      </div>
+      </Flex>
     );
   }
 

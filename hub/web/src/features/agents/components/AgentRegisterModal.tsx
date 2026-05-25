@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { Alert, Button, Card, Checkbox, Form, Input, InputNumber, Select, Space, Typography } from 'antd';
+import { CheckOutlined, CopyOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { IconPlus, IconCopy, IconCheck, IconAlertCircle } from '@tabler/icons-react';
 import { Modal } from '../../../components/ui';
 import { useAgentRegistration } from '../hooks';
 import { useClipboard } from '../../../hooks';
@@ -40,144 +41,132 @@ export const AgentRegisterModal: React.FC<AgentRegisterModalProps> = ({
       title={t('agents.register.title')}
       size="lg"
       footer={
-        <>
+        <Space>
           {!showConfigForm && (
-            <button onClick={goBackToForm} className="btn btn-outline-secondary me-auto">
+            <Button onClick={goBackToForm}>
               {t('common.back')}
-            </button>
+            </Button>
           )}
-          <button onClick={handleClose} className="btn btn-secondary">
+          <Button onClick={handleClose}>
             {t('common.close')}
-          </button>
-        </>
+          </Button>
+        </Space>
       }
     >
       {showConfigForm ? (
-        /* Configuration Form */
-        <>
-          <div className="mb-3">
-            <label className="form-label">{t('agents.register.agent_name')}</label>
-            <input
-              type="text"
-              className="form-control"
+        <Form layout="vertical">
+          <Form.Item label={t('agents.register.agent_name')} extra={t('agents.register.agent_name_hint')}>
+            <Input
               value={config.agent_name}
               onChange={(e) => updateConfig('agent_name', e.target.value)}
               placeholder={t('agents.register.agent_name_placeholder')}
             />
-            <small className="text-muted">{t('agents.register.agent_name_hint')}</small>
-          </div>
+          </Form.Item>
 
-          <div className="mb-3">
-            <label className="form-check">
-              <input
-                type="checkbox"
-                className="form-check-input"
-                checked={config.run_as_root}
-                onChange={(e) => updateConfig('run_as_root', e.target.checked)}
-              />
-              <span className="form-check-label">{t('agents.register.run_as_root')}</span>
-            </label>
-            {config.run_as_root && (
-              <div className="alert alert-warning mt-2 mb-0">
-                <IconAlertCircle className="me-1" size={16} />
-                {t('agents.register.root_warning')}
-              </div>
-            )}
-          </div>
-
-          <div className="mb-3">
-            <label className="form-label">{t('agents.register.log_level')}</label>
-            <select
-              className="form-select"
-              value={config.log_level}
-              onChange={(e) => updateConfig('log_level', e.target.value)}
+          <Form.Item>
+            <Checkbox
+              checked={config.run_as_root}
+              onChange={(e) => updateConfig('run_as_root', e.target.checked)}
             >
-              <option value="debug">DEBUG</option>
-              <option value="info">INFO</option>
-              <option value="warn">WARN</option>
-              <option value="error">ERROR</option>
-            </select>
-          </div>
-
-          <div className="mb-3">
-            <label className="form-check">
-              <input
-                type="checkbox"
-                className="form-check-input"
-                checked={config.enable_api}
-                onChange={(e) => updateConfig('enable_api', e.target.checked)}
+              {t('agents.register.run_as_root')}
+            </Checkbox>
+            {config.run_as_root && (
+              <Alert
+                type="warning"
+                showIcon
+                message={t('agents.register.root_warning')}
+                style={{ marginTop: 8 }}
               />
-              <span className="form-check-label">{t('agents.register.enable_api')}</span>
-            </label>
-            {config.enable_api && (
-              <div className="mt-2 ms-4">
-                <label className="form-label mb-1">{t('agents.register.api_port')}</label>
-                <input
-                  type="number"
-                  className="form-control"
-                  value={config.api_port}
-                  onChange={(e) => updateConfig('api_port', parseInt(e.target.value) || 9092)}
-                  min={1024}
-                  max={65535}
-                />
-              </div>
             )}
-          </div>
+          </Form.Item>
 
-          <div className="d-grid">
-            <button onClick={generateToken} className="btn btn-primary" disabled={loading}>
-              <IconPlus size={16} className="me-1" />
-              {t('agents.register.generate_command')}
-            </button>
-          </div>
-        </>
-      ) : (
-        /* Generated Install Command */
-        <>
-          {tokenExpiry && (
-            <div className="alert alert-warning mb-3">
-              <IconAlertCircle className="me-1" size={16} />
-              {t('agents.register.token_expires', {
-                time: tokenExpiry.toLocaleString(),
-              })}
-            </div>
+          <Form.Item label={t('agents.register.log_level')}>
+            <Select
+              value={config.log_level}
+              onChange={(value) => updateConfig('log_level', value)}
+              options={[
+                { value: 'debug', label: 'DEBUG' },
+                { value: 'info', label: 'INFO' },
+                { value: 'warn', label: 'WARN' },
+                { value: 'error', label: 'ERROR' },
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item>
+            <Checkbox
+              checked={config.enable_api}
+              onChange={(e) => updateConfig('enable_api', e.target.checked)}
+            >
+              {t('agents.register.enable_api')}
+            </Checkbox>
+          </Form.Item>
+
+          {config.enable_api && (
+            <Form.Item label={t('agents.register.api_port')}>
+              <InputNumber
+                value={config.api_port}
+                onChange={(value) => updateConfig('api_port', value || 9092)}
+                min={1024}
+                max={65535}
+                style={{ width: '100%' }}
+              />
+            </Form.Item>
           )}
 
-          <div className="mb-3">
-            <label className="form-label">{t('agents.register.install_command')}</label>
-            <div className="position-relative">
-              <pre
-                className="bg-dark text-light p-3 rounded mb-0"
-                style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={generateToken}
+            loading={loading}
+            block
+          >
+            {t('agents.register.generate_command')}
+          </Button>
+        </Form>
+      ) : (
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          {tokenExpiry && (
+            <Alert
+              type="warning"
+              showIcon
+              message={t('agents.register.token_expires', {
+                time: tokenExpiry.toLocaleString(),
+              })}
+            />
+          )}
+
+          <div>
+            <Typography.Text strong>{t('agents.register.install_command')}</Typography.Text>
+            <Card
+              size="small"
+              style={{ marginTop: 8, background: '#111827' }}
+              extra={
+                <Button
+                  icon={copied ? <CheckOutlined /> : <CopyOutlined />}
+                  onClick={() => copy(installCommand)}
+                >
+                  {copied ? t('common.copied') : t('common.copy')}
+                </Button>
+              }
+            >
+              <Typography.Text
+                code
+                style={{ color: '#f9fafb', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
               >
-                <code>{installCommand}</code>
-              </pre>
-              <button
-                onClick={() => copy(installCommand)}
-                className="btn btn-sm btn-light position-absolute"
-                style={{ top: '8px', right: '8px' }}
-              >
-                {copied ? (
-                  <IconCheck size={16} className="text-success" />
-                ) : (
-                  <IconCopy size={16} />
-                )}
-                <span className="ms-1">{copied ? t('common.copied') : t('common.copy')}</span>
-              </button>
-            </div>
+                {installCommand}
+              </Typography.Text>
+            </Card>
           </div>
 
-          <div className="card bg-light">
-            <div className="card-body">
-              <h4 className="card-title">{t('agents.register.instructions')}</h4>
-              <ol className="mb-0">
-                <li>{t('agents.register.step1')}</li>
-                <li>{t('agents.register.step2')}</li>
-                <li>{t('agents.register.step3')}</li>
-              </ol>
-            </div>
-          </div>
-        </>
+          <Card size="small" title={t('agents.register.instructions')}>
+            <ol style={{ margin: 0, paddingLeft: 20 }}>
+              <li>{t('agents.register.step1')}</li>
+              <li>{t('agents.register.step2')}</li>
+              <li>{t('agents.register.step3')}</li>
+            </ol>
+          </Card>
+        </Space>
       )}
     </Modal>
   );

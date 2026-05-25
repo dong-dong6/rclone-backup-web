@@ -18,19 +18,17 @@ export const AgentGrid: React.FC<AgentGridProps> = ({
   onDelete,
 }) => {
   return (
-    <div className="col-12">
-      <div className="row row-deck row-cards">
-        {agents.map((agent) => (
-          <AgentCard
-            key={agent.id}
-            agent={agent}
-            onSync={onSync}
-            onViewDetails={onViewDetails}
-            onEdit={onEdit}
-            onDelete={onDelete}
-          />
-        ))}
-      </div>
+    <div className="rbw-card-grid">
+      {agents.map((agent) => (
+        <AgentCard
+          key={agent.id}
+          agent={agent}
+          onSync={onSync}
+          onViewDetails={onViewDetails}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      ))}
     </div>
   );
 };
